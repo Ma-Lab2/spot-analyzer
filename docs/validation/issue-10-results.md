@@ -20,7 +20,7 @@
 
 ```text
 python -m pytest -q
-92 passed
+93 passed
 
 python -m compileall -q spot_analyzer tests
 通过，无输出
@@ -51,7 +51,7 @@ VS Code diagnostics
 3. 报告已加入基础审计视图，但还缺坐标标尺、ROI/中心叠加、完整图例、派生报告资产清单和更严格的 PDF/PNG 语义结构检查，仍不是 Issue #8 的最终报告；
 4. worker 已实现资产引用、expected hash、完整请求快照、真实子进程 NDJSON 和运行目录派生资产写出；本轮增加了请求前取消、超时配置及过期 deadline 的结构化状态测试，并将未处理异常转换为 stdout NDJSON failure。报告导出现在能将目录创建失败转换为 `export_failed`；强制崩溃仍需实现，当前取消/超时仍是协作式检查；
 5. 当前只验证直接核心与 worker/CLI seam 的一致性；仓库中尚无 WPF 调用层，因此真正的 UI/CLI 端到端一致性仍待 Windows 外壳实现后验证；
-6. 已实现匹配背景帧优先路径：尺寸、通道、位深及曝光/增益/温度/光路/焦距/批次/采集时间/ROI 字段全部匹配时使用背景帧；缺字段或单字段不匹配时记录 `background_match_unverified` 并降级到确认保护区仿射背景。已实现显式高级预处理双分支和 >10% 核心宽度敏感性门控；高级分支不能绕过标准质量无效条件。仍需更广泛的真实采集条件 fixture 证据；
+6. 已实现匹配背景帧优先路径：尺寸、通道、位深及曝光/增益/温度/光路/焦距/批次/采集时间/ROI 字段全部匹配时使用背景帧；缺字段、单字段不匹配或请求背景帧缺失时记录 `background_match_unverified` 并保留具体原因，再降级到确认保护区仿射背景。已实现显式高级预处理双分支和 >10% 核心宽度敏感性门控；高级分支不能绕过标准质量无效条件。仍需更广泛的真实采集条件 fixture 证据；
 7. 物理域已覆盖缺失标定门控、方形像元换算、非方形像元主轴协方差变换和物理域 EE 重算；拟合已记录协方差、参数不确定度估计、终止信息和活动边界，并增加 Gaussian FWHM 的像素域/物理域不确定度估计；EE、角度和椭圆率的不确定度传播仍未实现；
 8. `analysis_fingerprint` 已切换到 RFC 8785 JCS canonicalization，并在诊断和指纹输入中记录 canonicalizer 版本；仍需在 Python 3.12 交付环境中执行跨运行时 golden-vector 验证；
 9. `pyproject.toml` 已固定 Python 3.12 范围和当前依赖版本，但本轮实际测试解释器仍为 Python 3.10.11；Python 3.12 构建、PyInstaller one-folder worker、.NET 8 self-contained 外壳和无开发环境的干净 Windows portable ZIP 烟测尚未执行。

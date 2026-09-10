@@ -247,6 +247,32 @@ def test_matched_background_requires_complete_metadata() -> None:
     }
 
 
+def test_missing_matched_background_is_recorded_before_affine_fallback() -> None:
+    scene = generate_scene("gaussian_circular")
+    image = InputImage(
+        scene.input_array,
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+    )
+
+    outcome = analyze(
+        image,
+        AnalysisConfiguration(
+            AnalysisRegion(64, 64, 128, 128),
+            background_region=AnalysisRegion(32, 64, 32, 128),
+            preprocessing=PreprocessingConfiguration(background_source="matched_frame"),
+        ),
+    )
+
+    assert outcome.record is not None
+    diagnostics = outcome.record.diagnostics
+    assert diagnostics["background_match_status"] == "unverified"
+    assert diagnostics["background_match_reason"] == "background_frame_unavailable"
+    assert "background_match_unverified" in diagnostics["reasons"]
+    assert outcome.record.summary_status.value == "caution"
+
+
 def test_matched_background_does_not_infer_missing_primary_roi() -> None:
     scene = generate_scene("gaussian_circular")
     primary_metadata = {

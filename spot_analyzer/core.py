@@ -28,6 +28,16 @@ from .models import (
 _METHOD = "analysis-core-v1"
 _MASK_VERSION = "measurement-mask-v1"
 _CANONICALIZER_VERSION = "rfc8785-python-0.1.4"
+_BACKGROUND_MATCH_FIELDS = (
+    "exposure",
+    "gain",
+    "temperature",
+    "optical_path",
+    "focal_length",
+    "acquisition_batch",
+    "acquisition_time",
+    "roi",
+)
 
 
 def _reason_tuple(reasons: set[str]) -> tuple[str, ...]:
@@ -151,21 +161,18 @@ def _matching_background(
 ) -> tuple[np.ndarray | None, dict[str, Any]]:
     """Use a background frame only when every required acquisition field matches."""
     if background_frame is None:
-        return None, {}
-    required = (
-        "exposure",
-        "gain",
-        "temperature",
-        "optical_path",
-        "focal_length",
-        "acquisition_batch",
-        "acquisition_time",
-        "roi",
-    )
-    fields = {key: image.metadata.get(key) for key in required}
-    background_fields = {key: background_frame.metadata.get(key) for key in required}
-    missing = [key for key in required if fields[key] is None or background_fields[key] is None]
-    mismatched = [key for key in required if key not in missing and fields[key] != background_fields[key]]
+        return None, {
+            "background_frame_present": False,
+            "background_match_status": "unverified",
+            "background_match_reason": "background_frame_unavailable",
+            "background_match_required_fields": list(_BACKGROUND_MATCH_FIELDS),
+            "background_match_missing_fields": list(_BACKGROUND_MATCH_FIELDS),
+            "background_match_mismatched_fields": [],
+        }
+    fields = {key: image.metadata.get(key) for key in _BACKGROUND_MATCH_FIELDS}
+    background_fields = {key: background_frame.metadata.get(key) for key in _BACKGROUND_MATCH_FIELDS}
+    missing = [key for key in _BACKGROUND_MATCH_FIELDS if fields[key] is None or background_fields[key] is None]
+    mismatched = [key for key in _BACKGROUND_MATCH_FIELDS if key not in missing and fields[key] != background_fields[key]]
     if image.background_match_unverified:
         mismatched.append("explicit_user_override")
     shape_match = background_frame.data.shape == image.data.shape
@@ -177,7 +184,7 @@ def _matching_background(
         "background_frame_present": True,
         "background_frame_shape_match": shape_match,
         "background_frame_format_match": format_match,
-        "background_match_required_fields": list(required),
+        "background_match_required_fields": list(_BACKGROUND_MATCH_FIELDS),
         "background_match_missing_fields": missing,
         "background_match_mismatched_fields": mismatched,
     }
@@ -853,7 +860,10 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     measurement_valid = finite_mask & ~bad_pixel_mask & ~saturated_mask
     roi_slice = _region_slice(region)
     roi = data[roi_slice]
-    matched_background, match_diagnostics = _matching_background(image, matched_frame)
+    if configuration.preprocessing.background_source == "matched_frame":
+        matched_background, match_diagnostics = _matching_background(image, matched_frame)
+    else:
+        matched_background, match_diagnostics = None, {}
     if matched_background is not None:
         background = matched_background
         background_diagnostics = match_diagnostics
