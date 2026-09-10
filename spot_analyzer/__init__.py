@@ -2,6 +2,7 @@
 
 from .core import analyze
 from .input import DecodeOutcome, decode_png
+from .validation import run_issue10_validation, run_validation
 from .models import (
     AnalysisConfiguration,
     AnalysisModel,
@@ -31,4 +32,6 @@ __all__ = [
     "SpatialCalibration",
     "analyze",
     "decode_png",
+    "run_issue10_validation",
+    "run_validation",
 ]

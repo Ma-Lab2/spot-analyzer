@@ -6,14 +6,21 @@ from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
-from typing import Any, Mapping
+import platform
+import sys
+from typing import Any, Iterable, Mapping
 
 import numpy as np
+
+
+VALIDATION_CONTRACT_VERSION = "validation-contract-v1"
+VALIDATION_SECTION_STATUSES = frozenset({"passed", "failed", "incomplete"})
+_PROFILE_VALIDATION = "provisional"
 
 from .core import analyze
 from .models import AnalysisConfiguration, AnalysisRecord, AnalysisRegion, InputImage
 from .oracle import circular_gaussian_oracle, scene_oracle
-from .synthetic import SceneManifest, SyntheticScene, generate_scene
+from .synthetic import GENERATOR_VERSION, SceneManifest, SyntheticScene, generate_scene
 
 
 @dataclass(frozen=True)
@@ -151,7 +158,7 @@ def _scene_configuration(scene: SyntheticScene) -> AnalysisConfiguration:
 def run_manifest_regression(manifests: Mapping[str, int] | None = None) -> dict[str, Any]:
     """Run deterministic synthetic scenes and return JSON-ready results."""
 
-    selections = manifests or {
+    selections = ({
         "gaussian_circular": 0,
         "gaussian_elliptical_rotated": 0,
         "two_gaussian_multimodal": 0,
@@ -161,7 +168,7 @@ def run_manifest_regression(manifests: Mapping[str, int] | None = None) -> dict[
         "low_snr_seeded": 0,
         "saturated_core": 0,
         "cropped_edge": 0,
-    }
+    } if manifests is None else dict(manifests))
     results = []
     for scene_id, seed in selections.items():
         scene = generate_scene(scene_id, seed=seed)
@@ -239,14 +246,15 @@ def run_manifest_regression(manifests: Mapping[str, int] | None = None) -> dict[
     return {"generator_version": "synthetic-scenes-v1", "results": results}
 
 
-def run_low_snr_regression(seeds: range = range(32)) -> dict[str, Any]:
+def run_low_snr_regression(seeds: Iterable[int] = range(32)) -> dict[str, Any]:
     """Aggregate deterministic low-SNR bias and quality-gate evidence."""
 
+    seed_values = tuple(int(seed) for seed in seeds)
     errors: list[float] = []
     statuses: dict[str, int] = {}
     reason_counts: dict[str, int] = {}
     cases: list[dict[str, Any]] = []
-    for seed in seeds:
+    for seed in seed_values:
         scene = generate_scene("low_snr_seeded", seed=seed)
         outcome = analyze(
             InputImage(scene.input_array, bit_depth=scene.manifest.bit_depth, encoding_semantic="relative_intensity_code", encoding_semantic_confirmed=True),
@@ -305,7 +313,7 @@ def run_low_snr_regression(seeds: range = range(32)) -> dict[str, Any]:
         median = mad = p95 = None
     return {
         "scene_id": "low_snr_seeded",
-        "seed_range": [seeds.start, seeds.stop - 1, seeds.step],
+        "seed_range": _seed_range(seed_values),
         "case_count": len(cases),
         "bias": {
             "metric": "gaussian_fwhm_major",
@@ -320,3 +328,134 @@ def run_low_snr_regression(seeds: range = range(32)) -> dict[str, Any]:
         "passed": bool(cases) and all(case["passed"] for case in cases),
         "cases": cases,
     }
+
+
+def _seed_range(seeds: tuple[int, ...]) -> list[int] | None:
+    """Describe an ordered seed collection without requiring a ``range`` input."""
+
+    if not seeds:
+        return None
+    if len(seeds) == 1:
+        step = 1
+    else:
+        step = seeds[1] - seeds[0]
+        if any(right - left != step for left, right in zip(seeds, seeds[1:])):
+            step = 0
+    return [seeds[0], seeds[-1], step]
+
+
+def _package_version(distribution: str) -> str | None:
+    try:
+        from importlib.metadata import version
+
+        return version(distribution)
+    except Exception:
+        return None
+
+
+def _validation_environment() -> dict[str, Any]:
+    """Return stable, JSON-ready execution identity for a validation run."""
+
+    return {
+        "python": sys.version.split()[0],
+        "python_implementation": platform.python_implementation(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+        "numpy": np.__version__,
+        "scipy": _package_version("scipy"),
+        "pillow": _package_version("pillow"),
+        "spot_analyzer": _package_version("spot-analyzer") or "0.1.0",
+    }
+
+
+def _section_status(*, passed: bool, available: bool = True) -> str:
+    if not available:
+        return "incomplete"
+    return "passed" if passed else "failed"
+
+
+def _run_section(name: str, operation: Any, *, available: bool = True) -> dict[str, Any]:
+    """Execute one section while preserving the aggregate result contract."""
+
+    if not available:
+        return {"name": name, "status": "incomplete", "result": None, "incomplete_reason": "no evidence"}
+    try:
+        result = operation()
+    except Exception as exc:  # validation must report a failed section, not hide it in a crash
+        return {
+            "name": name,
+            "status": "failed",
+            "result": None,
+            "error": {"type": type(exc).__name__, "message": str(exc)},
+        }
+    if "passed" in result:
+        passed = bool(result["passed"])
+    elif "results" in result:
+        passed = bool(result["results"]) and all(item.get("passed", False) for item in result["results"])
+    else:
+        passed = False
+    return {"name": name, "status": _section_status(passed=passed), "result": result}
+
+
+def _aggregate_status(sections: Mapping[str, Mapping[str, Any]]) -> str:
+    statuses = {section.get("status") for section in sections.values()}
+    if "failed" in statuses:
+        return "failed"
+    if "incomplete" in statuses:
+        return "incomplete"
+    return "passed" if statuses and statuses <= VALIDATION_SECTION_STATUSES else "incomplete"
+
+
+def run_issue10_validation(
+    manifests: Mapping[str, int] | None = None,
+    seeds: Iterable[int] = range(32),
+) -> dict[str, Any]:
+    """Run the Issue #10 synthetic and low-SNR sections in one JSON-ready operation.
+
+    This is intentionally the first vertical slice of the complete Issue #10
+    validation. Later sections can add entries to ``sections`` without changing
+    the section status or environment contract established here.
+    """
+
+    seed_values = tuple(int(seed) for seed in seeds)
+    synthetic_available = manifests is None or bool(manifests)
+    low_snr_available = bool(seed_values)
+    sections = {
+        "synthetic": _run_section(
+            "synthetic",
+            lambda: run_manifest_regression(manifests),
+            available=synthetic_available,
+        ),
+        "low_snr": _run_section(
+            "low_snr",
+            lambda: run_low_snr_regression(seed_values),
+            available=low_snr_available,
+        ),
+    }
+    identity = {
+        "validation_contract": VALIDATION_CONTRACT_VERSION,
+        "analysis_contract": "analysis-contract-v1",
+        "standard_profile": "standard-profile-v1",
+        "quality_profile": "quality-profile-v1",
+        "profile_validation": _PROFILE_VALIDATION,
+        "generator_version": GENERATOR_VERSION,
+    }
+    incomplete_items = [
+        name for name, section in sections.items() if section["status"] == "incomplete"
+    ]
+    return {
+        "issue": 10,
+        "contract": VALIDATION_CONTRACT_VERSION,
+        "validation_contract": VALIDATION_CONTRACT_VERSION,
+        "overall_status": _aggregate_status(sections),
+        "status": _aggregate_status(sections),
+        "sections": sections,
+        "identity": identity,
+        "environment": _validation_environment(),
+        "incomplete_items": incomplete_items,
+    }
+
+
+# Short public spelling for callers that do not need to name the parent issue.
+run_validation = run_issue10_validation
