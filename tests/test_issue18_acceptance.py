@@ -44,6 +44,15 @@ def test_complete_validation_persists_machine_and_human_materials(tmp_path, monk
     assert "user acceptance" in text
 
 
+def test_formal_incomplete_status_is_not_reported_as_failed():
+    section = validation._run_section(
+        "performance",
+        lambda: {"formal_status": "incomplete", "passed": False},
+    )
+
+    assert section["status"] == "incomplete"
+
+
 def test_complete_validation_forces_formal_performance_workloads(monkeypatch):
     seen = {}
 

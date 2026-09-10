@@ -400,6 +400,8 @@ def _run_section(name: str, operation: Any, *, available: bool = True) -> dict[s
         }
     if result.get("status") in VALIDATION_SECTION_STATUSES:
         status = str(result["status"])
+    elif result.get("formal_status") in VALIDATION_SECTION_STATUSES:
+        status = str(result["formal_status"])
     elif "passed" in result:
         status = _section_status(passed=bool(result["passed"]))
     elif "results" in result:
