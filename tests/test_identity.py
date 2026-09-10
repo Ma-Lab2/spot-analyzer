@@ -6,7 +6,12 @@ from pathlib import Path
 import numpy as np
 
 from spot_analyzer.identity import canonical_bytes, fingerprint, validate_golden_vectors
-from spot_analyzer.validation import run_identity_validation, run_issue10_validation
+from spot_analyzer.validation import (
+    _asset_semantics,
+    _semantic_differences,
+    run_identity_validation,
+    run_issue10_validation,
+)
 
 
 ROOT = Path(__file__).parents[1]
@@ -47,6 +52,26 @@ def test_committed_golden_vectors_are_checked_in_a_child_process() -> None:
     assert result["failures"] == []
     assert result["vector_count"] == 3
     assert result["status"] in {"passed", "incomplete"}
+
+
+def test_semantic_difference_reports_nested_contract_field() -> None:
+    differences = _semantic_differences(
+        {"diagnostics": {"mask_statistics": {"true_count": 4}}},
+        {"diagnostics": {"mask_statistics": {"true_count": 3}}},
+    )
+    assert differences == [{
+        "path": "diagnostics.mask_statistics.true_count",
+        "expected": 4,
+        "actual": 3,
+    }]
+
+
+def test_derived_asset_semantics_ignores_run_identity_but_checks_content() -> None:
+    first = [{"record_id": "first", "uri": "file:///first", "asset_id": "asset-a", "sha256": "abc"}]
+    second = [{"record_id": "second", "uri": "file:///second", "asset_id": "asset-a", "sha256": "abc"}]
+    assert _semantic_differences(_asset_semantics(first), _asset_semantics(second)) == []
+    second[0]["sha256"] = "different"
+    assert _semantic_differences(_asset_semantics(first), _asset_semantics(second))[0]["path"] == "[0].sha256"
 
 
 def test_identity_validation_reports_golden_vectors_and_worker_parity() -> None:

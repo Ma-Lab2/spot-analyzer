@@ -438,6 +438,21 @@ def _normalize_for_compare(value: Any) -> Any:
     return value
 
 
+def _wire_normalize(value: Any) -> Any:
+    """Match worker JSON normalization, including non-finite numeric values."""
+    if isinstance(value, Mapping):
+        return {str(key): _wire_normalize(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_wire_normalize(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return [_wire_normalize(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return _wire_normalize(value.item())
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    return value
+
+
 def _contains_key(value: Any, forbidden: set[str]) -> bool:
     if isinstance(value, Mapping):
         return any(str(key) in forbidden or _contains_key(item, forbidden) for key, item in value.items())
@@ -627,6 +642,89 @@ def run_report_validation(output_directory: str | Path | None = None) -> dict[st
     }
 
 
+def _record_semantics(record: AnalysisRecord) -> dict[str, Any]:
+    """Return record content whose values must remain equal across callers."""
+    arrays = {
+        name: {
+            "sha256": hashlib.sha256(np.ascontiguousarray(array).tobytes(order="C")).hexdigest(),
+            "shape": list(array.shape),
+            "dtype": str(array.dtype),
+        }
+        for name, array in (
+            ("input_intensity", record.input_intensity),
+            ("corrected_intensity", record.corrected_intensity),
+            ("positive_intensity", record.positive_intensity),
+            ("fitted_intensity", record.fitted_intensity),
+            ("fit_residual_intensity", record.fit_residual_intensity),
+            ("measurement_mask", record.measurement_mask),
+            ("core_mask", record.core_mask),
+        )
+    }
+    return _wire_normalize({
+        "flow_status": record.flow_status.value,
+        "summary_status": record.summary_status.value,
+        "input": dict(record.input_metadata),
+        "configuration": asdict(record.configuration),
+        "input_shape": list(record.input_shape),
+        "metrics": record.reportable_metrics(),
+        "metric_semantics": {
+            name: {
+                "value": metric.value,
+                "physical_value": metric.physical_value,
+                "unit": metric.unit,
+                "status": metric.status.value,
+                "reason_codes": list(metric.reason_codes),
+                "method_version": metric.method_version,
+                "reported_value": metric.reported_value,
+            }
+            for name, metric in record.metrics.items()
+        },
+        "diagnostics": record.diagnostics,
+        "arrays": arrays,
+        "mask_statistics": {
+            name: {"true_count": int(np.count_nonzero(array)), "size": int(array.size)}
+            for name, array in (
+                ("measurement_mask", record.measurement_mask),
+                ("core_mask", record.core_mask),
+            )
+        },
+    })
+
+
+def _semantic_differences(expected: Any, actual: Any, path: str = "") -> list[dict[str, Any]]:
+    """Describe semantic mismatches without dumping large image arrays."""
+    if isinstance(expected, Mapping) and isinstance(actual, Mapping):
+        differences = []
+        for key in sorted(set(expected) | set(actual), key=str):
+            child = f"{path}.{key}" if path else str(key)
+            if key not in expected:
+                differences.append({"path": child, "expected": "<missing>", "actual": _normalize_for_compare(actual[key])})
+            elif key not in actual:
+                differences.append({"path": child, "expected": _normalize_for_compare(expected[key]), "actual": "<missing>"})
+            else:
+                differences.extend(_semantic_differences(expected[key], actual[key], child))
+        return differences
+    if isinstance(expected, (list, tuple)) and isinstance(actual, (list, tuple)):
+        if len(expected) != len(actual):
+            return [{"path": path, "expected": len(expected), "actual": len(actual)}]
+        differences = []
+        for index, (left, right) in enumerate(zip(expected, actual)):
+            differences.extend(_semantic_differences(left, right, f"{path}[{index}]"))
+        return differences
+    if _normalize_for_compare(expected) != _normalize_for_compare(actual):
+        return [{"path": path, "expected": _normalize_for_compare(expected), "actual": _normalize_for_compare(actual)}]
+    return []
+
+
+def _asset_semantics(assets: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Remove identity fields that necessarily differ between record runs."""
+    ignored = {"record_id", "uri"}
+    return [
+        {str(key): _normalize_for_compare(value) for key, value in asset.items() if key not in ignored}
+        for asset in assets
+    ]
+
+
 def _worker_parity_validation() -> dict[str, Any]:
     """Compare one direct analysis with the real NDJSON worker child process."""
     from .worker import run_worker_process
@@ -647,6 +745,8 @@ def _worker_parity_validation() -> dict[str, Any]:
         if direct.record is None:
             return {"status": "failed", "passed": False, "reason": "direct_analysis_failed"}
         messages = run_worker_process(request)
+        from .worker import _write_derived_assets
+        direct_assets = _write_derived_assets(direct.record, {"derived_format": "npy", "work_directory": str(root / "direct-assets")})
     terminal = messages[-1] if messages else {}
     worker_record = terminal.get("record") if terminal.get("kind") == "completed" else None
     if not isinstance(worker_record, Mapping):
@@ -657,21 +757,29 @@ def _worker_parity_validation() -> dict[str, Any]:
             "terminal": terminal,
         }
     direct_record = direct.record
-    direct_metrics = direct_record.reportable_metrics()
-    worker_metrics = worker_record.get("metrics")
-    checks = {
-        "flow_status": direct.flow_status.value == worker_record.get("flow_status"),
-        "summary_status": direct_record.summary_status.value == worker_record.get("summary_status"),
-        "analysis_fingerprint": direct_record.analysis_fingerprint == worker_record.get("analysis_fingerprint"),
-        "metrics": direct_metrics == worker_metrics,
-        "diagnostic_reasons": sorted(direct_record.diagnostics.get("reasons", ()))
-        == sorted(worker_record.get("diagnostics", {}).get("reasons", ())),
+    direct_semantics = _record_semantics(direct_record)
+    worker_semantics = {
+        key: worker_record.get(key)
+        for key in direct_semantics
     }
+    semantic_differences = _semantic_differences(direct_semantics, worker_semantics)
+    asset_differences = _semantic_differences(
+        _asset_semantics(direct_assets),
+        _asset_semantics(worker_record.get("derived_assets", ())),
+        "derived_assets",
+    )
+    checks = {
+        "record_semantics": not semantic_differences,
+        "derived_asset_identity": not asset_differences,
+        "analysis_fingerprint": direct_record.analysis_fingerprint == worker_record.get("analysis_fingerprint"),
+    }
+    differences = semantic_differences + asset_differences
     passed = all(checks.values())
     return {
         "status": "passed" if passed else "failed",
         "passed": passed,
         "checks": checks,
+        "differences": differences,
         "analysis_fingerprint": direct_record.analysis_fingerprint,
     }
 
@@ -910,10 +1018,13 @@ def _validate_real_fixture(entry: Mapping[str, Any], path: Path) -> dict[str, An
     forbidden = set(str(code) for code in entry.get("forbidden_reason_codes", ()))
     status_passed = not expected_statuses or record.summary_status.value in expected_statuses
     reason_passed = required.issubset(reasons) and forbidden.isdisjoint(reasons)
+    repeatability_differences = _semantic_differences(
+        _record_semantics(record),
+        _record_semantics(second.record),
+    )
     repeatability_passed = (
         record.analysis_fingerprint == second.record.analysis_fingerprint
-        and record.summary_status.value == second.record.summary_status.value
-        and tuple(record.diagnostics.get("reasons", ())) == tuple(second.record.diagnostics.get("reasons", ()))
+        and not repeatability_differences
     )
     result.update({
         "status": "passed" if status_passed and reason_passed and repeatability_passed else "failed",
@@ -921,6 +1032,7 @@ def _validate_real_fixture(entry: Mapping[str, Any], path: Path) -> dict[str, An
         "summary_status": record.summary_status.value,
         "analysis_fingerprint": record.analysis_fingerprint,
         "repeatability_passed": repeatability_passed,
+        "repeatability_differences": repeatability_differences,
         "required_reason_codes": sorted(required),
         "forbidden_reason_codes": sorted(forbidden),
         "reason_codes": sorted(reasons),
