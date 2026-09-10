@@ -172,6 +172,13 @@ def test_matched_background_frame_is_used_when_all_acquisition_metadata_matches(
     assert outcome.record.diagnostics["background_source"] == "matched_frame"
     assert outcome.record.diagnostics["background_match_status"] == "matched"
     assert np.allclose(outcome.record.corrected_intensity, scene.input_array - 12.0)
+    package = prepare_report(outcome.record, ReportSpecification("png", "matched", "."))
+    assert package.sections["preprocessing"]["steps"] == (
+        "decode",
+        "bad_pixel_mask",
+        "matched_frame_background",
+        "signed_correction",
+    )
 
 
 def test_background_frame_with_one_mismatched_field_falls_back_with_caution() -> None:

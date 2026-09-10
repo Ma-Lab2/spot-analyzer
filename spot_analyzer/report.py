@@ -83,6 +83,15 @@ def prepare_report(record: AnalysisRecord, specification: ReportSpecification) -
     if not report_name:
         raise ValueError("report name must not be empty")
     configuration = asdict(record.configuration)
+    background_source = record.diagnostics.get("background_source")
+    background_step = (
+        "matched_frame_background"
+        if background_source == "matched_frame"
+        else "affine_background"
+    )
+    advanced_steps = tuple(
+        record.diagnostics.get("preprocessing_advanced_branch", {}).get("steps", ())
+    )
     sections = {
         "summary": {
             "record_id": record.record_id,
@@ -103,9 +112,9 @@ def prepare_report(record: AnalysisRecord, specification: ReportSpecification) -
             "steps": (
                 "decode",
                 "bad_pixel_mask",
-                "affine_background",
+                background_step,
                 "signed_correction",
-                *tuple(record.diagnostics.get("preprocessing_advanced_branch", {}).get("steps", ())),
+                *advanced_steps,
             ),
         },
         "analysis_model": asdict(record.configuration.model),
