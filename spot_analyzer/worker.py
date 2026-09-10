@@ -221,6 +221,41 @@ def _write_derived_assets(record: Any, output_strategy: dict[str, Any]) -> list[
 
 
 def _record_payload(record: Any, derived_assets: list[dict[str, Any]]) -> dict[str, Any]:
+    metric_semantics = {
+        name: {
+            "value": metric.value,
+            "physical_value": metric.physical_value,
+            "unit": metric.unit,
+            "status": metric.status.value,
+            "reason_codes": list(metric.reason_codes),
+            "method_version": metric.method_version,
+            "reported_value": metric.reported_value,
+        }
+        for name, metric in record.metrics.items()
+    }
+    arrays = {
+        name: {
+            "sha256": hashlib.sha256(np.ascontiguousarray(array).tobytes(order="C")).hexdigest(),
+            "shape": list(array.shape),
+            "dtype": str(array.dtype),
+        }
+        for name, array in (
+            ("input_intensity", record.input_intensity),
+            ("corrected_intensity", record.corrected_intensity),
+            ("positive_intensity", record.positive_intensity),
+            ("fitted_intensity", record.fitted_intensity),
+            ("fit_residual_intensity", record.fit_residual_intensity),
+            ("measurement_mask", record.measurement_mask),
+            ("core_mask", record.core_mask),
+        )
+    }
+    mask_statistics = {
+        name: {"true_count": int(np.count_nonzero(array)), "size": int(array.size)}
+        for name, array in (
+            ("measurement_mask", record.measurement_mask),
+            ("core_mask", record.core_mask),
+        )
+    }
     return {
         "record_id": record.record_id,
         "analysis_fingerprint": record.analysis_fingerprint,
@@ -228,7 +263,10 @@ def _record_payload(record: Any, derived_assets: list[dict[str, Any]]) -> dict[s
         "summary_status": record.summary_status.value,
         "input": dict(record.input_metadata),
         "metrics": record.reportable_metrics(),
+        "metric_semantics": metric_semantics,
         "diagnostics": record.diagnostics,
+        "arrays": arrays,
+        "mask_statistics": mask_statistics,
         "derived_assets": derived_assets,
         "configuration": asdict(record.configuration),
         "input_shape": list(record.input_shape),
