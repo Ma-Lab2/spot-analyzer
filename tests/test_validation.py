@@ -13,6 +13,7 @@ from spot_analyzer.validation import (
     run_low_snr_regression,
     run_manifest_regression,
     run_real_fixture_validation,
+    run_report_validation,
 )
 
 

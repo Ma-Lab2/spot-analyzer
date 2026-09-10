@@ -27,6 +27,7 @@ from .core import analyze
 from .input import decode_png
 from .models import AnalysisConfiguration, AnalysisRecord, AnalysisRegion, InputImage
 from .oracle import circular_gaussian_oracle, scene_oracle
+from .report import ReportSpecification, prepare_report, write_report
 from .synthetic import GENERATOR_VERSION, SceneManifest, SyntheticScene, generate_scene
 
 
@@ -414,6 +415,144 @@ def _aggregate_status(sections: Mapping[str, Mapping[str, Any]]) -> str:
     return "passed" if statuses and statuses <= VALIDATION_SECTION_STATUSES else "incomplete"
 
 
+def _array_digest(array: Any) -> str:
+    values = np.asarray(array)
+    return "sha256-" + hashlib.sha256(values.tobytes(order="C")).hexdigest()
+
+
+def _contains_key(value: Any, forbidden: set[str]) -> bool:
+    if isinstance(value, Mapping):
+        return any(str(key) in forbidden or _contains_key(item, forbidden) for key, item in value.items())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_key(item, forbidden) for item in value)
+    return False
+
+
+def _report_validation_record() -> AnalysisRecord | None:
+    scene = generate_scene("gaussian_circular", seed=0)
+    configuration = _scene_configuration(scene)
+    outcome = analyze(
+        InputImage(
+            scene.input_array,
+            bit_depth=scene.manifest.bit_depth,
+            encoding_semantic="relative_intensity_code",
+            encoding_semantic_confirmed=True,
+        ),
+        configuration,
+    )
+    return outcome.record
+
+
+def run_report_validation(output_directory: str | Path | None = None) -> dict[str, Any]:
+    """Validate report semantics and exports from one immutable analysis record."""
+
+    record = _report_validation_record()
+    if record is None:
+        return {"status": "failed", "passed": False, "incomplete_reason": "analysis_record_unavailable"}
+    expected_arrays = {
+        "输入图像": record.input_intensity,
+        "校正强度图": record.corrected_intensity,
+        "正信号图": record.positive_intensity,
+        "高斯拟合": record.fitted_intensity,
+        "拟合残差": record.fit_residual_intensity,
+        "测量有效 mask": record.measurement_mask,
+        "核心 mask": record.core_mask,
+    }
+    checks: dict[str, bool] = {
+        "record_identity": False,
+        "visual_identity": False,
+        "profile_axis": False,
+        "energy_curve_context": False,
+        "provenance": False,
+        "no_internal_trials": False,
+        "exports": False,
+    }
+    export_results: list[dict[str, Any]] = []
+    temporary_context = tempfile.TemporaryDirectory(prefix="spot-report-validation-") if output_directory is None else None
+    try:
+        destination = Path(output_directory) if output_directory is not None else Path(temporary_context.name)
+        package = prepare_report(record, ReportSpecification("png", "issue-15-validation", destination))
+        checks["record_identity"] = (
+            package.record_id == record.record_id
+            and package.analysis_fingerprint == record.analysis_fingerprint
+            and package.sections["summary"]["record_id"] == record.record_id
+            and package.sections["summary"]["analysis_fingerprint"] == record.analysis_fingerprint
+        )
+        checks["visual_identity"] = all(
+            name in package.visuals and _array_digest(package.visuals[name]) == _array_digest(array)
+            for name, array in expected_arrays.items()
+        )
+        curves = package.sections["diagnostics"].get("report_curves", {})
+        profile_x = np.asarray(curves.get("profile_x_pixels", ()), dtype=float)
+        profile = np.asarray(curves.get("profile", ()), dtype=float)
+        fitted_profile = np.asarray(curves.get("fitted_profile", ()), dtype=float)
+        energy_radius = np.asarray(curves.get("energy_radius", ()), dtype=float)
+        energy_fraction = np.asarray(curves.get("energy_fraction", ()), dtype=float)
+        checks["profile_axis"] = (
+            profile_x.size > 0
+            and profile_x.size == profile.size == fitted_profile.size
+            and np.array_equal(profile_x, np.arange(profile_x.size, dtype=float))
+        )
+        reportable = package.sections.get("metrics", {})
+        checks["energy_curve_context"] = (
+            energy_radius.size == energy_fraction.size
+            and energy_radius.size > 0
+            and np.all(np.diff(energy_radius) >= 0)
+            and bool(curves.get("energy_radius_unit"))
+            and all(key in reportable for key in ("ee50", "ee80"))
+        )
+        provenance = package.sections.get("provenance", {})
+        checks["provenance"] = all(
+            provenance.get(key) for key in (
+                "analysis_contract", "standard_profile", "quality_profile",
+                "algorithm_version", "parameter_snapshot_hash", "export_contract",
+                "software", "report_schema",
+            )
+        ) and bool(provenance.get("software", {}).get("build"))
+        checks["no_internal_trials"] = not _contains_key(
+            package.sections,
+            {
+                "fit_initial_parameters", "fit_cost", "fit_nfev", "fit_covariance",
+                "fit_parameters", "fit_active_mask", "fit_optimality",
+                "standard_fwhm_estimate", "advanced_fwhm_estimate", "sensitivity_fraction", "sensitivity",
+            },
+        )
+        for format_name in ("png", "pdf"):
+            specification = ReportSpecification(format_name, f"issue-15-{format_name}", destination)
+            exported = write_report(prepare_report(record, specification), specification)
+            export_results.append({
+                "format": format_name,
+                "status": exported.flow_status,
+                "uri": exported.path.as_uri() if exported.path is not None else None,
+                "sha256": exported.sha256,
+            })
+        checks["exports"] = all(
+            item["status"] == "exported" and bool(item["uri"]) and bool(item["sha256"])
+            for item in export_results
+        )
+    except Exception as exc:
+        return {
+            "status": "failed",
+            "passed": False,
+            "checks": checks,
+            "exports": export_results,
+            "error": {"type": type(exc).__name__, "message": str(exc)},
+        }
+    finally:
+        if temporary_context is not None:
+            temporary_context.cleanup()
+    passed = all(checks.values())
+    return {
+        "status": "passed" if passed else "failed",
+        "passed": passed,
+        "record_id": record.record_id,
+        "analysis_fingerprint": record.analysis_fingerprint,
+        "checks": checks,
+        "exports": export_results,
+        "behavioral_evidence_only": False,
+    }
+
+
 def run_issue10_validation(
     manifests: Mapping[str, int] | None = None,
     seeds: Iterable[int] = range(32),
@@ -444,6 +583,10 @@ def run_issue10_validation(
         "real_fixtures": _run_section(
             "real_fixtures",
             lambda: run_real_fixture_validation(real_manifest_path, root=real_fixture_root),
+        ),
+        "report": _run_section(
+            "report",
+            run_report_validation,
         ),
     }
     identity = {
