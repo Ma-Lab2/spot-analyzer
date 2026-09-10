@@ -74,6 +74,107 @@ def _invalid_metric(unit: str, reason: str, configuration: AnalysisConfiguration
     return _metric(None, unit, MeasurementStatus.INVALID, {reason}, configuration)
 
 
+_SENSITIVITY_METRICS = (
+    "gaussian_fwhm_major",
+    "gaussian_fwhm_minor",
+    "gaussian_ellipticity",
+    "gaussian_angle",
+    "moment_d4sigma_major",
+    "moment_d4sigma_minor",
+    "moment_angle",
+    "ee50",
+    "ee80",
+    "concentration_rref",
+    "centroid_offset",
+)
+
+
+def _numeric_components(value: Any) -> list[float] | None:
+    if isinstance(value, Mapping):
+        components: list[float] = []
+        for key in sorted(value):
+            nested = _numeric_components(value[key])
+            if nested is None:
+                return None
+            components.extend(nested)
+        return components
+    if isinstance(value, (list, tuple)):
+        components = []
+        for item in value:
+            nested = _numeric_components(item)
+            if nested is None:
+                return None
+            components.extend(nested)
+        return components
+    if isinstance(value, (int, float, np.integer, np.floating)) and math.isfinite(float(value)):
+        return [float(value)]
+    return None
+
+
+def _sensitivity_comparison(
+    standard_metrics: Mapping[str, Metric],
+    advanced_metrics: Mapping[str, Metric],
+) -> tuple[dict[str, dict[str, Any]], bool, bool]:
+    comparison: dict[str, dict[str, Any]] = {}
+    caution = False
+    invalid = False
+    for name in _SENSITIVITY_METRICS:
+        standard = standard_metrics.get(name)
+        advanced = advanced_metrics.get(name)
+        standard_value = standard.value if standard is not None else None
+        advanced_value = advanced.value if advanced is not None else None
+        standard_components = _numeric_components(standard_value)
+        advanced_components = _numeric_components(advanced_value)
+        if (
+            standard_components is None
+            or advanced_components is None
+            or len(standard_components) != len(advanced_components)
+            or not standard_components
+        ):
+            absolute_difference = None
+            relative_difference = None
+            gate = MeasurementStatus.CAUTION.value
+            sensitivity_status = MeasurementStatus.CAUTION.value
+            caution = True
+        else:
+            if name in {"gaussian_angle", "moment_angle"} and len(standard_components) == 1:
+                raw_delta = abs(advanced_components[0] - standard_components[0]) % 180.0
+                deltas = [min(raw_delta, 180.0 - raw_delta)]
+            else:
+                deltas = [a - s for s, a in zip(standard_components, advanced_components)]
+            absolute_difference = float(math.sqrt(sum(delta * delta for delta in deltas)))
+            scale = math.sqrt(sum(value * value for value in standard_components))
+            if scale <= 1e-12:
+                relative_difference = 0.0 if absolute_difference <= 1e-12 else None
+                gate = "passed" if relative_difference == 0.0 else MeasurementStatus.CAUTION.value
+                sensitivity_status = MeasurementStatus.CAUTION.value
+                caution |= gate == MeasurementStatus.CAUTION.value
+            else:
+                relative_difference = absolute_difference / scale
+                if relative_difference > 0.20:
+                    gate = MeasurementStatus.INVALID.value
+                    sensitivity_status = MeasurementStatus.INVALID.value
+                    invalid = True
+                elif relative_difference > 0.10:
+                    gate = MeasurementStatus.CAUTION.value
+                    sensitivity_status = MeasurementStatus.CAUTION.value
+                    caution = True
+                else:
+                    gate = "passed"
+                    sensitivity_status = MeasurementStatus.CAUTION.value
+        comparison[name] = {
+            "standard_value": standard_value,
+            "advanced_value": advanced_value,
+            "absolute_difference": absolute_difference,
+            "relative_difference": relative_difference,
+            "standard_status": standard.status.value if standard is not None else MeasurementStatus.UNAVAILABLE.value,
+            "advanced_status": advanced.status.value if advanced is not None else MeasurementStatus.UNAVAILABLE.value,
+            "sensitivity_status": sensitivity_status,
+            "gate": gate,
+        }
+    return comparison, caution, invalid
+
+
 def _region_slice(region: AnalysisRegion) -> tuple[slice, slice]:
     return slice(region.y, region.y + region.height), slice(region.x, region.x + region.width)
 
@@ -1023,8 +1124,6 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     standard_fwhm = math.sqrt(8.0 * math.log(2.0)) * max(standard_sigma_x, standard_sigma_y)
     advanced_fwhm = math.sqrt(8.0 * math.log(2.0)) * max(initial_sigma_x, initial_sigma_y)
     advanced_sensitivity = abs(advanced_fwhm - standard_fwhm) / max(standard_fwhm, 1e-12)
-    if configuration.preprocessing.advanced_processing_enabled and advanced_sensitivity > 0.10:
-        reasons.add("advanced_sensitivity_exceeded")
     estimated_fwhm_major = advanced_fwhm
     separation_threshold = max(
         preprocessing.multiple_peak_min_separation_pixels,
@@ -1118,7 +1217,6 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         "background_noise_unavailable",
         "background_residual_high",
         "core_support_insufficient",
-        "advanced_sensitivity_exceeded",
     }
     if core_peak <= 0 or "center_outside_region" in reasons:
         metrics = _empty_metrics(
@@ -1261,6 +1359,48 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         centroid_delta=centroid_delta,
     )
 
+    sensitivity_comparison: dict[str, dict[str, Any]] = {}
+    sensitivity_caution = False
+    sensitivity_invalid = False
+    if configuration.preprocessing.advanced_processing_enabled:
+        reasons.add("advanced_preprocessing")
+        standard_preprocessing = replace(
+            configuration.preprocessing,
+            advanced_processing_enabled=False,
+            bad_pixel_policy="mask_only",
+            filtering="none",
+            dpc="none",
+        )
+        standard_configuration = replace(configuration, preprocessing=standard_preprocessing)
+        standard_outcome = analyze(image, standard_configuration)
+        if standard_outcome.record is not None:
+            sensitivity_comparison, sensitivity_caution, sensitivity_invalid = _sensitivity_comparison(
+                standard_outcome.record.metrics,
+                metrics,
+            )
+        if sensitivity_caution:
+            reasons.add("advanced_sensitivity_caution")
+        if sensitivity_invalid:
+            reasons.add("advanced_sensitivity_exceeded")
+        for name, metric in tuple(metrics.items()):
+            entry = sensitivity_comparison.get(name)
+            if entry is None:
+                status = MeasurementStatus.CAUTION
+            elif entry["sensitivity_status"] == MeasurementStatus.INVALID.value:
+                status = MeasurementStatus.INVALID
+            else:
+                status = metric.status
+                if status == MeasurementStatus.VALID:
+                    status = MeasurementStatus.CAUTION
+            metric_reasons = set(metric.reason_codes) | {"advanced_preprocessing"}
+            if entry is not None and entry["gate"] == MeasurementStatus.CAUTION.value:
+                metric_reasons.add("advanced_sensitivity_caution")
+            if entry is not None and entry["gate"] == MeasurementStatus.INVALID.value:
+                metric_reasons.add("advanced_sensitivity_exceeded")
+            metrics[name] = replace(metric, status=status, reason_codes=_reason_tuple(metric_reasons))
+            if entry is not None:
+                entry["advanced_status"] = status.value
+
     if image.bit_depth is not None:
         max_code = 2**image.bit_depth - 1
         saturated_count = int(np.count_nonzero(roi >= max_code))
@@ -1347,7 +1487,9 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
             "advanced_fwhm_estimate": advanced_fwhm,
             "sensitivity_fraction": advanced_sensitivity,
             "sensitivity_threshold": 0.10,
-            "sensitivity_gate": "failed" if "advanced_sensitivity_exceeded" in reasons else "passed",
+            "sensitivity_invalid_threshold": 0.20,
+            "sensitivity_gate": "invalid" if sensitivity_invalid else "caution" if sensitivity_caution else "passed",
+            "sensitivity": sensitivity_comparison,
         },
     }
     statuses = [metric.status for metric in metrics.values() if metric.status != MeasurementStatus.UNAVAILABLE]

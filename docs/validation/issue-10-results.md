@@ -68,6 +68,7 @@ VS Code diagnostics
 
 - matched-frame 缺失时保留 affine 降级，但记录 `background_frame_unavailable`、`background_match_unverified` 和 `caution` 状态。
 - 标准质量门槛保持固定；`PreprocessingConfiguration` 拒绝改写 core、SNR 和 multiple-peak 的质量阈值，并校验相关参数范围和顺序，避免请求快照与实际状态映射不一致。
-- 本轮验证：`python -m pytest -o addopts='' -q` 通过 **94 tests**；`python -m compileall -q spot_analyzer tests` 和 `git diff --check` 均通过。
+- 本轮验证：`python -m pytest -o addopts='' -q` 通过 **98 tests**；`python -m compileall -q spot_analyzer tests` 和 `git diff --check` 均通过。
+- 高级预处理现在对 Gaussian FWHM、D4σ、EE50/80、C(Rref) 及相关形状指标记录标准/高级值、绝对差、相对差和两侧状态；`<=10%` 为通过门控，`>10%` 为逐指标 `caution`，`>20%` 为逐指标 `invalid`，高级分支始终至少为 `caution`。
 
 当前实现还将 `profile_validation` 锁定为 `provisional`，拒绝由请求配置直接提升为 `validated`。因此 `standard-profile-v1` 和 `quality-profile-v1` 继续保持 `profile_validation: provisional`。即使数值测试通过，对外 `valid` 也按契约封顶为 `caution`；Issue #11 正式审查接受前不升级为 `validated`。

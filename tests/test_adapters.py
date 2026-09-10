@@ -19,6 +19,8 @@ from PIL import Image
 from spot_analyzer import AnalysisConfiguration, AnalysisRegion, InputImage, PreprocessingConfiguration, analyze, decode_png
 from spot_analyzer.report import ReportSpecification, prepare_report, write_report
 from spot_analyzer.synthetic import generate_scene
+from spot_analyzer.core import _SENSITIVITY_METRICS, _sensitivity_comparison
+from spot_analyzer.models import MeasurementStatus, Metric
 import spot_analyzer.worker as worker_module
 from spot_analyzer.worker import handle_request, run_worker
 
@@ -473,6 +475,48 @@ def test_advanced_preprocessing_retains_standard_branch_and_records_sensitivity(
     assert advanced["enabled"] is True
     assert advanced["steps"] == ("gaussian_filter-v1",)
     assert 0.0 <= advanced["sensitivity_fraction"]
+    assert set(_SENSITIVITY_METRICS) <= set(advanced["sensitivity"])
+    for comparison in advanced["sensitivity"].values():
+        assert {
+            "standard_value",
+            "advanced_value",
+            "absolute_difference",
+            "relative_difference",
+            "standard_status",
+            "advanced_status",
+            "sensitivity_status",
+        } <= set(comparison)
+    assert outcome.record.summary_status in {
+        MeasurementStatus.CAUTION,
+        MeasurementStatus.INVALID,
+    }
+
+
+def test_sensitivity_gate_is_per_metric_and_uses_strict_thresholds() -> None:
+    names = _SENSITIVITY_METRICS
+    standard = {
+        name: Metric(100.0, "px", MeasurementStatus.VALID)
+        for name in names
+    }
+    advanced = dict(standard)
+    advanced["gaussian_fwhm_major"] = Metric(110.0, "px", MeasurementStatus.VALID)
+    advanced["gaussian_fwhm_minor"] = Metric(111.0, "px", MeasurementStatus.VALID)
+    advanced["ee50"] = Metric(121.0, "px", MeasurementStatus.VALID)
+
+    comparison, caution, invalid = _sensitivity_comparison(standard, advanced)
+
+    assert caution is True
+    assert invalid is True
+    assert comparison["gaussian_fwhm_major"]["relative_difference"] == pytest.approx(0.10)
+    assert comparison["gaussian_fwhm_major"]["sensitivity_status"] == "caution"
+    assert comparison["gaussian_fwhm_major"]["gate"] == "passed"
+    assert comparison["gaussian_fwhm_minor"]["relative_difference"] == pytest.approx(0.11)
+    assert comparison["gaussian_fwhm_minor"]["sensitivity_status"] == "caution"
+    assert comparison["gaussian_fwhm_minor"]["gate"] == "caution"
+    assert comparison["ee50"]["relative_difference"] == pytest.approx(0.21)
+    assert comparison["ee50"]["sensitivity_status"] == "invalid"
+    assert comparison["ee50"]["gate"] == "invalid"
+    assert comparison["ee80"]["sensitivity_status"] == "caution"
 
 
 def test_worker_asset_request_validates_hash_and_matches_direct_core(tmp_path) -> None:

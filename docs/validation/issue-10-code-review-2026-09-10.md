@@ -48,4 +48,6 @@
 
 后续切片修复了第 8 项缺陷：缺失 matched frame 现在记录 `background_frame_unavailable` 并将 affine 降级标记为 `caution`。同时，标准 core/SNR/multiple-peak 质量门槛及背景拟合、定位参数均锁定为标准档案值，非法类型、非有限值和错误顺序会在配置阶段拒绝。新增回归测试后，完整套件为 **97 passed**。
 
-本次 follow-up 仍确认 Issue #10 的高级敏感性指标、FWHM 不确定度、报告处理步骤和部分导出异常等其他问题尚未修复。
+本次 follow-up 已修复高级预处理敏感性指标和门控：标准/高级分支现在逐项记录 Gaussian FWHM、D4σ、EE50/80、C(Rref) 及相关形状指标的值、差异和两侧状态；`>10%` 仅将受影响指标置为 `caution`，`>20%` 置为 `invalid`，高级分支即使差异较小也至少为 `caution`。本轮完整套件为 **98 passed**。
+
+仍确认 Issue #10 的 FWHM 不确定度、报告处理步骤和部分导出异常等其他问题尚未修复。
