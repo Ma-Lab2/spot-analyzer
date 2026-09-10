@@ -640,6 +640,8 @@ def run_issue10_validation(
     real_manifest_path: str | Path = Path("docs/validation/issue-10-real-fixtures.json"),
     real_fixture_root: str | Path | None = None,
     golden_vector_path: str | Path = Path("docs/validation/issue-10-fingerprint-golden-vectors.json"),
+    performance_sizes: Iterable[int] | None = None,
+    performance_repetitions: int = 10,
 ) -> dict[str, Any]:
     """Run the Issue #10 synthetic and low-SNR sections in one JSON-ready operation.
 
@@ -673,6 +675,14 @@ def run_issue10_validation(
         "identity": _run_section(
             "identity",
             lambda: run_identity_validation(golden_vector_path),
+        ),
+        "performance": _run_section(
+            "performance",
+            lambda: run_performance_baseline(
+                sizes=performance_sizes if performance_sizes is not None else (256, 1024),
+                repetitions=performance_repetitions,
+            ),
+            available=performance_sizes is not None,
         ),
     }
     identity = {

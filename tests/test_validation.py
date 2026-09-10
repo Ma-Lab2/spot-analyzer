@@ -11,7 +11,9 @@ from spot_analyzer.synthetic import generate_scene
 from spot_analyzer.validation import (
     load_manifest,
     run_low_snr_regression,
+    run_issue10_validation,
     run_manifest_regression,
+    run_performance_baseline,
     run_real_fixture_validation,
     run_report_validation,
 )
@@ -129,6 +131,42 @@ def test_low_snr_aggregate_records_bias_and_gate_distribution() -> None:
     severe_cases = [case for case in report["cases"] if case["snr"] is None or case["snr"] < 5]
     assert severe_cases
     assert all(case["quantitative_values_gated"] for case in severe_cases)
+
+
+def test_performance_baseline_reports_structured_workload_and_formal_status() -> None:
+    report = run_performance_baseline(sizes=(256,), repetitions=1)
+
+    workload = report["workloads"][0]
+    assert workload["image_size"] == {"width": 256, "height": 256}
+    assert workload["repetitions"] == 1
+    for kind in ("core", "worker"):
+        assert len(workload[kind]["runs_seconds"]) == 1
+        assert workload[kind]["p50_seconds"] >= 0
+        assert workload[kind]["p95_seconds"] >= 0
+        assert workload[kind]["max_seconds"] >= 0
+    assert report["formal_status"] in {"passed", "incomplete"}
+    assert report["environment"]["formal_environment"] is False
+
+
+def test_issue10_validation_exposes_performance_section_status(monkeypatch) -> None:
+    from spot_analyzer import validation
+
+    monkeypatch.setattr(
+        validation,
+        "run_performance_baseline",
+        lambda **kwargs: {"status": "failed", "passed": False, "workloads": []},
+    )
+    report = run_issue10_validation(
+        manifests={},
+        seeds=(),
+        real_manifest_path="missing-real-fixtures.json",
+        golden_vector_path="missing-golden-vectors.json",
+        performance_sizes=(256,),
+        performance_repetitions=1,
+    )
+
+    assert report["sections"]["performance"]["status"] == "failed"
+    assert report["overall_status"] == "failed"
 
 
 def test_real_fixture_validation_marks_missing_root_incomplete(tmp_path) -> None:
