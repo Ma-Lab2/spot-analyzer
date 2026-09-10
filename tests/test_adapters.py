@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
-from io import BytesIO
+from io import BytesIO, StringIO
 import hashlib
 import json
 from pathlib import Path
@@ -19,7 +19,8 @@ from PIL import Image
 from spot_analyzer import AnalysisConfiguration, AnalysisRegion, InputImage, PreprocessingConfiguration, analyze, decode_png
 from spot_analyzer.report import ReportSpecification, prepare_report, write_report
 from spot_analyzer.synthetic import generate_scene
-from spot_analyzer.worker import handle_request
+import spot_analyzer.worker as worker_module
+from spot_analyzer.worker import handle_request, run_worker
 
 
 def png_bytes(array: np.ndarray, mode: str = "L") -> bytes:
@@ -426,6 +427,21 @@ def test_worker_asset_request_rejects_hash_mismatch(tmp_path) -> None:
     assert messages[-1]["kind"] == "failed"
     assert messages[-1]["flow_status"] == "input_invalid"
     assert messages[-1]["diagnostics"][0]["code"] == "input_hash_mismatch"
+
+
+def test_worker_converts_unhandled_exception_to_ndjson_failure(monkeypatch) -> None:
+    def explode(request):
+        raise RuntimeError("simulated worker failure")
+
+    monkeypatch.setattr(worker_module, "handle_request", explode)
+    stdout = StringIO()
+
+    run_worker(StringIO('{"schema":"analysis-request-v1"}\n'), stdout)
+
+    messages = [json.loads(line) for line in stdout.getvalue().splitlines()]
+    assert messages[-1]["kind"] == "failed"
+    assert messages[-1]["flow_status"] == "analysis_failed"
+    assert messages[-1]["diagnostics"][0]["code"] == "worker_unhandled_error"
 
 
 def test_worker_process_stdout_is_pure_ndjson(tmp_path) -> None:

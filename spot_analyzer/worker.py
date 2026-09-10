@@ -308,6 +308,8 @@ def run_worker(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> None:
             messages = [_failure(FlowStatus.PARAMETER_INVALID, ({"code": "invalid_json", "message": str(error)},))]
         except TypeError as error:
             messages = [_failure(FlowStatus.PARAMETER_INVALID, ({"code": "request_invalid", "message": str(error)},))]
+        except Exception as error:
+            messages = [_failure(FlowStatus.ANALYSIS_FAILED, ({"code": "worker_unhandled_error", "message": str(error)},))]
         for message in messages:
             stdout.write(
                 json.dumps(
