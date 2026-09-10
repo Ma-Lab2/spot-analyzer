@@ -344,6 +344,16 @@ def _decode_process_output(stdout: str) -> list[dict[str, Any]]:
         if not isinstance(message, dict):
             raise ValueError("worker emitted a non-object NDJSON message")
         messages.append(message)
+    if not messages:
+        return messages
+    first = messages[0]
+    if first.get("schema") != EVENT_SCHEMA or first.get("kind") != "started":
+        raise ValueError("worker protocol must begin with an analysis-event-v1 started message")
+    for message in messages[1:]:
+        if message.get("schema") != RESULT_SCHEMA or message.get("kind") not in {"completed", "failed"}:
+            raise ValueError("worker protocol contains an invalid analysis result message")
+    if len(messages) == 1:
+        raise ValueError("worker protocol ended without an analysis result message")
     return messages
 
 
@@ -374,26 +384,34 @@ def run_worker_process(
     except OSError as error:
         return _caller_failure(FlowStatus.ANALYSIS_FAILED, "worker_start_failed", str(error))
     try:
-        assert process.stdin is not None
-        process.stdin.write(json.dumps(_finite(dict(request)), ensure_ascii=False, allow_nan=False) + "\\n")
-        process.stdin.close()
+        request_line = json.dumps(_finite(dict(request)), ensure_ascii=False, allow_nan=False) + "\n"
         started_at = time.monotonic()
-        while process.poll() is None:
-            if cancel_requested is not None and cancel_requested():
-                _stop_process(process)
-                return _caller_failure(FlowStatus.CANCELLED, "worker_terminated_cancelled")
-            if timeout_seconds is not None and time.monotonic() - started_at >= float(timeout_seconds):
-                _stop_process(process)
-                return _caller_failure(FlowStatus.TIMEOUT, "worker_terminated_timeout")
-            time.sleep(0.01)
-        stdout, stderr = process.communicate()
+        pending_input: str | None = request_line
+        while True:
+            try:
+                stdout, stderr = process.communicate(input=pending_input, timeout=0.05)
+                break
+            except subprocess.TimeoutExpired:
+                pending_input = None
+                if cancel_requested is not None and cancel_requested():
+                    _stop_process(process)
+                    stdout, stderr = process.communicate(timeout=0.5)
+                    return _caller_failure(FlowStatus.CANCELLED, "worker_terminated_cancelled")
+                if timeout_seconds is not None and time.monotonic() - started_at >= float(timeout_seconds):
+                    _stop_process(process)
+                    stdout, stderr = process.communicate(timeout=0.5)
+                    return _caller_failure(FlowStatus.TIMEOUT, "worker_terminated_timeout")
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except OSError:
+            pass
+        process.communicate()
+        return _caller_failure(FlowStatus.ANALYSIS_FAILED, "worker_termination_incomplete")
     except (OSError, ValueError, BrokenPipeError) as error:
         if process.poll() is None:
             _stop_process(process)
         return _caller_failure(FlowStatus.ANALYSIS_FAILED, "worker_io_failed", str(error))
-    finally:
-        if process.stdin is not None and not process.stdin.closed:
-            process.stdin.close()
     try:
         messages = _decode_process_output(stdout)
     except ValueError as error:

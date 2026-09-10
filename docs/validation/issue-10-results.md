@@ -20,7 +20,7 @@
 
 ```text
 python -m pytest -q
-103 passed
+105 passed
 
 python -m compileall -q spot_analyzer tests
 通过，无输出

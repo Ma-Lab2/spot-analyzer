@@ -642,6 +642,34 @@ def test_worker_process_converts_crash_to_structured_failure() -> None:
     assert messages[-1]["diagnostics"][0]["returncode"] == 7
 
 
+def test_worker_process_sends_newline_delimited_request() -> None:
+    child = (
+        "import json, sys; "
+        "request = json.loads(sys.stdin.readline()); "
+        "assert request['schema'] == 'analysis-request-v1'; "
+        "print(json.dumps({'schema':'analysis-event-v1','kind':'started','flow_status':'processing'})); "
+        "print(json.dumps({'schema':'analysis-result-v1','kind':'failed','flow_status':'parameter_invalid',"
+        "'summary_status':None,'record':None,'metrics':None,'diagnostics':[]}))"
+    )
+
+    messages = run_worker_process(
+        {"schema": "analysis-request-v1"},
+        command=(sys.executable, "-c", child),
+    )
+
+    assert [message["kind"] for message in messages] == ["started", "failed"]
+
+
+def test_worker_process_rejects_malformed_protocol_objects() -> None:
+    command = (sys.executable, "-c", "print('{}')")
+
+    messages = run_worker_process({"schema": "analysis-request-v1"}, command=command)
+
+    assert messages[-1]["kind"] == "failed"
+    assert messages[-1]["flow_status"] == "analysis_failed"
+    assert messages[-1]["diagnostics"][0]["code"] == "worker_protocol_invalid"
+
+
 def test_worker_process_forces_termination_when_cancelled() -> None:
     command = (sys.executable, "-c", "import time; time.sleep(5)")
     checks = iter((False, True))
