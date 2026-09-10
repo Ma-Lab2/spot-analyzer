@@ -29,6 +29,19 @@ def test_missing_golden_vectors_are_incomplete(tmp_path: Path) -> None:
     assert result["incomplete_reason"] == "golden_vector_artifact_unavailable"
 
 
+def test_golden_vector_mismatch_is_failed_even_outside_formal_python(tmp_path: Path) -> None:
+    payload = json.loads((ROOT / "docs/validation/issue-10-fingerprint-golden-vectors.json").read_text(encoding="utf-8"))
+    payload["vectors"][0]["digest"] = "sha256-" + "0" * 64
+    path = tmp_path / "mismatch.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = validate_golden_vectors(path)
+
+    assert result["status"] == "failed"
+    assert result["failures"][0]["code"] == "golden_vector_mismatch"
+    assert "incomplete_reason" not in result
+
+
 def test_committed_golden_vectors_are_checked_in_a_child_process() -> None:
     result = validate_golden_vectors(ROOT / "docs/validation/issue-10-fingerprint-golden-vectors.json")
     assert result["failures"] == []

@@ -120,11 +120,9 @@ def validate_golden_vectors(path: str | Path) -> dict[str, Any]:
         except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError, json.JSONDecodeError) as error:
             failures.append({"index": index, "code": "vector_execution_failed", "message": str(error)})
     status = "passed" if vectors and not failures else "failed"
-    if sys.version_info[:2] != (3, 12):
-        status = "incomplete"
     result = GoldenVectorResult(status, len(vectors), tuple(failures))
-    if status == "incomplete":
-        result = GoldenVectorResult(status, len(vectors), tuple(failures), "formal_validation_requires_python_3_12")
+    if status == "passed" and sys.version_info[:2] != (3, 12):
+        result = GoldenVectorResult(status="incomplete", vector_count=len(vectors), failures=(), incomplete_reason="formal_validation_requires_python_3_12")
     return result.to_dict()
 
 
