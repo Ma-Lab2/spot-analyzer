@@ -1126,7 +1126,10 @@ def run_performance_baseline(
     return {
         "workloads": workloads,
         "environment": environment,
-        "formal_status": "passed" if environment["formal_environment"] and observed else "incomplete",
+        "formal_status": _section_status(
+            passed=observed,
+            available=environment["formal_environment"],
+        ),
         "passed": bool(workloads) and environment["formal_environment"] and observed,
         "incomplete_reason": None if environment["formal_environment"] else "formal performance evidence requires Python 3.12 and locked dependencies",
     }

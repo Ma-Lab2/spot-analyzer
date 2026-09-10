@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from types import SimpleNamespace
 
 import pytest
 
@@ -152,6 +153,70 @@ def test_performance_baseline_reports_structured_workload_and_formal_status() ->
         assert workload[kind]["max_seconds"] >= 0
     assert report["formal_status"] in {"passed", "incomplete"}
     assert report["environment"]["formal_environment"] is False
+
+
+def _stub_performance_measurements(
+    monkeypatch,
+    *,
+    formal_environment: bool,
+    core_seconds: float,
+    worker_seconds: float,
+) -> None:
+    scene = SimpleNamespace(
+        input_array=validation.np.zeros((2, 2), dtype=validation.np.uint8),
+        manifest=SimpleNamespace(bit_depth=8),
+    )
+    monkeypatch.setattr(
+        validation,
+        "_performance_environment",
+        lambda: {"formal_environment": formal_environment},
+    )
+    monkeypatch.setattr(validation, "_benchmark_scene", lambda size: scene)
+    monkeypatch.setattr(validation, "_benchmark_configuration", lambda size: object())
+    monkeypatch.setattr(validation, "analyze", lambda *args, **kwargs: SimpleNamespace(record=object()))
+    monkeypatch.setattr(validation, "_worker_request", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        "spot_analyzer.worker.run_worker_process",
+        lambda request: [{"kind": "completed"}],
+    )
+    samples = iter((0.0, core_seconds, 10.0, 10.0 + worker_seconds))
+    monkeypatch.setattr(validation.time, "perf_counter", lambda: next(samples))
+
+
+def test_formal_performance_target_violation_fails_section(monkeypatch) -> None:
+    _stub_performance_measurements(
+        monkeypatch,
+        formal_environment=True,
+        core_seconds=2.01,
+        worker_seconds=5.01,
+    )
+
+    result = validation.run_performance_baseline(sizes=(1024,), repetitions=1)
+    section = validation._run_section("performance", lambda: result)
+
+    assert result["formal_status"] == "failed"
+    assert result["passed"] is False
+    assert result["workloads"][0]["core"]["target_passed"] is False
+    assert result["workloads"][0]["worker"]["target_passed"] is False
+    assert section["status"] == "failed"
+
+
+def test_unavailable_performance_environment_remains_incomplete(monkeypatch) -> None:
+    _stub_performance_measurements(
+        monkeypatch,
+        formal_environment=False,
+        core_seconds=2.01,
+        worker_seconds=5.01,
+    )
+
+    result = validation.run_performance_baseline(sizes=(1024,), repetitions=1)
+    section = validation._run_section("performance", lambda: result)
+
+    assert result["formal_status"] == "incomplete"
+    assert result["passed"] is False
+    assert result["workloads"][0]["core"]["target_passed"] is False
+    assert result["workloads"][0]["worker"]["target_passed"] is False
+    assert section["status"] == "incomplete"
 
 
 def test_performance_warmup_is_not_in_hot_samples(monkeypatch) -> None:
