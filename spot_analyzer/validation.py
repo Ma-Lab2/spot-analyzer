@@ -991,5 +991,99 @@ def run_performance_baseline(
     }
 
 
+def _acceptance_materials(result: Mapping[str, Any]) -> str:
+    """Render a concise, auditable human summary from one validation result."""
+
+    sections = result.get("sections", {})
+    lines = [
+        "# Issue #10 Validation Acceptance Record",
+        "",
+        "## Run status",
+        "",
+        f"- Overall status: `{result.get('overall_status', 'incomplete')}`",
+        f"- Validation contract: `{result.get('validation_contract', 'unknown')}`",
+        f"- Profile validation: `{result.get('identity', {}).get('profile_validation', 'provisional')}`",
+        "- User acceptance: **pending explicit user decision**",
+        "- Production release: **out of scope for Issue #10**",
+        "",
+        "## Sections",
+        "",
+    ]
+    for name, section in sections.items():
+        lines.append(f"- `{name}`: `{section.get('status', 'incomplete')}`")
+    incomplete = result.get("incomplete_items", [])
+    lines.extend([
+        "",
+        "## Interpretation",
+        "",
+        "- Implementation complete, calculation success, measurement validity, validation complete, user acceptance, and production release are distinct decisions.",
+        "- Real representative images provide behavioral evidence only when no independent physical ground truth is available.",
+        "- WPF, packaging, and clean-machine release work are not Issue #10 validation failures.",
+        "- Profiles remain `provisional`; this run does not promote either profile to `validated`.",
+        "",
+        "## Bounded limitations",
+        "",
+    ])
+    if incomplete:
+        for item in incomplete:
+            lines.append(f"- Required evidence is incomplete for `{item}`.")
+    else:
+        lines.append("- No section was reported incomplete in this run.")
+    lines.extend([
+        "",
+        "## Recommendation to parent Issue #10",
+        "",
+        f"Record the run as `{result.get('overall_status', 'incomplete')}` and review the bounded limitations above. Do not treat this recommendation as user acceptance.",
+        "",
+    ])
+    return "\\n".join(lines)
+
+
+def run_complete_validation(
+    *,
+    output_json: str | Path | None = None,
+    output_markdown: str | Path | None = None,
+    performance_repetitions: int = 10,
+    real_manifest_path: str | Path = Path("docs/validation/issue-10-real-fixtures.json"),
+    real_fixture_root: str | Path | None = None,
+    golden_vector_path: str | Path = Path("docs/validation/issue-10-fingerprint-golden-vectors.json"),
+) -> dict[str, Any]:
+    """Run all Issue #10 sections once and optionally persist acceptance materials."""
+
+    result = run_issue10_validation(
+        real_manifest_path=real_manifest_path,
+        real_fixture_root=real_fixture_root,
+        golden_vector_path=golden_vector_path,
+        performance_sizes=(256, 1024),
+        performance_repetitions=performance_repetitions,
+    )
+    result = dict(result)
+    result["acceptance"] = {
+        "implementation_complete": True,
+        "calculation_success": all(section.get("status") != "failed" for section in result["sections"].values()),
+        "measurement_validity": "section-specific; see results",
+        "validation_complete": result.get("overall_status") == "passed",
+        "user_acceptance": "pending",
+        "production_release": "out_of_scope",
+        "bounded_limitations": list(result.get("incomplete_items", [])),
+    }
+    json_path = Path(output_json) if output_json is not None else None
+    markdown_path = Path(output_markdown) if output_markdown is not None else None
+    artifacts = dict(result.get("artifacts", {}))
+    if json_path is not None:
+        artifacts["json"] = str(json_path)
+    if markdown_path is not None:
+        artifacts["markdown"] = str(markdown_path)
+    if artifacts:
+        result["artifacts"] = artifacts
+    if json_path is not None:
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(json.dumps(result, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+    if markdown_path is not None:
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(_acceptance_materials(result), encoding="utf-8")
+    return result
+
+
 # Short public spelling for callers that do not need to name the parent issue.
 run_validation = run_issue10_validation

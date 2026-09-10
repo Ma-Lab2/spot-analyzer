@@ -3,6 +3,7 @@
 from .core import analyze
 from .input import DecodeOutcome, decode_png
 from .validation import (
+    run_complete_validation,
     run_identity_validation,
     run_issue10_validation,
     run_performance_baseline,
@@ -39,6 +40,7 @@ __all__ = [
     "SpatialCalibration",
     "analyze",
     "decode_png",
+    "run_complete_validation",
     "run_identity_validation",
     "run_issue10_validation",
     "run_performance_baseline",
