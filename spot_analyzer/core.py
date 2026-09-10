@@ -478,23 +478,41 @@ def _background(
 def _advanced_preprocess(
     corrected: np.ndarray,
     bad_pixel_mask: np.ndarray,
-    configuration: AnalysisConfiguration,
+    preprocessing: PreprocessingConfiguration,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Apply the explicitly configured exploratory branch without replacing standard data."""
     advanced = np.array(corrected, dtype=np.float64, copy=True)
     steps: list[str] = []
-    if configuration.bad_pixel_policy == "interpolate":
+    if preprocessing.bad_pixel_policy == "interpolate":
         invalid = bad_pixel_mask | ~np.isfinite(advanced)
         if np.any(invalid):
-            replacement = gaussian_filter(np.where(invalid, 0.0, advanced), sigma=1.0, radius=2)
-            support = gaussian_filter((~invalid).astype(float), sigma=1.0, radius=2)
+            replacement = gaussian_filter(
+                np.where(invalid, 0.0, advanced),
+                sigma=preprocessing.advanced_interpolation_sigma_pixels,
+                radius=preprocessing.advanced_interpolation_radius_pixels,
+            )
+            support = gaussian_filter(
+                (~invalid).astype(float),
+                sigma=preprocessing.advanced_interpolation_sigma_pixels,
+                radius=preprocessing.advanced_interpolation_radius_pixels,
+            )
             advanced[invalid] = replacement[invalid] / np.maximum(support[invalid], 1e-12)
         steps.append("bad_pixel_interpolation-v1")
-    if configuration.filtering == "gaussian":
-        advanced = gaussian_filter(advanced, sigma=1.0, radius=3, mode="nearest")
+    if preprocessing.filtering == "gaussian":
+        advanced = gaussian_filter(
+            advanced,
+            sigma=preprocessing.advanced_filter_sigma_pixels,
+            radius=preprocessing.advanced_filter_radius_pixels,
+            mode="nearest",
+        )
         steps.append("gaussian_filter-v1")
-    if configuration.dpc == "gradient":
-        smooth = gaussian_filter(advanced, sigma=2.0, radius=6, mode="nearest")
+    if preprocessing.dpc == "gradient":
+        smooth = gaussian_filter(
+            advanced,
+            sigma=preprocessing.advanced_dpc_sigma_pixels,
+            radius=preprocessing.advanced_dpc_radius_pixels,
+            mode="nearest",
+        )
         advanced = advanced - smooth + float(np.mean(smooth))
         steps.append("dpc_gradient-v1")
     return advanced, {"enabled": True, "steps": steps, "version": "advanced-preprocessing-v1"}
@@ -571,6 +589,48 @@ def _encircled_radius(
     span = cumulative[index] - before
     fraction = 0.0 if span <= 0 else (target - before) / span
     return float(radii[index - 1] + fraction * (radii[index] - radii[index - 1]))
+
+
+def _report_curves(
+    positive: np.ndarray,
+    fitted: np.ndarray,
+    center_xy: tuple[float, float],
+    valid_mask: np.ndarray,
+    x_scale: float = 1.0,
+    y_scale: float = 1.0,
+) -> dict[str, Any]:
+    """Build report curves from the same arrays and mask used by the core."""
+    center_x = min(positive.shape[1] - 1, max(0, int(round(center_xy[0]))))
+    center_y = min(positive.shape[0] - 1, max(0, int(round(center_xy[1]))))
+    profile_x = np.arange(positive.shape[1], dtype=np.float64)
+    profile = np.asarray(positive[center_y, :], dtype=np.float64)
+    fitted_profile = (
+        np.asarray(fitted[center_y, :], dtype=np.float64)
+        if fitted.shape == positive.shape
+        else np.full(positive.shape[1], np.nan, dtype=np.float64)
+    )
+    y, x = np.indices(positive.shape, dtype=np.float64)
+    valid = valid_mask & np.isfinite(positive)
+    radii = np.hypot((x - center_xy[0]) * x_scale, (y - center_xy[1]) * y_scale)[valid]
+    values = np.maximum(positive[valid], 0.0)
+    order = np.argsort(radii, kind="mergesort")
+    radii = radii[order]
+    values = values[order]
+    total = float(values.sum())
+    energy = np.cumsum(values) / total if total > 0 else np.array([], dtype=np.float64)
+    if energy.size > 256:
+        indexes = np.linspace(0, energy.size - 1, 256).astype(int)
+        radii = radii[indexes]
+        energy = energy[indexes]
+    return {
+        "profile_x_pixels": profile_x.tolist(),
+        "profile": profile.tolist(),
+        "fitted_profile": fitted_profile.tolist(),
+        "energy_radius": radii.tolist(),
+        "energy_fraction": energy.tolist(),
+        "energy_radius_unit": "px" if x_scale == 1.0 and y_scale == 1.0 else "physical",
+        "center_pixel": {"x": center_x, "y": center_y},
+    }
 
 
 def _half_height_sigma(
@@ -756,8 +816,14 @@ def _jsonable(value: Any) -> Any:
         return {str(key): _jsonable(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
         return [_jsonable(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return [_jsonable(item) for item in value.tolist()]
     if isinstance(value, np.generic):
         return _jsonable(value.item())
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return value
+        return {"__nonfinite_float__": repr(value)}
     return value
 
 
@@ -1547,6 +1613,29 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
                 }
             fit_uncertainty["gaussian_fwhm_major_uncertainty"] = pixel_major
             fit_uncertainty["gaussian_fwhm_minor_uncertainty"] = pixel_minor
+    curve_x_scale = (
+        float(configuration.calibration.x_unit_per_pixel)
+        if configuration.calibration.is_usable
+        else 1.0
+    )
+    curve_y_scale = (
+        float(configuration.calibration.y_unit_per_pixel)
+        if configuration.calibration.is_usable
+        else 1.0
+    )
+    report_curves = _report_curves(
+        roi_positive,
+        fitted_image,
+        local_center,
+        roi_valid,
+        curve_x_scale,
+        curve_y_scale,
+    )
+    report_curves["energy_radius_unit"] = (
+        configuration.calibration.physical_unit
+        if configuration.calibration.is_usable
+        else "px"
+    )
     diagnostics: dict[str, Any] = {
         **background_diagnostics,
         "mask_version": _MASK_VERSION,
@@ -1573,6 +1662,7 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         "reasons": list(_reason_tuple(reasons)),
         "fit": fit_diagnostics,
         "fit_uncertainty": fit_uncertainty,
+        "report_curves": report_curves,
         "profile_validation": configuration.profile_validation,
         "canonicalizer_version": _CANONICALIZER_VERSION,
         "quality_status_before_profile_cap": quality_before_cap.value,

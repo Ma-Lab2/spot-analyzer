@@ -68,7 +68,8 @@ VS Code diagnostics
 
 - matched-frame 缺失时保留 affine 降级，但记录 `background_frame_unavailable`、`background_match_unverified` 和 `caution` 状态。
 - 标准质量门槛保持固定；`PreprocessingConfiguration` 拒绝改写 core、SNR 和 multiple-peak 的质量阈值，并校验相关参数范围和顺序，避免请求快照与实际状态映射不一致。
-- 本轮验证：`python -m pytest -o addopts='' -q` 通过 **99 tests**；`python -m compileall -q spot_analyzer tests` 和 `git diff --check` 均通过。
+- 本轮验证：`python -m pytest -o addopts='' -q` 通过 **109 tests**；`python -m compileall -q spot_analyzer tests` 通过。`git diff --check` 仅报告本历史文档第 3 行已有的尾随空格。
 - 高级预处理现在对 Gaussian FWHM、D4σ、EE50/80、C(Rref) 及相关形状指标记录标准/高级值、绝对差、相对差和两侧状态；`<=10%` 为通过门控，`>10%` 为逐指标 `caution`，`>20%` 为逐指标 `invalid`，高级分支始终至少为 `caution`。
+- 报告剖面和能量曲线现在由分析核心生成并记录在 `AnalysisRecord.diagnostics.report_curves`；报告只负责渲染，实际/拟合剖面共享 ROI 像素轴，能量曲线保留半径轴和标定单位。报告 provenance 增加参数快照哈希、导出契约和软件构建信息，并隐藏拟合尝试值和高级敏感性原始比较值。
 
 当前实现还将 `profile_validation` 锁定为 `provisional`，拒绝由请求配置直接提升为 `validated`。因此 `standard-profile-v1` 和 `quality-profile-v1` 继续保持 `profile_validation: provisional`。即使数值测试通过，对外 `valid` 也按契约封顶为 `caution`；Issue #11 正式审查接受前不升级为 `validated`。

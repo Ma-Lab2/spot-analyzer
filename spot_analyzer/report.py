@@ -14,6 +14,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 import numpy as np
+import rfc8785
 from PIL import Image, ImageDraw
 
 from .models import AnalysisRecord
@@ -68,12 +69,46 @@ def _format_name(specification: ReportSpecification) -> str:
     return format_name
 
 
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return [_jsonable(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return _jsonable(value.item())
+    return value
+
+
+def _parameter_snapshot_hash(record: AnalysisRecord) -> str:
+    canonical = rfc8785.dumps(_jsonable(asdict(record.configuration)))
+    return "sha256-" + hashlib.sha256(canonical).hexdigest()
+
+
 def _report_diagnostics(record: AnalysisRecord) -> dict[str, Any]:
     diagnostics = dict(record.diagnostics)
     fit = dict(diagnostics.get("fit", {}))
-    for internal_key in ("fit_initial_parameters", "fit_cost", "fit_nfev"):
+    for internal_key in (
+        "fit_initial_parameters",
+        "fit_cost",
+        "fit_nfev",
+        "fit_covariance",
+        "fit_parameters",
+        "fit_active_mask",
+        "fit_optimality",
+    ):
         fit.pop(internal_key, None)
     diagnostics["fit"] = fit
+    advanced = dict(diagnostics.get("preprocessing_advanced_branch", {}))
+    for internal_key in (
+        "standard_fwhm_estimate",
+        "advanced_fwhm_estimate",
+        "sensitivity_fraction",
+        "sensitivity",
+    ):
+        advanced.pop(internal_key, None)
+    diagnostics["preprocessing_advanced_branch"] = advanced
     return diagnostics
 
 
@@ -127,6 +162,13 @@ def prepare_report(record: AnalysisRecord, specification: ReportSpecification) -
             "profile_validation": record.configuration.profile_validation,
             "algorithm_version": record.configuration.algorithm_version,
             "canonicalizer_version": record.diagnostics.get("canonicalizer_version"),
+            "parameter_snapshot_hash": _parameter_snapshot_hash(record),
+            "export_contract": "report-package-v1",
+            "software": {
+                "name": "spot-analyzer",
+                "version": "0.1.0",
+                "build": "prototype",
+            },
             "report_schema": "report-package-v1",
         },
     }
@@ -205,46 +247,52 @@ def _annotated_preview(
     return panel
 
 
-def _chart(values: np.ndarray, size: tuple[int, int]) -> Image.Image:
+def _chart(
+    x_values: np.ndarray,
+    values: np.ndarray,
+    size: tuple[int, int],
+    secondary: np.ndarray | None = None,
+) -> Image.Image:
     panel = Image.new("RGB", size, "white")
     draw = ImageDraw.Draw(panel)
-    array = np.asarray(values, dtype=np.float64)
-    finite = np.isfinite(array)
-    if np.count_nonzero(finite) < 2:
+    x_array = np.asarray(x_values, dtype=np.float64)
+    series = [np.asarray(values, dtype=np.float64)]
+    if secondary is not None:
+        series.append(np.asarray(secondary, dtype=np.float64))
+    finite_values = np.concatenate(
+        [item[np.isfinite(item)] for item in series if np.any(np.isfinite(item))]
+    )
+    finite_x = x_array[np.isfinite(x_array)]
+    if finite_values.size < 2 or finite_x.size < 2:
         draw.text((8, 8), "N/A", fill="gray")
         return panel
-    array = array[finite]
-    lower = float(np.min(array))
-    upper = float(np.max(array))
-    span = max(upper - lower, np.finfo(float).eps)
-    points = []
-    for index, value in enumerate(array):
-        x = 8 + (size[0] - 16) * index / max(array.size - 1, 1)
-        y = size[1] - 8 - (size[1] - 16) * (float(value) - lower) / span
-        points.append((x, y))
+    lower_x = float(np.min(finite_x))
+    span_x = max(float(np.max(finite_x)) - lower_x, np.finfo(float).eps)
+    lower = float(np.min(finite_values))
+    span = max(float(np.max(finite_values)) - lower, np.finfo(float).eps)
     draw.rectangle((7, 7, size[0] - 8, size[1] - 8), outline="gray")
-    draw.line(points, fill="navy", width=2)
+    for index, current in enumerate(series):
+        finite = np.isfinite(x_array) & np.isfinite(current)
+        if np.count_nonzero(finite) < 2:
+            continue
+        current_x = x_array[finite]
+        current_values = current[finite]
+        points = [
+            (
+                8 + (size[0] - 16) * (float(x) - lower_x) / span_x,
+                size[1] - 8 - (size[1] - 16) * (float(value) - lower) / span,
+            )
+            for x, value in zip(current_x, current_values)
+        ]
+        draw.line(points, fill=("navy" if index == 0 else "crimson"), width=2)
     return panel
 
 
-def _profile_and_energy(package: ReportPackage) -> tuple[np.ndarray, np.ndarray]:
-    positive = np.asarray(package.visuals["正信号图"], dtype=np.float64)
-    step = max(1, int(max(positive.shape) / 256))
-    sampled = positive[::step, ::step]
-    center = package.sections["diagnostics"].get("center_xy", {})
-    center_x = min(sampled.shape[1] - 1, max(0, int(float(center.get("x", 0.0)) / step)))
-    center_y = min(sampled.shape[0] - 1, max(0, int(float(center.get("y", 0.0)) / step)))
-    profile = sampled[center_y, :]
-    y, x = np.indices(sampled.shape, dtype=np.float64)
-    radii = np.hypot(x - center_x, y - center_y).ravel()
-    values = np.maximum(sampled, 0.0).ravel()
-    order = np.argsort(radii, kind="mergesort")
-    total = float(values.sum())
-    energy = np.cumsum(values[order]) / total if total > 0 else np.array([])
-    if energy.size > 256:
-        indexes = np.linspace(0, energy.size - 1, 256).astype(int)
-        energy = energy[indexes]
-    return profile, energy
+def _report_curves(package: ReportPackage) -> Mapping[str, Any]:
+    curves = package.sections["diagnostics"].get("report_curves")
+    if not isinstance(curves, Mapping):
+        raise ValueError("analysis record does not contain report curves")
+    return curves
 
 
 def _render(package: ReportPackage) -> Image.Image:
@@ -266,8 +314,21 @@ def _render(package: ReportPackage) -> Image.Image:
         (name, _annotated_preview(package, name, array, panel_size))
         for name, array in package.visuals.items()
     ]
-    profile, energy = _profile_and_energy(package)
-    visual_entries.extend((("中心剖面", _chart(profile, panel_size)), ("能量曲线", _chart(energy, panel_size))))
+    curves = _report_curves(package)
+    profile_x = np.asarray(curves["profile_x_pixels"], dtype=np.float64)
+    profile = np.asarray(curves["profile"], dtype=np.float64)
+    fitted_profile = np.asarray(curves["fitted_profile"], dtype=np.float64)
+    energy_radius = np.asarray(curves["energy_radius"], dtype=np.float64)
+    energy_fraction = np.asarray(curves["energy_fraction"], dtype=np.float64)
+    visual_entries.extend(
+        (
+            ("中心剖面（实际+拟合）", _chart(profile_x, profile, panel_size, fitted_profile)),
+            (
+                f"能量曲线（半径/{curves['energy_radius_unit']}）",
+                _chart(energy_radius, energy_fraction, panel_size),
+            ),
+        )
+    )
     columns = 4
     rows = math.ceil(len(visual_entries) / columns)
     visual_height = rows * 230 + 20

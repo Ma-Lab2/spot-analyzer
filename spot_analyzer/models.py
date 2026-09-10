@@ -143,6 +143,12 @@ class PreprocessingConfiguration:
     multiple_peak_noise_threshold: float = 5.0
     multiple_peak_min_support_pixels: int = 9
     multiple_peak_min_separation_pixels: float = 3.0
+    advanced_interpolation_sigma_pixels: float = 1.0
+    advanced_interpolation_radius_pixels: int = 2
+    advanced_filter_sigma_pixels: float = 1.0
+    advanced_filter_radius_pixels: int = 3
+    advanced_dpc_sigma_pixels: float = 2.0
+    advanced_dpc_radius_pixels: int = 6
     version: str = "preprocessing-v1"
 
     def __post_init__(self) -> None:
@@ -160,6 +166,9 @@ class PreprocessingConfiguration:
             "background_mask_dilation_pixels": self.background_mask_dilation_pixels,
             "background_max_iterations": self.background_max_iterations,
             "multiple_peak_min_support_pixels": self.multiple_peak_min_support_pixels,
+            "advanced_interpolation_radius_pixels": self.advanced_interpolation_radius_pixels,
+            "advanced_filter_radius_pixels": self.advanced_filter_radius_pixels,
+            "advanced_dpc_radius_pixels": self.advanced_dpc_radius_pixels,
         }
         if any(
             isinstance(value, bool) or not isinstance(value, (int, np.integer))
@@ -181,11 +190,30 @@ class PreprocessingConfiguration:
             "multiple_peak_relative_threshold": self.multiple_peak_relative_threshold,
             "multiple_peak_noise_threshold": self.multiple_peak_noise_threshold,
             "multiple_peak_min_separation_pixels": self.multiple_peak_min_separation_pixels,
+            "advanced_interpolation_sigma_pixels": self.advanced_interpolation_sigma_pixels,
+            "advanced_filter_sigma_pixels": self.advanced_filter_sigma_pixels,
+            "advanced_dpc_sigma_pixels": self.advanced_dpc_sigma_pixels,
         }
         if any(not math.isfinite(float(value)) for value in finite_fields.values()):
             raise ValueError("preprocessing parameters must be finite")
         if self.background_max_iterations <= 0 or self.convergence_tolerance <= 0:
             raise ValueError("background fit limits must be positive")
+        if any(
+            value <= 0
+            for value in (
+                self.advanced_interpolation_sigma_pixels,
+                self.advanced_filter_sigma_pixels,
+                self.advanced_dpc_sigma_pixels,
+            )
+        ) or any(
+            value < 0
+            for value in (
+                self.advanced_interpolation_radius_pixels,
+                self.advanced_filter_radius_pixels,
+                self.advanced_dpc_radius_pixels,
+            )
+        ):
+            raise ValueError("advanced preprocessing parameters must be positive")
         if self.background_signal_sigma_threshold <= 0 or self.background_signal_peak_fraction < 0:
             raise ValueError("background signal thresholds must be nonnegative")
         if self.background_mask_dilation_pixels < 0 or self.background_huber_delta <= 0:

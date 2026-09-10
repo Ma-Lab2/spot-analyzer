@@ -16,7 +16,7 @@ import pytest
 import numpy as np
 from PIL import Image
 
-from spot_analyzer import AnalysisConfiguration, AnalysisRegion, InputImage, PreprocessingConfiguration, analyze, decode_png
+from spot_analyzer import AnalysisConfiguration, AnalysisRegion, InputImage, PreprocessingConfiguration, SpatialCalibration, analyze, decode_png
 from spot_analyzer.report import ReportSpecification, prepare_report, write_report
 from spot_analyzer.synthetic import generate_scene
 from spot_analyzer.core import _SENSITIVITY_METRICS, _sensitivity_comparison
@@ -919,3 +919,114 @@ def test_concurrent_report_exports_reserve_distinct_names(tmp_path) -> None:
     assert len(set(paths)) == 8
     assert all(result.record_id == outcome.record.record_id for result in results)
     assert all(result.sha256 for result in results)
+
+
+def test_worker_process_accepts_progress_before_terminal_result() -> None:
+    child = (
+        "import json; "
+        "print(json.dumps({'schema':'analysis-event-v1','kind':'started','flow_status':'processing'})); "
+        "print(json.dumps({'schema':'analysis-event-v1','kind':'progress','progress':0.5})); "
+        "print(json.dumps({'schema':'analysis-result-v1','kind':'failed','flow_status':'parameter_invalid',"
+        "'summary_status':None,'record':None,'metrics':None,'diagnostics':[]}))"
+    )
+
+    messages = run_worker_process(
+        {"schema": "analysis-request-v1"},
+        command=(sys.executable, "-c", child),
+    )
+
+    assert [message["kind"] for message in messages] == ["started", "progress", "failed"]
+
+
+def test_fingerprint_preserves_nonfinite_metadata_distinctions() -> None:
+    from spot_analyzer.core import _analysis_fingerprint
+
+    configuration = AnalysisConfiguration(AnalysisRegion(1, 1, 6, 6))
+    nan_image = InputImage(
+        np.ones((8, 8)),
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata={"camera_gain": float("nan")},
+    )
+    infinity_image = InputImage(
+        np.ones((8, 8)),
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata={"camera_gain": float("inf")},
+    )
+
+    nan_fingerprint = _analysis_fingerprint(nan_image, configuration)
+    infinity_fingerprint = _analysis_fingerprint(infinity_image, configuration)
+
+    assert nan_fingerprint.startswith("sha256-")
+    assert infinity_fingerprint.startswith("sha256-")
+    assert nan_fingerprint != infinity_fingerprint
+
+
+def test_report_exposes_auditable_provenance_without_internal_fit_trials(tmp_path) -> None:
+    scene = generate_scene("gaussian_circular")
+    outcome = analyze(
+        InputImage(
+            scene.input_array,
+            bit_depth=8,
+            encoding_semantic="relative_intensity_code",
+            encoding_semantic_confirmed=True,
+        ),
+        AnalysisConfiguration(
+            AnalysisRegion(64, 64, 128, 128),
+            background_region=AnalysisRegion(32, 64, 32, 128),
+        ),
+    )
+
+    assert outcome.record is not None
+    package = prepare_report(outcome.record, ReportSpecification("png", "provenance", tmp_path))
+    provenance = package.sections["provenance"]
+    fit = package.sections["diagnostics"]["fit"]
+    advanced = package.sections["diagnostics"]["preprocessing_advanced_branch"]
+
+    assert provenance["export_contract"] == "report-package-v1"
+    assert provenance["parameter_snapshot_hash"].startswith("sha256-")
+    assert provenance["software"] == {
+        "name": "spot-analyzer",
+        "version": "0.1.0",
+        "build": "prototype",
+    }
+    assert "fit_parameters" not in fit
+    assert "fit_covariance" not in fit
+    assert "sensitivity" not in advanced
+
+
+def test_report_curves_are_core_derived_and_use_physical_radius(tmp_path) -> None:
+    scene = generate_scene("gaussian_circular")
+    configuration = AnalysisConfiguration(
+        AnalysisRegion(64, 64, 128, 128),
+        background_region=AnalysisRegion(32, 64, 32, 128),
+        calibration=SpatialCalibration(
+            x_unit_per_pixel=2.0,
+            y_unit_per_pixel=3.0,
+            source="test",
+            confirmation="confirmed",
+        ),
+    )
+    outcome = analyze(
+        InputImage(
+            scene.input_array,
+            bit_depth=8,
+            encoding_semantic="relative_intensity_code",
+            encoding_semantic_confirmed=True,
+        ),
+        configuration,
+    )
+
+    assert outcome.record is not None
+    curves = outcome.record.diagnostics["report_curves"]
+    package = prepare_report(outcome.record, ReportSpecification("png", "curves", tmp_path))
+
+    assert curves["energy_radius_unit"] == "um"
+    assert len(curves["energy_radius"]) == len(curves["energy_fraction"])
+    assert curves["energy_radius"] == tuple(sorted(curves["energy_radius"]))
+    assert np.allclose(
+        np.asarray(curves["profile"]),
+        np.asarray(package.sections["diagnostics"]["report_curves"]["profile"]),
+        equal_nan=True,
+    )

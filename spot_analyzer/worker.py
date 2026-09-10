@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, fields
+from dataclasses import asdict, fields, replace
 import hashlib
 import json
 import os
@@ -120,28 +120,49 @@ def _asset_path(asset: dict[str, Any]) -> Path:
     return Path(decoded)
 
 
-def _input_image(payload: dict[str, Any]) -> tuple[InputImage | None, FlowStatus, tuple[dict[str, Any], ...]]:
-    asset = payload.get("asset")
-    if asset is not None:
-        if not isinstance(asset, dict):
-            return None, FlowStatus.PARAMETER_INVALID, ({"code": "asset_reference_invalid"},)
-        expected_hash = asset.get("expected_sha256")
-        if not isinstance(expected_hash, str) or len(expected_hash) != 64:
-            return None, FlowStatus.PARAMETER_INVALID, ({"code": "expected_hash_required"},)
-        try:
-            path = _asset_path(asset)
-        except (TypeError, ValueError) as error:
-            return None, FlowStatus.PARAMETER_INVALID, ({"code": "asset_reference_invalid", "message": str(error)},)
-        if not path.is_file():
-            return None, FlowStatus.INPUT_INVALID, ({"code": "asset_unavailable", "uri_hint": str(path)},)
-        decoded = decode_png(
-            path,
-            confirm_relative_intensity=payload.get("confirm_relative_intensity", False) is True,
-            expected_sha256=expected_hash,
-        )
-        return decoded.image, decoded.flow_status, decoded.diagnostics
+def _decode_asset(
+    asset: Any,
+    *,
+    confirm_relative_intensity: bool,
+) -> tuple[InputImage | None, FlowStatus, tuple[dict[str, Any], ...]]:
+    if not isinstance(asset, dict):
+        return None, FlowStatus.PARAMETER_INVALID, ({"code": "asset_reference_invalid"},)
+    expected_hash = asset.get("expected_sha256")
+    if not isinstance(expected_hash, str) or len(expected_hash) != 64:
+        return None, FlowStatus.PARAMETER_INVALID, ({"code": "expected_hash_required"},)
+    try:
+        path = _asset_path(asset)
+    except (TypeError, ValueError) as error:
+        return None, FlowStatus.PARAMETER_INVALID, ({"code": "asset_reference_invalid", "message": str(error)},)
+    if not path.is_file():
+        return None, FlowStatus.INPUT_INVALID, ({"code": "asset_unavailable", "uri_hint": str(path)},)
+    decoded = decode_png(
+        path,
+        confirm_relative_intensity=confirm_relative_intensity,
+        expected_sha256=expected_hash,
+    )
+    return decoded.image, decoded.flow_status, decoded.diagnostics
 
-    return None, FlowStatus.PARAMETER_INVALID, ({"code": "input_asset_required"},)
+
+def _input_image(payload: dict[str, Any]) -> tuple[InputImage | None, FlowStatus, tuple[dict[str, Any], ...]]:
+    if "asset" not in payload:
+        return None, FlowStatus.PARAMETER_INVALID, ({"code": "input_asset_required"},)
+    image, status, diagnostics = _decode_asset(
+        payload["asset"],
+        confirm_relative_intensity=payload.get("confirm_relative_intensity", False) is True,
+    )
+    if image is None or status != FlowStatus.COMPUTED:
+        return image, status, diagnostics
+    background_asset = payload.get("background_asset")
+    if background_asset is None:
+        return image, status, diagnostics
+    background, background_status, background_diagnostics = _decode_asset(
+        background_asset,
+        confirm_relative_intensity=payload.get("confirm_relative_intensity", False) is True,
+    )
+    if background is None or background_status != FlowStatus.COMPUTED:
+        return None, background_status, diagnostics + background_diagnostics
+    return replace(image, background_frame=background), status, diagnostics + background_diagnostics
 
 
 def _write_derived_assets(record: Any, output_strategy: dict[str, Any]) -> list[dict[str, Any]]:
@@ -349,11 +370,20 @@ def _decode_process_output(stdout: str) -> list[dict[str, Any]]:
     first = messages[0]
     if first.get("schema") != EVENT_SCHEMA or first.get("kind") != "started":
         raise ValueError("worker protocol must begin with an analysis-event-v1 started message")
+    terminals = 0
     for message in messages[1:]:
-        if message.get("schema") != RESULT_SCHEMA or message.get("kind") not in {"completed", "failed"}:
-            raise ValueError("worker protocol contains an invalid analysis result message")
-    if len(messages) == 1:
-        raise ValueError("worker protocol ended without an analysis result message")
+        schema = message.get("schema")
+        kind = message.get("kind")
+        if schema == EVENT_SCHEMA and kind == "progress":
+            continue
+        if schema == RESULT_SCHEMA and kind in {"completed", "failed"}:
+            terminals += 1
+            if message is not messages[-1]:
+                raise ValueError("worker protocol contains messages after its terminal result")
+            continue
+        raise ValueError("worker protocol contains an invalid analysis event or result message")
+    if terminals != 1:
+        raise ValueError("worker protocol must contain exactly one terminal result message")
     return messages
 
 
