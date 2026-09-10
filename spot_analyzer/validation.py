@@ -28,7 +28,7 @@ from .identity import validate_golden_vectors
 from .input import decode_png
 from .models import AnalysisConfiguration, AnalysisRecord, AnalysisRegion, InputImage
 from .oracle import circular_gaussian_oracle, scene_oracle
-from .report import ReportSpecification, prepare_report, write_report
+from .report import ReportSpecification, _report_diagnostics, prepare_report, write_report
 from .synthetic import GENERATOR_VERSION, SceneManifest, SyntheticScene, generate_scene
 
 
@@ -426,6 +426,18 @@ def _array_digest(array: Any) -> str:
     return "sha256-" + hashlib.sha256(values.tobytes(order="C")).hexdigest()
 
 
+def _normalize_for_compare(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _normalize_for_compare(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_for_compare(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return [_normalize_for_compare(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
 def _contains_key(value: Any, forbidden: set[str]) -> bool:
     if isinstance(value, Mapping):
         return any(str(key) in forbidden or _contains_key(item, forbidden) for key, item in value.items())
@@ -466,12 +478,18 @@ def run_report_validation(output_directory: str | Path | None = None) -> dict[st
     }
     checks: dict[str, bool] = {
         "record_identity": False,
+        "record_semantics": False,
         "visual_identity": False,
+        "derived_asset_identity": False,
         "profile_axis": False,
         "energy_curve_context": False,
+        "quality_status": False,
+        "gating_values": False,
+        "coordinate_units": False,
         "provenance": False,
         "no_internal_trials": False,
         "exports": False,
+        "export_identity": False,
     }
     export_results: list[dict[str, Any]] = []
     temporary_context = tempfile.TemporaryDirectory(prefix="spot-report-validation-") if output_directory is None else None
@@ -483,6 +501,17 @@ def run_report_validation(output_directory: str | Path | None = None) -> dict[st
             and package.analysis_fingerprint == record.analysis_fingerprint
             and package.sections["summary"]["record_id"] == record.record_id
             and package.sections["summary"]["analysis_fingerprint"] == record.analysis_fingerprint
+        )
+        expected_configuration = asdict(record.configuration)
+        checks["record_semantics"] = (
+            _normalize_for_compare(package.sections.get("configuration"))
+            == _normalize_for_compare(expected_configuration)
+            and _normalize_for_compare(package.sections.get("calibration"))
+            == _normalize_for_compare(expected_configuration["calibration"])
+            and _normalize_for_compare(package.sections.get("input", {}).get("shape"))
+            == _normalize_for_compare(record.input_shape)
+            and _normalize_for_compare(package.sections.get("metrics"))
+            == _normalize_for_compare(record.reportable_metrics())
         )
         checks["visual_identity"] = all(
             name in package.visuals and _array_digest(package.visuals[name]) == _array_digest(array)
@@ -507,14 +536,45 @@ def run_report_validation(output_directory: str | Path | None = None) -> dict[st
             and bool(curves.get("energy_radius_unit"))
             and all(key in reportable for key in ("ee50", "ee80"))
         )
-        provenance = package.sections.get("provenance", {})
-        checks["provenance"] = all(
-            provenance.get(key) for key in (
-                "analysis_contract", "standard_profile", "quality_profile",
-                "algorithm_version", "parameter_snapshot_hash", "export_contract",
-                "software", "report_schema",
+        checks["derived_asset_identity"] = checks["visual_identity"] and all(
+            np.asarray(package.visuals[name]).shape == np.asarray(array).shape
+            for name, array in expected_arrays.items()
+        )
+        checks["quality_status"] = (
+            package.sections.get("summary", {}).get("summary_status") == record.summary_status.value
+            and all(
+                package.sections.get("metrics", {}).get(name, {}).get("status")
+                == metric.status.value
+                if "domains" not in package.sections.get("metrics", {}).get(name, {})
+                else package.sections["metrics"][name]["domains"]["pixel"]["status"] == metric.status.value
+                for name, metric in record.metrics.items()
+                if name in package.sections.get("metrics", {})
             )
-        ) and bool(provenance.get("software", {}).get("build"))
+        )
+        report_diagnostics = package.sections.get("diagnostics", {})
+        checks["gating_values"] = report_diagnostics == _report_diagnostics(record)
+        checks["coordinate_units"] = (
+            curves.get("energy_radius_unit")
+            == (record.configuration.calibration.physical_unit if record.configuration.calibration.is_usable else "px")
+            and _normalize_for_compare(reportable) == _normalize_for_compare(record.reportable_metrics())
+        )
+        provenance = package.sections.get("provenance", {})
+        checks["provenance"] = (
+            all(
+                provenance.get(key) for key in (
+                    "analysis_contract", "standard_profile", "quality_profile",
+                    "algorithm_version", "parameter_snapshot_hash", "export_contract",
+                    "software", "report_schema",
+                )
+            )
+            and bool(provenance.get("software", {}).get("build"))
+            and provenance.get("analysis_contract") == record.configuration.analysis_contract
+            and provenance.get("standard_profile") == record.configuration.standard_profile
+            and provenance.get("quality_profile") == record.configuration.quality_profile
+            and provenance.get("algorithm_version") == record.configuration.algorithm_version
+            and provenance.get("profile_validation") == record.configuration.profile_validation
+            and provenance.get("canonicalizer_version") == record.diagnostics.get("canonicalizer_version")
+        )
         checks["no_internal_trials"] = not _contains_key(
             package.sections,
             {
@@ -529,6 +589,8 @@ def run_report_validation(output_directory: str | Path | None = None) -> dict[st
             export_results.append({
                 "format": format_name,
                 "status": exported.flow_status,
+                "record_id": exported.record_id,
+                "path": str(exported.path) if exported.path is not None else None,
                 "uri": exported.path.as_uri() if exported.path is not None else None,
                 "sha256": exported.sha256,
             })
@@ -536,6 +598,12 @@ def run_report_validation(output_directory: str | Path | None = None) -> dict[st
             item["status"] == "exported" and bool(item["uri"]) and bool(item["sha256"])
             for item in export_results
         )
+        checks["export_identity"] = all(
+            item["record_id"] == record.record_id
+            and item["sha256"] == hashlib.sha256(Path(item["path"]).read_bytes()).hexdigest()
+            for item in export_results
+            if item["path"]
+        ) and len(export_results) == 2
     except Exception as exc:
         return {
             "status": "failed",
