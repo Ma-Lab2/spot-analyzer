@@ -7,10 +7,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import time
-from typing import Any, Mapping, TextIO
+from typing import Any, Callable, Mapping, Sequence, TextIO
 from urllib.parse import unquote, urlparse
 
 import numpy as np
@@ -291,6 +292,126 @@ def handle_request(request: dict[str, Any]) -> list[dict[str, Any]]:
         "record": _record_payload(outcome.record, derived_assets),
     }
     return [started, _finite(result)]
+
+
+def _caller_failure(
+    flow_status: FlowStatus,
+    code: str,
+    message: str | None = None,
+    **details: Any,
+) -> list[dict[str, Any]]:
+    diagnostic: dict[str, Any] = {"code": code}
+    if message:
+        diagnostic["message"] = message
+    diagnostic.update(details)
+    return [
+        {"schema": EVENT_SCHEMA, "kind": "started", "flow_status": FlowStatus.PROCESSING.value},
+        _failure(flow_status, (diagnostic,)),
+    ]
+
+
+def _stop_process(process: subprocess.Popen[str]) -> None:
+    try:
+        process.terminate()
+    except OSError:
+        if process.poll() is not None:
+            return
+    try:
+        process.wait(timeout=0.5)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        process.kill()
+    except OSError:
+        if process.poll() is not None:
+            return
+    try:
+        process.wait(timeout=0.5)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _decode_process_output(stdout: str) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"worker emitted invalid NDJSON: {error}") from error
+        if not isinstance(message, dict):
+            raise ValueError("worker emitted a non-object NDJSON message")
+        messages.append(message)
+    return messages
+
+
+def run_worker_process(
+    request: Mapping[str, Any],
+    *,
+    command: Sequence[str] | None = None,
+    timeout_seconds: float | None = None,
+    cancel_requested: Callable[[], bool] | None = None,
+) -> list[dict[str, Any]]:
+    """Run one worker child and force-stop it on caller cancellation or timeout."""
+
+    if timeout_seconds is not None and (
+        not isinstance(timeout_seconds, (int, float))
+        or not np.isfinite(timeout_seconds)
+        or timeout_seconds < 0
+    ):
+        return _caller_failure(FlowStatus.PARAMETER_INVALID, "caller_timeout_invalid")
+    executable = tuple(command or (sys.executable, "-m", "spot_analyzer.worker"))
+    try:
+        process = subprocess.Popen(
+            executable,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as error:
+        return _caller_failure(FlowStatus.ANALYSIS_FAILED, "worker_start_failed", str(error))
+    try:
+        assert process.stdin is not None
+        process.stdin.write(json.dumps(_finite(dict(request)), ensure_ascii=False, allow_nan=False) + "\\n")
+        process.stdin.close()
+        started_at = time.monotonic()
+        while process.poll() is None:
+            if cancel_requested is not None and cancel_requested():
+                _stop_process(process)
+                return _caller_failure(FlowStatus.CANCELLED, "worker_terminated_cancelled")
+            if timeout_seconds is not None and time.monotonic() - started_at >= float(timeout_seconds):
+                _stop_process(process)
+                return _caller_failure(FlowStatus.TIMEOUT, "worker_terminated_timeout")
+            time.sleep(0.01)
+        stdout, stderr = process.communicate()
+    except (OSError, ValueError, BrokenPipeError) as error:
+        if process.poll() is None:
+            _stop_process(process)
+        return _caller_failure(FlowStatus.ANALYSIS_FAILED, "worker_io_failed", str(error))
+    finally:
+        if process.stdin is not None and not process.stdin.closed:
+            process.stdin.close()
+    try:
+        messages = _decode_process_output(stdout)
+    except ValueError as error:
+        return _caller_failure(
+            FlowStatus.ANALYSIS_FAILED,
+            "worker_protocol_invalid",
+            str(error),
+        )
+    if process.returncode != 0:
+        return _caller_failure(
+            FlowStatus.ANALYSIS_FAILED,
+            "worker_crashed",
+            stderr.strip() or None,
+            returncode=process.returncode,
+        )
+    if not messages:
+        return _caller_failure(FlowStatus.ANALYSIS_FAILED, "worker_no_result")
+    return messages
 
 
 def run_worker(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> None:

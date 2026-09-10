@@ -22,7 +22,7 @@ from spot_analyzer.synthetic import generate_scene
 from spot_analyzer.core import _SENSITIVITY_METRICS, _sensitivity_comparison
 from spot_analyzer.models import MeasurementStatus, Metric
 import spot_analyzer.worker as worker_module
-from spot_analyzer.worker import handle_request, run_worker
+from spot_analyzer.worker import handle_request, run_worker, run_worker_process
 
 
 def png_bytes(array: np.ndarray, mode: str = "L") -> bytes:
@@ -613,6 +613,49 @@ def test_worker_times_out_before_analysis_when_deadline_is_expired(tmp_path) -> 
     assert messages[-1]["kind"] == "failed"
     assert messages[-1]["flow_status"] == "timeout"
     assert messages[-1]["diagnostics"][0]["code"] == "analysis_timeout"
+
+
+def test_worker_process_forces_termination_on_timeout() -> None:
+    command = (sys.executable, "-c", "import time; time.sleep(5)")
+
+    messages = run_worker_process(
+        {"schema": "analysis-request-v1"},
+        command=command,
+        timeout_seconds=0.05,
+    )
+
+    assert messages[0]["kind"] == "started"
+    assert messages[-1]["kind"] == "failed"
+    assert messages[-1]["flow_status"] == "timeout"
+    assert messages[-1]["diagnostics"][0]["code"] == "worker_terminated_timeout"
+
+
+def test_worker_process_converts_crash_to_structured_failure() -> None:
+    command = (sys.executable, "-c", "raise SystemExit(7)")
+
+    messages = run_worker_process({"schema": "analysis-request-v1"}, command=command)
+
+    assert messages[0]["kind"] == "started"
+    assert messages[-1]["kind"] == "failed"
+    assert messages[-1]["flow_status"] == "analysis_failed"
+    assert messages[-1]["diagnostics"][0]["code"] == "worker_crashed"
+    assert messages[-1]["diagnostics"][0]["returncode"] == 7
+
+
+def test_worker_process_forces_termination_when_cancelled() -> None:
+    command = (sys.executable, "-c", "import time; time.sleep(5)")
+    checks = iter((False, True))
+
+    messages = run_worker_process(
+        {"schema": "analysis-request-v1"},
+        command=command,
+        cancel_requested=lambda: next(checks),
+    )
+
+    assert messages[0]["kind"] == "started"
+    assert messages[-1]["kind"] == "failed"
+    assert messages[-1]["flow_status"] == "cancelled"
+    assert messages[-1]["diagnostics"][0]["code"] == "worker_terminated_cancelled"
 
 
 def test_worker_rejects_inline_image_arrays() -> None:
