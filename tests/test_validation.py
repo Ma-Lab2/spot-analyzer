@@ -76,6 +76,8 @@ def test_fingerprint_uses_rfc8785_and_records_canonicalizer_provenance() -> None
     assert second_outcome.record is not None
     assert first_outcome.record.analysis_fingerprint == second_outcome.record.analysis_fingerprint
     assert first_outcome.record.diagnostics["canonicalizer_version"] == "rfc8785-python-0.1.4"
+    assert first_outcome.record.diagnostics["fit"]["fit_covariance"] is not None
+    assert first_outcome.record.diagnostics["fit_uncertainty"]["available"] is True
 
 
 def test_low_snr_aggregate_records_bias_and_gate_distribution() -> None:

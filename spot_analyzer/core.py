@@ -1257,6 +1257,26 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         reasons,
         configuration,
     )
+    parameter_uncertainty = fit_diagnostics.get("fit_parameter_uncertainty")
+    fit_uncertainty: dict[str, Any] = {"available": False, "reason": "fit_uncertainty_unavailable"}
+    if isinstance(parameter_uncertainty, (list, tuple)) and len(parameter_uncertainty) >= 6:
+        sigma_factor = math.sqrt(8.0 * math.log(2.0))
+        pixel_major = sigma_factor * max(float(parameter_uncertainty[4]), float(parameter_uncertainty[5]))
+        pixel_minor = sigma_factor * min(float(parameter_uncertainty[4]), float(parameter_uncertainty[5]))
+        fit_uncertainty = {
+            "available": True,
+            "gaussian_fwhm_major": pixel_major,
+            "gaussian_fwhm_minor": pixel_minor,
+            "unit": "px",
+        }
+        if configuration.calibration.is_usable:
+            x_scale = float(configuration.calibration.x_unit_per_pixel)
+            y_scale = float(configuration.calibration.y_unit_per_pixel)
+            fit_uncertainty["physical"] = {
+                "gaussian_fwhm_major": math.hypot(pixel_major * x_scale, pixel_major * y_scale) / math.sqrt(2.0),
+                "gaussian_fwhm_minor": math.hypot(pixel_minor * x_scale, pixel_minor * y_scale) / math.sqrt(2.0),
+                "unit": configuration.calibration.physical_unit,
+            }
     diagnostics: dict[str, Any] = {
         **background_diagnostics,
         "mask_version": _MASK_VERSION,
@@ -1282,6 +1302,7 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         "multiple_peak_candidates": candidate_positions,
         "reasons": list(_reason_tuple(reasons)),
         "fit": fit_diagnostics,
+        "fit_uncertainty": fit_uncertainty,
         "profile_validation": configuration.profile_validation,
         "canonicalizer_version": _CANONICALIZER_VERSION,
         "quality_status_before_profile_cap": quality_before_cap.value,
