@@ -791,21 +791,67 @@ def _real_fixture_configuration(entry: Mapping[str, Any]) -> AnalysisConfigurati
 
 
 def _fixture_result_base(entry: Mapping[str, Any], path: Path) -> dict[str, Any]:
+    """Build the auditable portion of one controlled-fixture result."""
+
+    acquisition = entry.get("acquisition", entry.get("acquisition_metadata"))
+    provenance = entry.get("provenance", entry.get("provenance_metadata"))
     return {
         "relative_path": str(entry.get("relative_path", "")),
         "kind": entry.get("kind", "gray_input"),
         "path": str(path),
         "manifest_metadata": {
             "input_semantics": entry.get("input_semantics", "relative_intensity_code"),
-            "acquisition": entry.get("acquisition", entry.get("acquisition_metadata")),
-            "provenance": entry.get("provenance", entry.get("provenance_metadata")),
+            "acquisition": acquisition,
+            "provenance": provenance,
         },
+        "metadata_recorded": isinstance(acquisition, Mapping) and isinstance(provenance, Mapping),
         "behavioral_evidence_only": True,
     }
 
 
+def _fixture_metadata_valid(entry: Mapping[str, Any]) -> bool:
+    """Require non-empty provenance and acquisition records in every fixture entry.
+
+    The validator intentionally checks the records' presence and identity fields,
+    rather than prescribing instrument-specific acquisition vocabulary. This keeps
+    the manifest useful for historical images while preventing an untraceable
+    fixture from silently contributing to a passing validation run.
+    """
+
+    acquisition = entry.get("acquisition", entry.get("acquisition_metadata"))
+    provenance = entry.get("provenance", entry.get("provenance_metadata"))
+    if not isinstance(acquisition, Mapping) or not isinstance(provenance, Mapping):
+        return False
+    required_provenance = ("source_asset", "source_snapshot")
+    required_acquisition = ("instrument", "acquired_at", "metadata_version")
+    return (
+        all(str(provenance.get(key, "")).strip() for key in required_provenance)
+        and all(str(acquisition.get(key, "")).strip() for key in required_acquisition)
+    )
+
+
+def _metadata_diagnostics(entry: Mapping[str, Any]) -> list[str]:
+    acquisition = entry.get("acquisition", entry.get("acquisition_metadata"))
+    provenance = entry.get("provenance", entry.get("provenance_metadata"))
+    diagnostics: list[str] = []
+    if not isinstance(provenance, Mapping):
+        diagnostics.append("provenance_missing")
+    else:
+        for key in ("source_asset", "source_snapshot"):
+            if not str(provenance.get(key, "")).strip():
+                diagnostics.append(f"provenance_{key}_missing")
+    if not isinstance(acquisition, Mapping):
+        diagnostics.append("acquisition_metadata_missing")
+    else:
+        for key in ("instrument", "acquired_at", "metadata_version"):
+            if not str(acquisition.get(key, "")).strip():
+                diagnostics.append(f"acquisition_{key}_missing")
+    return diagnostics
+
+
 def _validate_real_fixture(entry: Mapping[str, Any], path: Path) -> dict[str, Any]:
     result = _fixture_result_base(entry, path)
+    metadata_diagnostics = _metadata_diagnostics(entry)
     expected_hash = str(entry.get("sha256", ""))
     if not path.is_file():
         result.update({"status": "incomplete", "passed": False, "reason_codes": ["asset_unavailable"]})
@@ -828,6 +874,15 @@ def _validate_real_fixture(entry: Mapping[str, Any], path: Path) -> dict[str, An
         "channels": image.channels,
         "channels_identical": image.channels_identical,
     })
+    if metadata_diagnostics:
+        result.update({
+            "status": "incomplete",
+            "passed": False,
+            "reason_codes": metadata_diagnostics,
+            "metadata_validation": "incomplete",
+        })
+        return result
+    result["metadata_validation"] = "passed"
     kind = str(entry.get("kind", "gray_input"))
     if kind == "rgb_display_excluded":
         passed = image.channels == 3 and image.channels_identical
