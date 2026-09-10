@@ -171,23 +171,57 @@ def test_performance_warmup_is_not_in_hot_samples(monkeypatch) -> None:
     assert report["workloads"][0]["warmup"]["timed"] is False
 
 
-def test_issue10_validation_exposes_performance_section_status(monkeypatch) -> None:
-    from spot_analyzer import validation
+def test_issue10_validation_runs_default_performance_workloads(monkeypatch) -> None:
+    seen = {}
 
-    monkeypatch.setattr(
-        validation,
-        "run_performance_baseline",
-        lambda **kwargs: {"status": "failed", "passed": False, "workloads": []},
-    )
+    def fake_performance_baseline(**kwargs):
+        seen.update(kwargs)
+        return {
+            "formal_status": "incomplete",
+            "passed": False,
+            "workloads": [
+                {"image_size": {"width": size, "height": size}}
+                for size in kwargs["sizes"]
+            ],
+            "incomplete_reason": "formal performance evidence requires Python 3.12 and locked dependencies",
+        }
+
+    monkeypatch.setattr(validation, "run_performance_baseline", fake_performance_baseline)
     report = run_issue10_validation(
         manifests={},
         seeds=(),
         real_manifest_path="missing-real-fixtures.json",
         golden_vector_path="missing-golden-vectors.json",
-        performance_sizes=(256,),
+    )
+
+    assert seen == {"sizes": (256, 1024), "repetitions": 10}
+    performance = report["sections"]["performance"]
+    assert performance["status"] == "incomplete"
+    assert [item["image_size"] for item in performance["result"]["workloads"]] == [
+        {"width": 256, "height": 256},
+        {"width": 1024, "height": 1024},
+    ]
+    assert "performance" in report["incomplete_items"]
+
+
+def test_issue10_validation_preserves_custom_performance_configuration(monkeypatch) -> None:
+    seen = {}
+
+    def fake_performance_baseline(**kwargs):
+        seen.update(kwargs)
+        return {"status": "failed", "passed": False, "workloads": []}
+
+    monkeypatch.setattr(validation, "run_performance_baseline", fake_performance_baseline)
+    report = run_issue10_validation(
+        manifests={},
+        seeds=(),
+        real_manifest_path="missing-real-fixtures.json",
+        golden_vector_path="missing-golden-vectors.json",
+        performance_sizes=(128, 512),
         performance_repetitions=1,
     )
 
+    assert seen == {"sizes": (128, 512), "repetitions": 1}
     assert report["sections"]["performance"]["status"] == "failed"
     assert report["overall_status"] == "failed"
 

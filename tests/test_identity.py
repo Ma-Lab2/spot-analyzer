@@ -56,7 +56,11 @@ def test_identity_validation_reports_golden_vectors_and_worker_parity() -> None:
     assert result["worker_parity"]["status"] == "passed"
 
 
-def test_issue10_validation_exposes_identity_section() -> None:
+def test_issue10_validation_exposes_identity_section(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "spot_analyzer.validation.run_performance_baseline",
+        lambda **kwargs: {"formal_status": "incomplete", "passed": False, "workloads": []},
+    )
     result = run_issue10_validation(manifests={}, seeds=(), golden_vector_path=ROOT / "missing-vectors.json")
     assert result["sections"]["identity"]["status"] == "incomplete"
     assert result["overall_status"] in {"incomplete", "failed"}

@@ -713,11 +713,11 @@ def run_issue10_validation(
     performance_sizes: Iterable[int] | None = None,
     performance_repetitions: int = 10,
 ) -> dict[str, Any]:
-    """Run the Issue #10 synthetic and low-SNR sections in one JSON-ready operation.
+    """Run every required Issue #10 validation section in one JSON-ready operation.
 
-    This is intentionally the first vertical slice of the complete Issue #10
-    validation. Later sections can add entries to ``sections`` without changing
-    the section status or environment contract established here.
+    Performance validation defaults to the required 256x256 sanity and
+    1024x1024 main-load workloads. Callers may override the workload sizes and
+    repetition count without changing the section status or environment contract.
     """
 
     seed_values = tuple(int(seed) for seed in seeds)
@@ -752,7 +752,6 @@ def run_issue10_validation(
                 sizes=performance_sizes if performance_sizes is not None else (256, 1024),
                 repetitions=performance_repetitions,
             ),
-            available=performance_sizes is not None,
         ),
     }
     identity = {
