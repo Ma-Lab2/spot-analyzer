@@ -804,6 +804,29 @@ def test_report_export_returns_structured_failure_for_unusable_directory(tmp_pat
     assert result.diagnostics[0]["code"] == "report_directory_create_failed"
 
 
+def test_report_export_converts_reservation_and_render_failures(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    scene = generate_scene("gaussian_circular")
+    outcome = analyze(
+        InputImage(scene.input_array, bit_depth=8, encoding_semantic="relative_intensity_code", encoding_semantic_confirmed=True),
+        AnalysisConfiguration(AnalysisRegion(64, 64, 128, 128), background_region=AnalysisRegion(32, 64, 32, 128)),
+    )
+    assert outcome.record is not None
+    specification = ReportSpecification("png", "failure", tmp_path)
+    package = prepare_report(outcome.record, specification)
+
+    monkeypatch.setattr("spot_analyzer.report._reserve_target", lambda *_: (_ for _ in ()).throw(OSError("reserve denied")))
+    reservation = write_report(package, specification)
+    assert reservation.path is None
+    assert reservation.flow_status == "export_failed"
+    assert reservation.diagnostics[0]["code"] == "report_target_reserve_failed"
+
+    monkeypatch.setattr("spot_analyzer.report._reserve_target", lambda destination, stem, extension: destination / (stem + extension))
+    monkeypatch.setattr("spot_analyzer.report._render", lambda _: (_ for _ in ()).throw(RuntimeError("render denied")))
+    rendering = write_report(package, specification)
+    assert rendering.flow_status == "export_failed"
+    assert rendering.diagnostics[0]["code"] == "report_render_failed"
+
+
 def test_concurrent_report_exports_reserve_distinct_names(tmp_path) -> None:
     scene = generate_scene("gaussian_circular")
     outcome = analyze(

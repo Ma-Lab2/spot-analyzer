@@ -318,10 +318,14 @@ def write_report(package: ReportPackage, specification: ReportSpecification) -> 
     if specification.append_timestamp:
         stem += "-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     extension = "." + format_name
-    target = _reserve_target(destination, stem, extension)
-    rendered = _render(package)
+    target: Path | None = None
     temporary_path: Path | None = None
+    phase = "reserve"
     try:
+        target = _reserve_target(destination, stem, extension)
+        phase = "render"
+        rendered = _render(package)
+        phase = "write"
         with tempfile.NamedTemporaryFile(
             prefix=".report-",
             suffix=extension,
@@ -336,14 +340,26 @@ def write_report(package: ReportPackage, specification: ReportSpecification) -> 
         digest = hashlib.sha256(temporary_path.read_bytes()).hexdigest()
         os.replace(temporary_path, target)
         return ExportOutcome(target, package.record_id, "exported", digest)
-    except OSError as error:
+    except Exception as error:
         if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
-        target.unlink(missing_ok=True)
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        if target is not None:
+            try:
+                target.unlink(missing_ok=True)
+            except OSError:
+                pass
+        code = {
+            "reserve": "report_target_reserve_failed",
+            "render": "report_render_failed",
+            "write": "report_write_failed",
+        }[phase]
         return ExportOutcome(
             None,
             package.record_id,
             "export_failed",
             None,
-            ({"code": "report_write_failed", "message": str(error)},),
+            ({"code": code, "message": str(error)},),
         )
