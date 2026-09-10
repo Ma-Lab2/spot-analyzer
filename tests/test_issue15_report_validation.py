@@ -19,6 +19,9 @@ def test_report_validation_checks_record_semantics_and_both_exports() -> None:
     assert result["checks"]["coordinate_units"] is True
     assert result["checks"]["provenance"] is True
     assert result["checks"]["no_internal_trials"] is True
+    assert result["checks"]["report_naming"] is True
+    assert result["checks"]["export_conflict_safety"] is True
+    assert result["checks"]["input_read_only"] is True
     assert result["checks"]["export_identity"] is True
     assert {item["format"] for item in result["exports"]} == {"png", "pdf"}
     assert all(item["status"] == "exported" for item in result["exports"])
