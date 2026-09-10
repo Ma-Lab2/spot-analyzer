@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import time
 from typing import Any, Mapping, TextIO
 from urllib.parse import unquote, urlparse
 
@@ -228,6 +229,19 @@ def handle_request(request: dict[str, Any]) -> list[dict[str, Any]]:
     if request.get("schema") != SCHEMA:
         return [_failure(FlowStatus.PARAMETER_INVALID, ({"code": "schema_unsupported"},))]
     started = {"schema": EVENT_SCHEMA, "kind": "started", "flow_status": "processing"}
+    lifecycle = request.get("lifecycle", {})
+    if lifecycle is None:
+        lifecycle = {}
+    if not isinstance(lifecycle, dict):
+        return [started, _failure(FlowStatus.PARAMETER_INVALID, ({"code": "lifecycle_invalid"},))]
+    if lifecycle.get("cancel_requested") is True:
+        return [started, _failure(FlowStatus.CANCELLED, ({"code": "cancelled_by_caller"},))]
+    timeout_ms = lifecycle.get("timeout_ms")
+    deadline = None
+    if timeout_ms is not None:
+        if not isinstance(timeout_ms, (int, float)) or timeout_ms < 0:
+            return [started, _failure(FlowStatus.PARAMETER_INVALID, ({"code": "timeout_invalid"},))]
+        deadline = time.monotonic() + float(timeout_ms) / 1000.0
     try:
         input_payload = request["input"]
         if not isinstance(input_payload, dict):
@@ -253,7 +267,11 @@ def handle_request(request: dict[str, Any]) -> list[dict[str, Any]]:
     except (KeyError, TypeError, ValueError) as error:
         return [started, _failure(FlowStatus.PARAMETER_INVALID, ({"code": "request_invalid", "message": str(error)},))]
 
+    if deadline is not None and time.monotonic() >= deadline:
+        return [started, _failure(FlowStatus.TIMEOUT, ({"code": "analysis_timeout"},))]
     outcome = analyze(image, configuration)
+    if deadline is not None and time.monotonic() >= deadline:
+        return [started, _failure(FlowStatus.TIMEOUT, ({"code": "analysis_timeout"},))]
     if outcome.record is None:
         return [started, _failure(outcome.flow_status, list(outcome.diagnostics))]
     try:

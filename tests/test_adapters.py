@@ -322,6 +322,45 @@ def test_worker_asset_request_validates_hash_and_matches_direct_core(tmp_path) -
         assert hashlib.sha256(asset_path.read_bytes()).hexdigest() == asset["sha256"]
 
 
+def test_worker_reports_cancellation_before_starting_analysis() -> None:
+    messages = handle_request({"schema": "analysis-request-v1", "lifecycle": {"cancel_requested": True}})
+
+    assert messages[0]["kind"] == "started"
+    assert messages[-1]["kind"] == "failed"
+    assert messages[-1]["flow_status"] == "cancelled"
+    assert messages[-1]["diagnostics"][0]["code"] == "cancelled_by_caller"
+
+
+def test_worker_rejects_invalid_timeout_configuration() -> None:
+    messages = handle_request({"schema": "analysis-request-v1", "lifecycle": {"timeout_ms": -1}})
+
+    assert messages[-1]["kind"] == "failed"
+    assert messages[-1]["flow_status"] == "parameter_invalid"
+    assert messages[-1]["diagnostics"][0]["code"] == "timeout_invalid"
+
+
+def test_worker_times_out_before_analysis_when_deadline_is_expired(tmp_path) -> None:
+    path = tmp_path / "input.png"
+    payload = png_bytes(np.zeros((8, 8), dtype=np.uint8))
+    path.write_bytes(payload)
+    request = {
+        "schema": "analysis-request-v1",
+        "input": {
+            "asset": {"path": str(path), "expected_sha256": hashlib.sha256(payload).hexdigest()},
+            "confirm_relative_intensity": True,
+        },
+        "configuration": worker_configuration(),
+        "output_strategy": {"work_directory": str(tmp_path / "assets"), "derived_format": "npy"},
+        "lifecycle": {"timeout_ms": 0},
+    }
+
+    messages = handle_request(request)
+
+    assert messages[-1]["kind"] == "failed"
+    assert messages[-1]["flow_status"] == "timeout"
+    assert messages[-1]["diagnostics"][0]["code"] == "analysis_timeout"
+
+
 def test_worker_rejects_inline_image_arrays() -> None:
     request = {
         "schema": "analysis-request-v1",

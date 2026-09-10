@@ -27,6 +27,7 @@ class FlowStatus(str, Enum):
     COMPUTED = "computed"
     EXPORTED = "exported"
     CANCELLED = "cancelled"
+    TIMEOUT = "timeout"
     EXPORT_FAILED = "export_failed"
 
 
