@@ -44,6 +44,22 @@ def test_complete_validation_persists_machine_and_human_materials(tmp_path, monk
     assert "user acceptance" in text
 
 
+def test_acceptance_materials_use_renderable_newlines():
+    result = {
+        "overall_status": "incomplete",
+        "validation_contract": "validation-contract-v1",
+        "identity": {"profile_validation": "provisional"},
+        "sections": {"synthetic": {"status": "passed"}},
+        "incomplete_items": [],
+    }
+
+    text = validation._acceptance_materials(result)
+
+    assert "\n" in text
+    assert "\\n" not in text
+    assert text.splitlines()[0] == "# Issue #10 Validation Acceptance Record"
+
+
 def test_formal_incomplete_status_is_not_reported_as_failed():
     section = validation._run_section(
         "performance",

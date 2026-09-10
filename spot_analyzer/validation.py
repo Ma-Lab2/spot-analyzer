@@ -1038,7 +1038,7 @@ def _acceptance_materials(result: Mapping[str, Any]) -> str:
         f"Record the run as `{result.get('overall_status', 'incomplete')}` and review the bounded limitations above. Do not treat this recommendation as user acceptance.",
         "",
     ])
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 def run_complete_validation(
