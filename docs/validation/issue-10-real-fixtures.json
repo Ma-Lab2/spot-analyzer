@@ -1,0 +1,63 @@
+{
+  "schema": "real-fixture-manifest-v1",
+  "root": "D:/Files/CLAPA2/Spot",
+  "fixtures": [
+    {
+      "relative_path": "20251016/1.png",
+      "sha256": "096d4ae25dacf44f68b7957ec2c667fa72c9bfbca39e50326fcdfeb59ef71fef",
+      "kind": "gray_input",
+      "analysis_region": {"x": 1208, "y": 629, "width": 512, "height": 512, "confirmed": true},
+      "background_region": {"x": 0, "y": 1700, "width": 128, "height": 256, "confirmed": true},
+      "expected_summary_status": ["caution", "invalid"],
+      "required_reason_codes": ["possible_saturation", "ring_candidate"],
+      "forbidden_reason_codes": ["saturated_core", "no_positive_signal", "multiple_peaks"]
+    },
+    {
+      "relative_path": "20251016/2.png",
+      "sha256": "5f3f10771c9990018d8437ac6a91e18b96fd4677ffdf1916b6a98b03e1cd83da",
+      "kind": "blank_gray_input",
+      "analysis_region": {"x": 0, "y": 0, "width": 512, "height": 512, "confirmed": true},
+      "background_region": {"x": 0, "y": 1700, "width": 128, "height": 256, "confirmed": true},
+      "expected_summary_status": ["invalid", "unavailable"],
+      "required_reason_codes": ["no_positive_signal"],
+      "forbidden_reason_codes": ["saturated_core"]
+    },
+    {
+      "relative_path": "20251016/3.png",
+      "sha256": "6b5623cdd5edece19e48e7765f42a1b96c0af9f7c7dd206e7a062d7514ba1722",
+      "kind": "gray_input",
+      "analysis_region": {"x": 1255, "y": 670, "width": 512, "height": 512, "confirmed": true},
+      "background_region": {"x": 0, "y": 1700, "width": 128, "height": 256, "confirmed": true},
+      "expected_summary_status": ["caution", "invalid"],
+      "required_reason_codes": ["possible_saturation", "multiple_peaks"],
+      "forbidden_reason_codes": ["saturated_core", "no_positive_signal"]
+    },
+    {
+      "relative_path": "20260607/1-7.png",
+      "sha256": "56f2aacf76f7b0f78e6b5108fef0bed8490657246b2d1bf8c345a7807f7dc268",
+      "kind": "gray_input",
+      "analysis_region": {"x": 1081, "y": 1564, "width": 512, "height": 512, "confirmed": true},
+      "background_region": {"x": 0, "y": 1700, "width": 128, "height": 256, "confirmed": true},
+      "expected_summary_status": ["caution", "invalid"],
+      "required_reason_codes": ["possible_saturation", "multiple_peaks"],
+      "forbidden_reason_codes": ["saturated_core", "no_positive_signal"]
+    },
+    {
+      "relative_path": "20260607/2-7右下.png",
+      "sha256": "39e5f52f8287ce8bb0e447ae35573922749c87c95766b39eab7dea3416ef15c1",
+      "kind": "gray_input",
+      "analysis_region": {"x": 24, "y": 970, "width": 512, "height": 512, "confirmed": true},
+      "background_region": {"x": 0, "y": 1700, "width": 128, "height": 256, "confirmed": true},
+      "expected_summary_status": ["caution", "invalid"],
+      "required_reason_codes": ["possible_saturation", "multiple_peaks"],
+      "forbidden_reason_codes": ["saturated_core", "no_positive_signal"]
+    },
+    {
+      "relative_path": "20260901/1.PNG",
+      "sha256": "5d7f073dde5fe2d1b04617f6907250ddcb4c0a93cf6db7b3109a198abdbf5db4",
+      "kind": "rgb_display_excluded",
+      "required_reason_codes": ["rgb_display_excluded"],
+      "forbidden_reason_codes": []
+    }
+  ]
+}

@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Spot Analyzer · Workspace prototype</title>
+  <style>
+    /* Prototype question: which Windows workspace lets an optical engineer open a grayscale PNG,
+       confirm spatial calibration, analyze, assess validity, tune advanced parameters, recompute,
+       and export within seconds? Three intentionally different layouts are switchable with ?variant=. */
+    :root {
+      /* Daytime palette referenced from EasyCLIProxyAPI's light theme. */
+      --bg: #edf7f2;
+      --surface: #f5fbf7;
+      --surface-2: #ffffff;
+      --surface-3: #e4f1e9;
+      --line: #d7e7dc;
+      --text: #202521;
+      --muted: #65736a;
+      --quiet: #91a198;
+      --accent: #168f83;
+      --accent-2: #087f5b;
+      --success: #10b981;
+      --warning: #b7791f;
+      --danger: #c65746;
+      --invalid: #7041c5;
+      --shadow: 0 14px 30px rgba(45,42,38,.10);
+      --radius: 10px;
+      font-family: "Segoe UI", Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      color-scheme: light;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 1120px; background: radial-gradient(circle at 48% -10%, #15353b 0, var(--bg) 44%); color: var(--text); font-size: 13px; }
+    button, input, select { font: inherit; }
+    button { color: inherit; cursor: pointer; }
+    .prototype-banner { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 7px 22px; background: #0a171b; border-bottom: 1px solid var(--line); color: var(--muted); letter-spacing: .02em; }
+    .prototype-banner strong { color: var(--accent-2); font-size: 11px; letter-spacing: .14em; }
+    .app-header { height: 62px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid var(--line); background: rgba(8,20,24,.86); }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-mark { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid var(--accent); border-radius: 9px; color: var(--accent-2); box-shadow: inset 0 0 18px rgba(73,199,180,.12); font-weight: 700; }
+    .brand h1 { margin: 0; font-size: 15px; letter-spacing: .02em; }
+    .brand small { color: var(--muted); margin-left: 8px; }
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+    .icon-btn, .ghost-btn, .primary-btn, .danger-btn { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; min-height: 32px; padding: 0 12px; }
+    .header-actions select { height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); color: var(--muted); }
+    .icon-btn { min-width: 34px; padding: 0 9px; color: var(--muted); }
+    .ghost-btn:hover, .icon-btn:hover { border-color: var(--accent); color: var(--accent-2); }
+    .primary-btn { background: var(--accent); border-color: var(--accent); color: #04201d; font-weight: 700; }
+    .primary-btn:hover { background: #75ddcc; }
+    .primary-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .danger-btn { border-color: rgba(237,141,141,.42); color: var(--danger); }
+    .eyebrow { color: var(--quiet); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+    .muted { color: var(--muted); }
+    .tiny { font-size: 11px; }
+    .panel { background: linear-gradient(145deg, rgba(17,37,43,.94), rgba(10,24,29,.96)); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .panel-heading { display: flex; align-items: center; justify-content: space-between; padding: 14px 15px 11px; border-bottom: 1px solid rgba(35,69,76,.66); }
+    .panel-heading h2, .panel-heading h3 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+    .panel-body { padding: 14px 15px; }
+    .section + .section { border-top: 1px solid rgba(35,69,76,.62); margin-top: 15px; padding-top: 14px; }
+    .field { display: grid; gap: 6px; margin: 11px 0; }
+    .field label { color: var(--muted); font-size: 11px; }
+    .field input[type="text"], .field input[type="number"], .field select { width: 100%; height: 31px; padding: 0 9px; background: #09171b; color: var(--text); border: 1px solid var(--line); border-radius: 7px; outline: none; }
+    .field input:focus, .field select:focus { border-color: var(--accent); }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .check { display: flex; align-items: center; gap: 8px; color: var(--muted); margin: 9px 0; }
+    .check input { accent-color: var(--accent); }
+    .status { display: inline-flex; align-items: center; gap: 6px; border-radius: 99px; padding: 4px 9px; background: rgba(73,199,180,.1); color: var(--accent-2); font-size: 11px; white-space: nowrap; }
+    .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+    .status.warning { color: var(--warning); background: rgba(232,184,103,.1); }
+    .status.invalid, .status.error { color: var(--danger); background: rgba(237,141,141,.1); }
+    .status.blank { color: var(--quiet); background: rgba(94,123,125,.12); }
+    .status.error::before { border-radius: 2px; }
+
+    /* Shared image surface */
+    .image-shell { min-height: 0; position: relative; overflow: hidden; border: 1px solid #28525a; border-radius: 10px; background: #030809; }
+    .image-shell canvas { display: block; width: 100%; height: 100%; min-height: 280px; image-rendering: auto; }
+    .image-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: rgba(6,17,20,.92); border-bottom: 1px solid #21454c; }
+    .tool-group { display: flex; align-items: center; gap: 5px; }
+    .tool-btn { min-height: 27px; padding: 0 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); font-size: 11px; }
+    .tool-btn:hover, .tool-btn.active { border-color: var(--accent); background: rgba(73,199,180,.1); color: var(--accent-2); }
+    .layer-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
+    .layer-tab { flex: 1; padding: 10px 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11px; }
+    .layer-tab:hover { color: var(--text); }
+    .layer-tab.active { color: var(--accent-2); border-bottom-color: var(--accent); }
+    .image-meta { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; color: var(--muted); font-size: 10px; background: rgba(11,27,31,.9); }
+    .display-strip { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+    .display-label { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .display-choice { min-height: 26px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); font-size: 11px; }
+    .display-choice.active { border-color: var(--accent); background: rgba(22,143,131,.08); color: var(--accent); }
+    .display-select { height: 26px; margin-left: 2px; padding: 0 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--text); font-size: 11px; }
+    .display-note { margin-left: auto; color: var(--quiet); font-size: 10px; }
+    .overlay-legend { position: absolute; right: 10px; top: 50px; display: grid; gap: 4px; padding: 7px 8px; border: 1px solid rgba(155,231,217,.32); border-radius: 7px; background: rgba(5,17,19,.78); font-size: 10px; }
+    .legend-row { display: flex; align-items: center; gap: 6px; }
+    .legend-swatch { width: 13px; height: 3px; border-radius: 4px; background: var(--accent); }
+    .legend-swatch.amber { background: var(--warning); }
+    .legend-swatch.magenta { background: #d89bd9; }
+    .drop-hint { position: absolute; inset: 35% 20%; display: grid; place-items: center; text-align: center; color: var(--muted); border: 1px dashed #36656b; border-radius: 10px; background: rgba(8,22,25,.82); }
+    .state-overlay { position: absolute; inset: 36px 16px 34px; display: grid; place-items: center; text-align: center; border: 1px solid rgba(237,141,141,.45); border-radius: 9px; background: rgba(35,12,16,.72); color: var(--danger); }
+    .state-overlay.blank { border-color: rgba(94,123,125,.5); background: rgba(7,16,18,.76); color: var(--muted); }
+    .state-overlay strong { display: block; margin-bottom: 5px; color: currentColor; font-size: 14px; }
+
+    /* Variant A: traditional three-pane workbench */
+    .workspace-a { display: grid; grid-template-columns: 245px minmax(520px, 1fr) 280px; grid-template-rows: minmax(430px, 1fr) 190px; gap: 12px; padding: 14px 18px 102px; max-width: 1800px; margin: auto; }
+    .sidebar-a, .results-a, .profile-a { min-height: 0; overflow: auto; }
+    .sidebar-a { grid-row: 1 / 3; }
+    .main-a { min-height: 0; display: flex; flex-direction: column; }
+    .main-a .image-shell { flex: 1; }
+    .results-a { grid-column: 3; }
+    .profile-a { grid-column: 2 / 4; }
+    .file-card { display: flex; align-items: center; gap: 9px; padding: 9px; border: 1px solid rgba(73,199,180,.34); background: rgba(73,199,180,.06); border-radius: 8px; }
+    .file-icon { display: grid; place-items: center; width: 28px; height: 28px; background: #173b3a; border-radius: 7px; color: var(--accent-2); font-size: 10px; font-weight: 700; }
+    .file-card strong { display: block; font-size: 11px; }
+    .file-card span { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
+    .drop-file { width: 100%; margin-top: 8px; text-align: center; }
+    .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .metric { padding: 10px; border: 1px solid var(--line); background: rgba(4,13,16,.42); border-radius: 9px; }
+    .metric span { display: block; color: var(--muted); font-size: 10px; }
+    .metric strong { display: block; margin-top: 5px; font-size: 16px; letter-spacing: -.02em; }
+    .metric em { display: block; color: var(--muted); font-size: 10px; font-style: normal; margin-top: 2px; }
+    .quality-box { padding: 11px; border-left: 2px solid var(--accent); background: rgba(73,199,180,.07); border-radius: 0 8px 8px 0; line-height: 1.5; }
+    .quality-box.warning { border-left-color: var(--warning); background: rgba(232,184,103,.07); }
+    .quality-box.invalid, .quality-box.error { border-left-color: var(--danger); background: rgba(237,141,141,.07); }
+    .quality-box strong { display: block; margin-bottom: 4px; }
+    .result-list { list-style: none; margin: 0; padding: 0; }
+    .result-list li { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid rgba(35,69,76,.54); }
+    .result-list li span { color: var(--muted); }
+    .result-list li strong { font-weight: 600; }
+    .export-options { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; background: #faf9f5; }
+    .export-options summary { padding: 10px; cursor: pointer; color: var(--text); font-size: 12px; font-weight: 700; }
+    .export-options-body { display: grid; gap: 9px; padding: 0 10px 10px; }
+    .export-options label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+    .export-options input[type="text"], .export-options select { width: 100%; height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); }
+    .export-options .check { display: flex; align-items: center; gap: 7px; }
+    .export-options .check input { accent-color: var(--accent); }
+    .profile-canvas { display: block; width: 100%; height: 122px; }
+
+    /* Variant B: evidence review layout */
+    .workspace-b { display: grid; grid-template-columns: 68px 245px minmax(520px, 1fr) 300px; gap: 12px; padding: 14px 18px 102px; max-width: 1800px; margin: auto; min-height: calc(100vh - 96px); }
+    .rail-b { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 11px 7px; }
+    .rail-btn { width: 48px; height: 48px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--muted); font-size: 10px; }
+    .rail-btn span { display: block; font-size: 18px; margin-bottom: 3px; }
+    .rail-btn.active, .rail-btn:hover { border-color: var(--accent); background: rgba(73,199,180,.1); color: var(--accent-2); }
+    .rail-spacer { flex: 1; }
+    .queue-b { overflow: auto; }
+    .queue-item { padding: 11px; border-bottom: 1px solid rgba(35,69,76,.55); cursor: pointer; }
+    .queue-item:hover, .queue-item.selected { background: rgba(73,199,180,.08); }
+    .queue-item strong { display: block; font-size: 11px; }
+    .queue-item .muted { display: block; margin-top: 5px; font-size: 10px; }
+    .queue-thumb { height: 40px; margin-bottom: 7px; border-radius: 5px; background: radial-gradient(circle at 55% 48%, #d8f4d8 0 6%, #71baa8 12%, #1e5757 28%, #071112 60%); opacity: .9; }
+    .canvas-b { min-width: 0; display: flex; flex-direction: column; }
+    .canvas-b .image-shell { flex: 1; min-height: 410px; }
+    .review-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 10px; }
+    .review-chip { padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: rgba(11,27,31,.7); }
+    .review-chip span { display: block; font-size: 10px; color: var(--muted); }
+    .review-chip strong { display: block; margin-top: 4px; font-size: 13px; }
+    .inspector-b { overflow: auto; }
+    .inspector-b .panel-body { padding: 0; }
+    .inspector-section { padding: 14px 15px; border-bottom: 1px solid rgba(35,69,76,.62); }
+    .inspector-section h3 { margin: 0 0 12px; font-size: 11px; }
+    .inspection-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; }
+    .inspection-row + .inspection-row { border-top: 1px solid rgba(35,69,76,.42); }
+    .value-pill { color: var(--accent-2); font-size: 11px; }
+    .value-pill.warn { color: var(--warning); }
+    .comment-box { width: 100%; min-height: 68px; resize: vertical; border: 1px solid var(--line); border-radius: 7px; background: #09171b; padding: 8px; color: var(--text); }
+
+    /* Variant C: guided flow */
+    .workspace-c { padding: 14px 18px 102px; max-width: 1560px; margin: auto; }
+    .steps-c { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; margin-bottom: 12px; }
+    .step { position: relative; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); }
+    .step::after { content: ""; position: absolute; right: -8px; top: 21px; width: 8px; height: 1px; background: var(--line); }
+    .step:last-child::after { display: none; }
+    .step-number { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; background: #18363a; color: var(--muted); font-size: 11px; }
+    .step.active { border-color: var(--accent); color: var(--text); box-shadow: inset 0 0 20px rgba(73,199,180,.06); }
+    .step.active .step-number { background: var(--accent); color: #06201e; font-weight: 700; }
+    .step.done .step-number { background: #1a514b; color: var(--accent-2); }
+    .flow-top { display: grid; grid-template-columns: 1.2fr .8fr; gap: 12px; margin-bottom: 12px; }
+    .flow-intro { padding: 17px; }
+    .flow-intro h2 { margin: 6px 0 7px; font-size: 21px; letter-spacing: -.03em; }
+    .flow-intro p { max-width: 650px; margin: 0; line-height: 1.55; color: var(--muted); }
+    .flow-actions { display: flex; align-items: center; gap: 8px; margin-top: 15px; }
+    .flow-readiness { padding: 17px; }
+    .readiness-line { display: flex; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid rgba(35,69,76,.52); }
+    .flow-main { display: grid; grid-template-columns: minmax(570px, 1.4fr) minmax(340px, .8fr); gap: 12px; }
+    .flow-main .image-shell { min-height: 420px; }
+    .flow-results { display: grid; gap: 12px; align-content: start; }
+    .big-result { padding: 17px; }
+    .big-result .number { margin: 7px 0; font-size: 37px; letter-spacing: -.06em; }
+    .big-result .unit { color: var(--muted); font-size: 12px; }
+    .confidence { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--muted); font-size: 11px; }
+    .confidence-bar { flex: 1; height: 5px; overflow: hidden; border-radius: 5px; background: #1d383b; }
+    .confidence-bar i { display: block; width: 88%; height: 100%; background: var(--accent); }
+    .flow-profile { margin-top: 12px; }
+
+    /* Shared overlays and switcher */
+    .toast { position: fixed; right: 18px; bottom: 78px; z-index: 10; max-width: 320px; padding: 11px 13px; border: 1px solid var(--accent); border-radius: 9px; background: #0b2526; color: var(--accent-2); box-shadow: var(--shadow); opacity: 0; transform: translateY(8px); pointer-events: none; transition: .18s ease; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .switcher { position: fixed; z-index: 20; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 13px; padding: 7px 10px; border: 1px solid #477e7d; border-radius: 99px; background: rgba(4,15,17,.96); box-shadow: 0 10px 40px rgba(0,0,0,.45); }
+    .switcher button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 17px; }
+    .switcher button:hover { background: rgba(73,199,180,.14); color: var(--accent-2); }
+    .switcher-copy { min-width: 185px; text-align: center; }
+    .switcher-copy strong { display: block; color: var(--accent-2); font-size: 11px; }
+    .switcher-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .empty-state { display: grid; place-items: center; height: 100%; min-height: 260px; color: var(--muted); text-align: center; padding: 30px; }
+    .empty-state strong { display: block; color: var(--text); font-size: 15px; margin-bottom: 7px; }
+
+    /* Reviewed direction: EasyCLIProxyAPI-style daytime surfaces, with A's clean hierarchy
+       and B's disciplined column rhythm. The image remains dark so intensity structure stays legible. */
+    body { background: var(--bg); color: var(--text); }
+    .prototype-banner { background: #ffffff; border-bottom-color: var(--line); color: var(--muted); }
+    .prototype-banner strong { color: var(--accent); }
+    .app-header { background: rgba(255,255,255,.96); border-bottom-color: var(--line); }
+    .brand-mark { border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 18px rgba(22,143,131,.10); }
+    .brand small { color: var(--muted); }
+    .icon-btn, .ghost-btn, .primary-btn, .danger-btn { background: var(--surface-2); border-color: var(--line); }
+    .ghost-btn:hover, .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .primary-btn { background: var(--accent); border-color: var(--accent); color: #fffdf9; }
+    .primary-btn:hover { background: #aa4739; }
+    .header-actions select { background: var(--surface-2); color: var(--text); border-color: var(--line); }
+    .panel { background: var(--surface-2); border-color: var(--line); box-shadow: var(--shadow); }
+    .panel-heading { border-bottom-color: var(--line); }
+    .section + .section, .inspection-row + .inspection-row, .result-list li { border-color: var(--line); }
+    .field input[type="text"], .field input[type="number"], .field select, .comment-box { background: #fff; color: var(--text); border-color: var(--line); }
+    .field input:focus, .field select:focus, .comment-box:focus { border-color: #1783ff; outline: 2px solid rgba(23,131,255,.12); }
+    .status { background: rgba(16,185,129,.11); color: #087f5b; }
+    .status.warning { background: rgba(224,170,20,.14); color: #8a6800; }
+    .status.invalid { background: rgba(139,92,246,.12); color: #7041c5; }
+    .status.error { background: rgba(22,143,131,.12); color: var(--danger); }
+    .status.blank { background: rgba(162,156,149,.15); color: #756f68; }
+    .layer-tabs, .image-toolbar { border-color: var(--line); }
+    .image-toolbar { background: #ffffff; border-bottom-color: var(--line); }
+    .image-meta { background: #ffffff; color: var(--text); }
+    .image-toolbar .tool-btn { color: var(--text); }
+    .image-toolbar .tool-btn.active, .image-toolbar .tool-btn:hover { color: var(--accent); border-color: var(--accent); background: rgba(22,143,131,.08); }
+    .layer-tab, .tool-btn { color: var(--muted); }
+    .layer-tab.active, .tool-btn.active { color: var(--accent); border-color: var(--accent); }
+    .tool-btn:hover { color: var(--accent); background: rgba(22,143,131,.07); }
+    .file-card { border-color: rgba(16,185,129,.34); background: rgba(16,185,129,.07); }
+    .file-icon { background: #d1fae5; color: #087f5b; }
+    .metric, .review-chip { background: #faf9f5; border-color: var(--line); }
+    .quality-box { border-left-color: var(--success); background: rgba(16,185,129,.07); }
+    .quality-box.warning { border-left-color: var(--warning); background: rgba(224,170,20,.08); }
+    .quality-box.invalid, .quality-box.error { border-left-color: var(--danger); background: rgba(22,143,131,.07); }
+    .value-pill { color: #087f5b; }
+    .value-pill.warn { color: #8a6800; }
+    .workspace-a { grid-template-columns: 264px minmax(560px, 1fr) 320px; grid-template-rows: minmax(448px, 1fr) 206px; gap: 16px; padding: 18px 22px 104px; }
+    .sidebar-a, .results-a, .profile-a { border-radius: 10px; }
+    .sidebar-a .panel-heading, .results-a .panel-heading { min-height: 50px; }
+    .workspace-a .main-a { gap: 16px; }
+    .workspace-a .main-a > .panel:first-child { border-radius: 10px; }
+    .workspace-a .profile-a { grid-column: 2 / 4; }
+    .workspace-b, .workspace-c { padding-left: 22px; padding-right: 22px; }
+    .rail-btn.active, .rail-btn:hover { border-color: var(--accent); background: rgba(22,143,131,.08); color: var(--accent); }
+    .queue-item:hover, .queue-item.selected { background: rgba(22,143,131,.07); }
+    .step { background: var(--surface-2); border-color: var(--line); }
+    .step.active { border-color: var(--accent); box-shadow: inset 0 0 20px rgba(22,143,131,.06); }
+    .step.active .step-number { background: var(--accent); color: #fffdf9; }
+    .step.done .step-number { background: #d1fae5; color: #087f5b; }
+    .switcher { border-color: #c8c1b8; background: rgba(255,253,249,.97); box-shadow: 0 10px 30px rgba(45,42,38,.16); }
+    .switcher button:hover { background: rgba(22,143,131,.10); color: var(--accent); }
+    .switcher-copy strong { color: var(--accent); }
+    .toast { border-color: var(--accent); background: #fff5f1; color: var(--accent); box-shadow: var(--shadow); }
+    .state-overlay { background: rgba(255,245,241,.90); border-color: rgba(22,143,131,.45); }
+    .state-overlay.blank { background: rgba(250,249,245,.90); border-color: rgba(162,156,149,.55); }
+
+    /* Two-page review shell: a quiet mode rail, then a disciplined analysis or figure workspace. */
+    .mode-shell { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 16px; max-width: 1800px; min-height: calc(100vh - 96px); margin: 0 auto; padding: 16px 22px 94px; }
+    .mode-rail { display: flex; flex-direction: column; align-items: stretch; gap: 8px; height: fit-content; padding: 9px 7px; position: sticky; top: 16px; }
+    .mode-rail button { min-height: 64px; padding: 7px 3px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font-size: 10px; line-height: 1.25; }
+    .mode-rail button span { display: block; margin-bottom: 5px; font-size: 20px; }
+    .mode-rail button.active, .mode-rail button:hover { border-color: var(--accent); background: rgba(22,143,131,.08); color: var(--accent); }
+    .analysis-layout { display: grid; grid-template-columns: 264px minmax(560px, 1fr) 320px; grid-template-rows: minmax(450px, 1fr) 206px; gap: 16px; min-height: 720px; }
+    .analysis-layout > .sidebar-a { grid-row: 1 / 3; }
+    .analysis-layout > .results-a { grid-column: 3; }
+    .analysis-layout { font-size: 14px; }
+    .analysis-layout .panel-heading h2, .analysis-layout .panel-heading h3 { font-size: 14px; }
+    .analysis-layout .eyebrow { font-size: 11px; }
+    .analysis-layout .field label, .analysis-layout .check, .analysis-layout .tool-btn, .analysis-layout .layer-tab, .analysis-layout .display-choice { font-size: 12px; }
+    .analysis-layout .file-card strong { font-size: 12px; }
+    .analysis-layout .file-card span, .analysis-layout .tiny, .analysis-layout .image-meta { font-size: 11px; }
+    .analysis-layout .metric span, .analysis-layout .metric em { font-size: 11px; }
+    .analysis-layout .metric strong { font-size: 19px; }
+    .analysis-layout .result-list { font-size: 12px; }
+    .analysis-layout .panel-body { padding: 11px 12px; }
+    .analysis-layout .section + .section { margin-top: 11px; padding-top: 10px; }
+    .analysis-layout .field { margin: 8px 0; gap: 5px; }
+    .analysis-stage { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+    .analysis-stage > .image-panel { flex: 1; min-height: 0; }
+    .analysis-stage > .profile-panel { min-height: 206px; }
+    .image-panel, .profile-panel { overflow: hidden; }
+    .image-panel { display: flex; flex-direction: column; }
+    .analysis-canvas { display: block; width: 100%; height: 100%; min-height: 320px; background: #000000; }
+    .image-panel .image-shell { flex: 1; min-height: 0; height: auto; border-radius: 0; border: 0; padding: 16px 20px 0; background: #ffffff; }
+    .image-panel .image-shell canvas { min-height: 320px; }
+    .image-panel .image-meta { border-top: 1px solid var(--line); }
+    .viewer-status { padding: 8px 11px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; background: var(--surface-2); }
+    .viewer-status.error { color: var(--danger); background: rgba(22,143,131,.07); }
+    .viewer-status.warning { color: #8a6800; background: rgba(224,170,20,.08); }
+    .viewer-legend { display: flex; align-items: center; gap: 13px; padding: 7px 10px; border-top: 1px solid var(--line); background: #ffffff; color: var(--text); font-size: 10px; }
+    .viewer-legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .viewer-legend i { width: 18px; height: 3px; display: inline-block; border-radius: 3px; background: #2dd4bf; }
+    .viewer-legend i.blue { background: #1783ff; }
+    .viewer-legend i.coral { background: #c65746; }
+    .profile-panel .panel-body { padding-top: 8px; }
+    .profile-canvas { background: #ffffff; }
+    .profile-legend { display: flex; gap: 14px; margin-bottom: 4px; color: var(--muted); font-size: 10px; }
+    .profile-legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .profile-legend i { width: 18px; height: 2px; display: inline-block; background: #2dd4bf; }
+    .profile-legend i.blue { background: #1783ff; }
+    .panel > .overlay-legend { position: static; display: flex; align-items: center; gap: 14px; padding: 7px 10px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: #ffffff; color: var(--text); }
+    .panel > .overlay-legend .legend-row { display: inline-flex; align-items: center; gap: 5px; }
+    /* Compact client chrome: keep the working canvas dominant while retaining readable A labels. */
+    .prototype-banner { min-height: 30px; padding-top: 5px; padding-bottom: 5px; }
+    .app-header { height: 54px; }
+    .mode-shell { gap: 12px; min-height: calc(100vh - 84px); padding: 12px 16px 78px; }
+    .analysis-layout { grid-template-columns: 248px minmax(520px, 1fr) 300px; grid-template-rows: minmax(410px, 1fr) 176px; gap: 12px; min-height: 650px; }
+    .analysis-stage > .profile-panel { min-height: 176px; }
+    .plot-layout { display: grid; grid-template-columns: 220px minmax(580px, 1fr) 268px; gap: 16px; min-height: 720px; }
+    .plot-presets, .plot-settings { height: fit-content; overflow: hidden; }
+    .plot-preset { display: block; width: 100%; padding: 11px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text); text-align: left; }
+    .plot-preset:hover, .plot-preset.active { background: rgba(22,143,131,.08); }
+    .plot-preset strong { display: block; font-size: 11px; }
+    .plot-preset span { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+    .plot-main { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+    .plot-preview { min-height: 580px; display: flex; flex-direction: column; }
+    .plot-preview .panel-body { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; background: #e4f1e9; }
+    .plot-canvas { display: block; width: 100%; height: auto; max-height: 570px; background: white; box-shadow: 0 8px 24px rgba(45,42,38,.16); }
+    .plot-caption { display: flex; justify-content: space-between; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+    .setting-row { padding: 12px 15px; border-bottom: 1px solid var(--line); }
+    .setting-row label { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; }
+    .setting-row input[type="range"] { width: 100%; margin-top: 10px; accent-color: var(--accent); }
+    .setting-row select { width: 100%; height: 30px; margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); }
+    .plot-check { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+    .plot-check + .plot-check { margin-top: 10px; }
+    .plot-check input { accent-color: var(--accent); }
+    @media (max-width: 1240px) {
+      body { min-width: 960px; }
+      .workspace-a { grid-template-columns: 220px minmax(420px,1fr) 250px; }
+      .workspace-b { grid-template-columns: 58px 205px minmax(420px,1fr) 255px; }
+      .workspace-c .flow-main { grid-template-columns: minmax(470px,1.1fr) minmax(300px,.9fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="prototype-banner"><strong>PROTOTYPE · ISSUE #5</strong><span>可丢弃交互原型 — 打开灰度 PNG → 确认空间标定 → 分析 → 检查测量有效性 → 重算与导出</span></div>
+  <header class="app-header">
+    <div class="brand"><div class="brand-mark">SA</div><div><h1>Spot Analyzer <small>workspace</small></h1></div></div>
+    <div class="header-actions"><span class="status" id="headerStatus">计算成功 · 测量有效性待确认</span><select id="statusSelect" title="预览状态"><option value="normal">正常</option><option value="warning">警告</option><option value="invalid">无效</option><option value="blank">空白</option><option value="error">错误</option></select><button class="ghost-btn" data-action="open">打开 PNG</button><button class="icon-btn" title="Help">?</button></div>
+  </header>
+
+  <main id="app"></main>
+  <div class="toast" id="toast"></div>
+  <input id="fileInput" type="file" accept="image/png,image/*" hidden />
+
+  <script>
+    const VARIANTS = {
+      A: { title: 'A · 清爽三栏工作台', subtitle: '整齐的参数 / 图像 / 结果工作区' },
+      B: { title: 'B · 证据审阅', subtitle: '以测量有效性和可追溯证据为中心' },
+      C: { title: 'C · 引导流程', subtitle: '把首次分析拆成可确认的五步' }
+    };
+    const query = new URLSearchParams(location.search);
+    let variant = ['A','B','C'].includes(query.get('variant')) ? query.get('variant') : 'A';
+    const state = {
+      page: 'analysis',
+      layer: 'input',
+      displayMode: 'grayscale',
+      normalization: 'percentile',
+      sourceImage: null,
+      plotPreset: 'paper',
+      plotPalette: 'viridis',
+      plotLineWidth: 2,
+      plotLabels: true,
+      plotGrid: true,
+      plotColorbar: true,
+      reportFormat: 'png',
+      reportName: 'spot-analyzer-report',
+      reportTimestamp: true,
+      roi: true,
+      overlay: true,
+      crosshair: true,
+      status: 'normal',
+      fileName: '20260901_focus_01.png',
+      fileInfo: '3088 × 2076 px · 8-bit grayscale',
+      analysisRun: 3,
+      calibration: 'provisional',
+      calibrationConfirmed: false,
+      flowStep: 2,
+      calibrationX: 0.42,
+      calibrationY: 0.42,
+      roiWidth: 97,
+      roiHeight: 97,
+      model: 'rotated-gaussian',
+      preprocess: { background: true, badPixel: true, gamma: false },
+      tool: 'roi'
+    };
+
+    function icon(label) { return `<span aria-hidden="true">${label}</span>`; }
+    function statusLabel() {
+      return { normal: '计算成功 · 测量有效', warning: '计算成功 · 需复核', invalid: '计算成功 · 测量无效', blank: '尚未分析', error: '分析错误' }[state.status];
+    }
+    function statusClass() { return state.status === 'normal' ? '' : state.status; }
+    function statusMarkup() { return `<span class="status ${statusClass()}">${statusLabel()}</span>`; }
+    function imagePanel(extraClass = '') {
+      const layerLabels = { input: '输入图像', calibrated: '校正强度图', model: '模型', residual: '残差' };
+      const displayLabel = state.displayMode === 'pseudocolor' ? `伪彩 · ${state.normalization === 'percentile' ? '分位数 1–99%' : state.normalization === 'minmax' ? '全范围 Min–Max' : '固定范围'}` : '灰度';
+      return `<div class="panel ${extraClass}">
+        <div class="layer-tabs">${Object.entries(layerLabels).map(([key,label]) => `<button class="layer-tab ${state.layer === key ? 'active' : ''}" data-layer="${key}">${label}</button>`).join('')}</div>
+        <div class="display-strip"><span class="display-label">显示</span><button class="display-choice ${state.displayMode === 'grayscale' ? 'active' : ''}" data-display-mode="grayscale">灰度</button><button class="display-choice ${state.displayMode === 'pseudocolor' ? 'active' : ''}" data-display-mode="pseudocolor">伪彩</button><span class="display-label" style="margin-left:8px">归一化</span><select class="display-select" data-display-normalization><option value="percentile" ${state.normalization === 'percentile' ? 'selected' : ''}>分位数 1–99%</option><option value="minmax" ${state.normalization === 'minmax' ? 'selected' : ''}>全范围 Min–Max</option><option value="fixed" ${state.normalization === 'fixed' ? 'selected' : ''}>固定范围</option></select><span class="display-note">仅改变显示，不改变测量数据</span></div>
+        <div class="image-toolbar"><div class="tool-group"><button class="tool-btn ${state.tool === 'roi' ? 'active' : ''}" data-tool="roi">▧ 分析区域</button><button class="tool-btn ${state.tool === 'pan' ? 'active' : ''}" data-tool="pan">✥ 平移</button><button class="tool-btn ${state.tool === 'zoom' ? 'active' : ''}" data-tool="zoom">＋ 缩放</button></div><div class="tool-group"><button class="tool-btn ${state.overlay ? 'active' : ''}" data-toggle="overlay">◌ 覆盖层</button><button class="tool-btn" data-action="reset-view">重置视图</button></div></div>
+        <div class="image-shell"><canvas class="spot-canvas" width="860" height="510"></canvas>${state.status === 'blank' ? `<div class="state-overlay blank"><div><strong>等待分析</strong><span>已载入输入图像；确认空间标定后点击“自动分析”。</span></div></div>` : state.status === 'error' ? `<div class="state-overlay"><div><strong>分析未完成</strong><span>拟合器返回错误。调整分析区域或高级参数后重算。</span></div></div>` : ''}</div>${state.overlay ? `<div class="overlay-legend"><div class="legend-row"><i class="legend-swatch"></i>分析区域</div><div class="legend-row"><i class="legend-swatch amber"></i>半高宽</div><div class="legend-row"><i class="legend-swatch magenta"></i>模型中心</div></div>` : ''}<div class="image-meta"><span>${layerLabels[state.layer]} · ${displayLabel} · 显示图像（仅供观察）</span><span>点击画布切换分析区域显示</span></div>
+      </div>`;
+    }
+    function profilePanel(extraClass = '') {
+      const hasResult = state.status === 'normal' || state.status === 'warning';
+      return `<div class="panel ${extraClass}"><div class="panel-heading"><h3>剖面图 · X / Y</h3><span class="muted tiny">穿过模型中心 · intensity</span></div><div class="panel-body"><div class="profile-legend"><span><i></i>X 剖面 · FWHM ${hasResult ? '18.4' : '—'} µm</span><span><i class="blue"></i>Y 剖面 · FWHM ${hasResult ? '21.1' : '—'} µm</span></div><canvas class="profile-canvas" width="1000" height="140"></canvas><div class="image-meta" style="margin: 5px -3px -4px"><span>X / Y 强度剖面</span><span>残差 RMS ${hasResult ? '2.8' : '—'}%</span></div></div></div>`;
+    }
+    function commonSidebar() {
+      const calibrationLabel = state.calibrationConfirmed ? '已确认 · 项目默认值' : '待确认 · 项目默认值';
+      return `<div class="panel-body"><div class="section"><div class="eyebrow">01 · 输入图像</div><div class="file-card"><div class="file-icon">PNG</div><div><strong>${state.fileName}</strong><span>${state.fileInfo}</span></div></div><button class="ghost-btn drop-file" data-action="open">替换文件</button></div><div class="section"><div class="eyebrow">02 · 空间标定</div><div class="field"><label>X 方向长度 / 像素</label><input type="number" value="${state.calibrationX}" step="0.01" data-calibration="x" /></div><div class="field"><label>Y 方向长度 / 像素</label><input type="number" value="${state.calibrationY}" step="0.01" data-calibration="y" /></div><div class="tiny muted">来源：${calibrationLabel}</div><button class="ghost-btn" style="width:100%;margin-top:9px" data-action="confirm-calibration">确认空间标定</button></div><div class="section"><div class="eyebrow">03 · 预处理</div><label class="check"><input type="checkbox" data-preprocess="background" ${state.preprocess.background ? 'checked' : ''} /> 背景扣除 <span class="muted tiny">median edge</span></label><label class="check"><input type="checkbox" data-preprocess="badPixel" ${state.preprocess.badPixel ? 'checked' : ''} /> 坏点标记 <span class="muted tiny">不自动修复</span></label><label class="check"><input type="checkbox" data-preprocess="gamma" ${state.preprocess.gamma ? 'checked' : ''} /> Gamma / 线性化</label></div><div class="section"><div class="eyebrow">04 · 模型与参数</div><div class="field"><label>模型</label><select data-model><option value="rotated-gaussian" ${state.model === 'rotated-gaussian' ? 'selected' : ''}>旋转椭圆高斯</option><option value="super-gaussian" ${state.model === 'super-gaussian' ? 'selected' : ''}>二维超高斯</option><option value="measure-only" ${state.model === 'measure-only' ? 'selected' : ''}>仅测量，不拟合</option></select></div><div class="split"><div class="field"><label>ROI 宽</label><input type="number" value="${state.roiWidth}" data-roi="width" /></div><div class="field"><label>ROI 高</label><input type="number" value="${state.roiHeight}" data-roi="height" /></div></div><button class="ghost-btn" style="width:100%" data-action="recompute">应用并重算</button></div><div class="section"><div class="eyebrow">05 · 执行分析</div><p class="tiny muted" style="line-height:1.45;margin:8px 0">确认空间标定和参数后，运行一次测量计算。</p><button class="primary-btn" style="width:100%" data-action="analyze">自动分析</button></div></div>`;
+    }
+    function reportExportOptions() {
+      const ready = state.status === 'normal' || state.status === 'warning';
+      return `<details class="export-options" open><summary>导出报告</summary><div class="export-options-body"><label>主要产物<select data-report-format><option value="png" ${state.reportFormat === 'png' ? 'selected' : ''}>PNG · 图像快照</option><option value="pdf" ${state.reportFormat === 'pdf' ? 'selected' : ''}>PDF · 可追溯报告</option></select></label><label>报告名称<input type="text" value="${state.reportName}" data-report-name /></label><label class="check"><input type="checkbox" data-report-timestamp ${state.reportTimestamp ? 'checked' : ''} /> 文件名附加生成时间</label><button class="primary-btn" style="width:100%" data-action="export-report" ${ready ? '' : 'disabled'}>准备导出 .${state.reportFormat}</button></div></details>`;
+    }
+    function resultsPanel() {
+      const valid = state.status === 'normal';
+      const warning = state.status === 'warning';
+      return `<div class="panel-body"><div class="section" style="padding-top:0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="eyebrow">测量有效性</div>${statusMarkup()}</div><div class="quality-box ${statusClass()}" style="margin-top:12px"><strong>${valid ? '结果可用于当前复核' : warning ? '建议先检查输入质量' : state.status === 'blank' ? '等待一次分析' : '不能将结果用于解释'}</strong><span class="tiny muted">${valid ? '未发现饱和核心、裁边或模型异常。' : warning ? '检测到接近饱和的峰值，建议确认原始数据。' : state.status === 'blank' ? '选择“自动分析”查看测量结果。' : '请修正问题后重算；当前数值仅作诊断。'}</span></div></div><div class="section"><div class="eyebrow">核心指标</div><div class="metric-grid"><div class="metric"><span>FWHM X</span><strong>${valid || warning ? '18.4' : '—'}</strong><em>µm</em></div><div class="metric"><span>FWHM Y</span><strong>${valid || warning ? '21.1' : '—'}</strong><em>µm</em></div><div class="metric"><span>EE50</span><strong>${valid || warning ? '12.7' : '—'}</strong><em>µm radius</em></div><div class="metric"><span>拟合 RMS</span><strong>${valid || warning ? '2.8' : '—'}</strong><em>%</em></div></div></div><div class="section"><div class="eyebrow">追溯信息</div><ul class="result-list"><li><span>分析运行</span><strong>#${state.analysisRun}</strong></li><li><span>中心</span><strong>1544.2, 1037.5 px</strong></li><li><span>窗口</span><strong>${state.roiWidth} × ${state.roiHeight} px</strong></li><li><span>校正图</span><strong>${state.preprocess.background ? '已记录' : '未启用'}</strong></li></ul></div><div class="section">${reportExportOptions()}</div></div>`;
+    }
+    function variantA() {
+      return `<div class="workspace-a"><aside class="panel sidebar-a"><div class="panel-heading"><h2>分析参数</h2><span class="eyebrow">编辑</span></div>${commonSidebar()}</aside><section class="main-a">${imagePanel()}${profilePanel('profile-a')}</section><aside class="panel results-a"><div class="panel-heading"><h2>结果</h2>${statusMarkup()}</div>${resultsPanel()}</aside></div>`;
+    }
+    function variantB() {
+      const hasResult = state.status === 'normal' || state.status === 'warning';
+      const inputState = hasResult ? '可分析' : state.status === 'blank' ? '等待分析' : '不可用';
+      return `<div class="workspace-b"><nav class="panel rail-b"><button class="rail-btn active">${icon('⌂')}工作区</button><button class="rail-btn">${icon('▤')}队列</button><button class="rail-btn">${icon('✓')}复核</button><button class="rail-btn">${icon('↗')}导出</button><div class="rail-spacer"></div><button class="rail-btn">${icon('⚙')}设置</button></nav><aside class="panel queue-b"><div class="panel-heading"><h2>最近输入</h2><span class="muted tiny">3 个</span></div><div class="queue-item selected"><div class="queue-thumb"></div><strong>${state.fileName}</strong><span class="muted">刚刚 · ${statusLabel()}</span></div><div class="queue-item"><div class="queue-thumb" style="background:radial-gradient(circle at 44% 49%,#efd9a5 0 5%,#ae6946 14%,#2c3c36 31%,#081214 64%)"></div><strong>edge-clipped.png</strong><span class="muted">昨天 · 需复核</span></div><div class="queue-item"><div class="queue-thumb" style="background:linear-gradient(145deg,#071214,#26363b)"></div><strong>blank-frame.png</strong><span class="muted">昨天 · 空白</span></div><div class="panel-body"><button class="ghost-btn" style="width:100%" data-action="open">打开另一张 PNG</button><button class="primary-btn" style="width:100%;margin-top:8px" data-action="analyze">自动分析</button></div></aside><section class="canvas-b">${imagePanel()}<div class="review-summary"><div class="review-chip"><span>输入质量</span><strong style="color:${hasResult ? 'var(--accent-2)' : 'var(--danger)'}">${inputState}</strong></div><div class="review-chip"><span>空间标定</span><strong style="color:${state.calibrationConfirmed ? 'var(--accent-2)' : 'var(--warning)'}">${state.calibrationConfirmed ? '已确认' : '待确认'} ${state.calibrationX} µm/px</strong></div><div class="review-chip"><span>审阅状态</span><strong>${statusLabel()}</strong></div></div>${profilePanel('profile-a')}</section><aside class="panel inspector-b"><div class="panel-heading"><h2>证据与复核</h2>${statusMarkup()}</div><div class="panel-body"><div class="inspector-section"><h3>质量门禁</h3><div class="inspection-row"><span class="muted">饱和核心</span><span class="value-pill">${hasResult ? '未发现' : '待分析'}</span></div><div class="inspection-row"><span class="muted">分析区域截断</span><span class="value-pill">${hasResult ? '未发现' : '待分析'}</span></div><div class="inspection-row"><span class="muted">模型残差</span><span class="value-pill">${hasResult ? '2.8% · 通过' : '待分析'}</span></div><div class="inspection-row"><span class="muted">标定来源</span><span class="value-pill ${state.calibrationConfirmed ? '' : 'warn'}">${state.calibrationConfirmed ? '已确认' : '待确认'}</span></div></div><div class="inspector-section"><h3>参数摘要</h3><div class="inspection-row"><span class="muted">背景模型</span><strong class="tiny">边缘中位数</strong></div><div class="inspection-row"><span class="muted">拟合模型</span><strong class="tiny">${state.model === 'rotated-gaussian' ? '旋转椭圆高斯' : state.model === 'super-gaussian' ? '二维超高斯' : '仅测量'}</strong></div><div class="inspection-row"><span class="muted">ROI</span><strong class="tiny">${state.roiWidth} × ${state.roiHeight} px</strong></div></div><div class="inspector-section"><h3>复核备注</h3><textarea class="comment-box" placeholder="写下这次测量的判断…"></textarea>${reportExportOptions()}</div></div></aside></div>`;
+    }
+    function variantC() {
+      const hasResult = state.status === 'normal' || state.status === 'warning';
+      const flowStepClass = number => number < state.flowStep ? 'done' : number === state.flowStep ? 'active' : '';
+      const flowStepNumber = number => number < state.flowStep ? '✓' : number;
+      return `<div class="workspace-c"><div class="steps-c"><div class="step ${flowStepClass(1)}"><span class="step-number">${flowStepNumber(1)}</span><span>输入图像</span></div><div class="step ${flowStepClass(2)}"><span class="step-number">${flowStepNumber(2)}</span><span>确认标定</span></div><div class="step ${flowStepClass(3)}"><span class="step-number">${flowStepNumber(3)}</span><span>自动分析</span></div><div class="step ${flowStepClass(4)}"><span class="step-number">${flowStepNumber(4)}</span><span>检查有效性</span></div><div class="step ${flowStepClass(5)}"><span class="step-number">${flowStepNumber(5)}</span><span>导出结果</span></div></div><div class="flow-top"><section class="panel flow-intro"><div class="eyebrow">当前步骤 · 02</div><h2>确认这张图的空间标定</h2><p>分析会把像素坐标转换为物平面单位。这里的默认值来自项目设置，尚未绑定独立标定证书；你可以先继续，结果会保留“暂定”来源。</p><div class="flow-actions"><button class="primary-btn" data-action="analyze">确认并自动分析</button><button class="ghost-btn" data-action="recompute">调整高级参数</button></div></section><section class="panel flow-readiness"><div class="eyebrow">准备情况</div><div class="readiness-line"><span class="muted">输入图像</span><strong style="color:var(--accent-2)">已加载</strong></div><div class="readiness-line"><span class="muted">空间标定</span><strong style="color:var(--warning)">暂定</strong></div><div class="readiness-line"><span class="muted">分析区域</span><strong>97 × 97 px</strong></div><div class="readiness-line"><span class="muted">覆盖层</span><button class="tool-btn ${state.overlay ? 'active' : ''}" data-toggle="overlay">${state.overlay ? '显示中' : '已隐藏'}</button></div></section></div><div class="flow-main"><section>${imagePanel()}<div class="flow-profile">${profilePanel()}</div></section><aside class="flow-results"><div class="panel big-result"><div style="display:flex;justify-content:space-between;align-items:center"><div class="eyebrow">当前结果</div>${statusMarkup()}</div><div class="number">${hasResult ? '18.4' : '—'} <span class="unit">µm FWHM X</span></div><div class="muted">${hasResult ? '21.1 µm FWHM Y · EE50 12.7 µm' : '尚无可解释的测量结果'}</div><div class="confidence"><span>拟合可信度</span><div class="confidence-bar"><i style="width:${hasResult ? '88%' : '0%'}"></i></div><strong style="color:var(--accent-2)">${hasResult ? '88%' : '—'}</strong></div></div><div class="panel"><div class="panel-heading"><h3>有效性检查</h3><span class="muted tiny">${hasResult ? '4 / 4 通过' : '尚未通过'}</span></div><div class="panel-body"><div class="inspection-row"><span class="muted">输入质量</span><span class="value-pill">${hasResult ? '通过' : '待分析'}</span></div><div class="inspection-row"><span class="muted">区域边界</span><span class="value-pill">${hasResult ? '未截断' : '待分析'}</span></div><div class="inspection-row"><span class="muted">模型适用性</span><span class="value-pill">${hasResult ? '通过' : '待分析'}</span></div><div class="inspection-row"><span class="muted">空间标定</span><span class="value-pill ${state.calibrationConfirmed ? '' : 'warn'}">${state.calibrationConfirmed ? '已确认' : '待确认'}</span></div></div></div><div class="panel"><div class="panel-heading"><h3>下一步</h3></div><div class="panel-body">${reportExportOptions()}<button class="ghost-btn" style="width:100%;margin-top:8px" data-action="recompute">修改参数并重算</button></div></div></aside></div></div>`;
+    }
+    function modeRail() {
+      return `<nav class="panel mode-rail" aria-label="工作模式"><button class="${state.page === 'analysis' ? 'active' : ''}" data-page="analysis"><span>⌁</span>分析模式</button><button class="${state.page === 'plot' ? 'active' : ''}" data-page="plot"><span>▤</span>绘图模式</button></nav>`;
+    }
+    function prototypeSwitcher() {
+      const current = VARIANTS[variant];
+      return `<nav class="switcher" aria-label="原型变体切换"><button type="button" data-variant-cycle="-1" aria-label="上一个变体">‹</button><div class="switcher-copy"><strong>${variant} · ${current.title.split(' · ')[1]}</strong><span>${current.subtitle} · 方向键 ← →</span></div><button type="button" data-variant-cycle="1" aria-label="下一个变体">›</button></nav>`;
+    }
+    function analysisImagePanel() {
+      const layerLabels = { input: '输入图像', calibrated: '校正强度图', model: '模型', residual: '残差' };
+      const displayLabel = state.displayMode === 'pseudocolor' ? `伪彩 · ${state.normalization === 'percentile' ? '分位数 1–99%' : state.normalization === 'minmax' ? '全范围 Min–Max' : '固定范围'}` : '灰度';
+      const viewerStatus = state.status === 'blank' ? '已载入输入图像；确认空间标定后点击“自动分析”。' : state.status === 'error' ? '拟合器返回错误；请调整分析区域或高级参数后重算。' : state.status === 'warning' ? '检测到接近饱和的峰值，建议先复核输入质量。' : '图像内仅显示强度数据和测量覆盖线；文字与操作均在图像外。';
+      return `<div class="panel image-panel"><div class="panel-heading"><h2>图像查看</h2><span class="muted tiny">${layerLabels[state.layer]} · ${displayLabel}</span></div><div class="layer-tabs">${Object.entries(layerLabels).map(([key,label]) => `<button class="layer-tab ${state.layer === key ? 'active' : ''}" data-layer="${key}">${label}</button>`).join('')}</div><div class="display-strip"><span class="display-label">显示</span><button class="display-choice ${state.displayMode === 'grayscale' ? 'active' : ''}" data-display-mode="grayscale">灰度</button><button class="display-choice ${state.displayMode === 'pseudocolor' ? 'active' : ''}" data-display-mode="pseudocolor">伪彩</button><span class="display-label" style="margin-left:8px">归一化</span><select class="display-select" data-display-normalization><option value="percentile" ${state.normalization === 'percentile' ? 'selected' : ''}>分位数 1–99%</option><option value="minmax" ${state.normalization === 'minmax' ? 'selected' : ''}>全范围 Min–Max</option><option value="fixed" ${state.normalization === 'fixed' ? 'selected' : ''}>固定范围</option></select><span class="display-note">仅改变显示，不改变测量数据</span></div><div class="image-toolbar"><div class="tool-group"><button class="tool-btn ${state.tool === 'roi' ? 'active' : ''}" data-tool="roi">▧ 分析区域</button><button class="tool-btn ${state.tool === 'pan' ? 'active' : ''}" data-tool="pan">✥ 平移</button><button class="tool-btn ${state.tool === 'zoom' ? 'active' : ''}" data-tool="zoom">＋ 缩放</button></div><div class="tool-group"><button class="tool-btn ${state.overlay ? 'active' : ''}" data-toggle="overlay">◌ 覆盖层</button><button class="tool-btn" data-action="reset-view">重置视图</button></div></div><div class="image-shell"><canvas class="analysis-canvas" width="860" height="510"></canvas>${state.status === 'blank' ? '<div class="state-overlay blank"><div><strong>等待分析</strong><span>已载入输入图像；确认空间标定后点击“自动分析”。</span></div></div>' : state.status === 'error' ? '<div class="state-overlay"><div><strong>分析未完成</strong><span>拟合器返回错误。调整分析区域或高级参数后重算。</span></div></div>' : ''}</div>${state.overlay ? '<div class="viewer-legend"><span><i></i>分析区域</span><span><i class="blue"></i>半高宽</span><span><i class="coral"></i>模型中心</span></div>' : ''}<div class="image-meta"><span>${layerLabels[state.layer]} · 显示图像（仅供观察）</span><span>点击画布切换分析区域显示</span></div><div class="viewer-status ${statusClass()}">${viewerStatus}</div></div>`;
+    }
+    function profileReviewPanel() {
+      const hasResult = state.status === 'normal' || state.status === 'warning';
+      return `<div class="panel profile-panel"><div class="panel-heading"><h2>剖面图 · X / Y</h2><span class="muted tiny">穿过模型中心 · intensity</span></div><div class="panel-body"><div class="profile-legend"><span><i></i>X 剖面 · FWHM ${hasResult ? '18.4' : '—'} µm</span><span><i class="blue"></i>Y 剖面 · FWHM ${hasResult ? '21.1' : '—'} µm</span></div><canvas class="profile-canvas" width="1000" height="140"></canvas><div class="image-meta" style="margin: 5px -3px -4px"><span>X / Y 强度剖面</span><span>残差 RMS ${hasResult ? '2.8' : '—'}%</span></div></div></div>`;
+    }
+    function analysisPage() {
+      if (variant === 'B') return variantB();
+      if (variant === 'C') return variantC();
+      return `<div class="analysis-layout"><aside class="panel sidebar-a"><div class="panel-heading"><h2>分析参数</h2><span class="eyebrow">编辑</span></div>${commonSidebar()}</aside><section class="analysis-stage">${analysisImagePanel()}${profileReviewPanel()}</section><aside class="panel results-a"><div class="panel-heading"><h2>结果</h2>${statusMarkup()}</div>${resultsPanel()}</aside></div>`;
+    }
+    function plotPage() {
+      const presets = { paper: ['论文 · 期刊', '白底、细线、viridis，适合正文插图'], mono: ['打印 · 灰度', '黑白线稿和灰度填色，适合打印'], presentation: ['汇报 · 高对比', '较强色彩和较粗线条，适合投影'] };
+      return `<div class="plot-layout"><aside class="panel plot-presets"><div class="panel-heading"><h2>绘图预设</h2><span class="eyebrow">选择</span></div>${Object.entries(presets).map(([key,[title,desc]]) => `<button class="plot-preset ${state.plotPreset === key ? 'active' : ''}" data-plot-preset="${key}"><strong>${title}</strong><span>${desc}</span></button>`).join('')}<div class="panel-body"><div class="eyebrow">图稿说明</div><p class="tiny muted" style="line-height:1.55;margin-bottom:0">绘图模式只改变论文图的呈现方式，不改变分析结果和校正强度图。</p></div></aside><section class="plot-main"><div class="panel plot-preview"><div class="panel-heading"><h2>论文图预览</h2><span class="muted tiny">${presets[state.plotPreset][0]} · ${state.plotPalette}</span></div><div class="panel-body"><canvas class="plot-canvas" width="1100" height="650"></canvas></div><div class="plot-caption"><span>图 1 · Focal spot intensity and fitted profile</span><span>PNG / SVG 导出预览</span></div></div></section><aside class="panel plot-settings"><div class="panel-heading"><h2>绘图效果</h2><span class="eyebrow">调整</span></div><div class="setting-row"><label><span>色板</span><strong>${state.plotPalette}</strong></label><select data-plot-palette><option value="viridis" ${state.plotPalette === 'viridis' ? 'selected' : ''}>viridis · 科研默认</option><option value="gray" ${state.plotPalette === 'gray' ? 'selected' : ''}>gray · 黑白打印</option><option value="magma" ${state.plotPalette === 'magma' ? 'selected' : ''}>magma · 暗部细节</option></select></div><div class="setting-row"><label><span>线宽</span><strong>${state.plotLineWidth}px</strong></label><input type="range" min="1" max="5" step="1" value="${state.plotLineWidth}" data-plot-line-width /></div><div class="setting-row"><label><span>图面元素</span></label><label class="plot-check"><input type="checkbox" data-plot-labels ${state.plotLabels ? 'checked' : ''} /> 坐标和图例</label><label class="plot-check"><input type="checkbox" data-plot-grid ${state.plotGrid ? 'checked' : ''} /> 辅助网格</label><label class="plot-check"><input type="checkbox" data-plot-colorbar ${state.plotColorbar ? 'checked' : ''} /> 色标</label></div><div class="panel-body"><button class="primary-btn" style="width:100%" data-action="export-figure">导出论文图</button><button class="ghost-btn" style="width:100%;margin-top:8px" data-action="reset-plot">恢复预设</button></div></aside></div>`;
+    }
+    function render() {
+      document.getElementById('app').innerHTML = `<div class="mode-shell">${modeRail()}<section>${state.page === 'analysis' ? analysisPage() : plotPage()}</section></div>${prototypeSwitcher()}`;
+      document.getElementById('headerStatus').className = `status ${statusClass()}`;
+      document.getElementById('headerStatus').textContent = statusLabel();
+      document.getElementById('statusSelect').value = state.status;
+      drawCanvases();
+    }
+    function normalizeValue(value) {
+      if (state.normalization === 'minmax') return Math.max(0, Math.min(1, value / 255));
+      if (state.normalization === 'fixed') return Math.max(0, Math.min(1, (value - 18) / 205));
+      return Math.max(0, Math.min(1, (value - 10) / 225));
+    }
+    function pseudoColor(value) {
+      const stops = [[0,[0,0,0]],[.24,[0,166,166]],[.52,[34,197,94]],[.74,[250,204,21]],[1,[220,38,38]]];
+      for (let i=1;i<stops.length;i++) if (value <= stops[i][0]) {
+        const [a,ca]=stops[i-1], [b,cb]=stops[i], t=(value-a)/(b-a);
+        return `rgb(${Math.round(ca[0]+(cb[0]-ca[0])*t)},${Math.round(ca[1]+(cb[1]-ca[1])*t)},${Math.round(ca[2]+(cb[2]-ca[2])*t)})`;
+      }
+      return 'rgb(220,38,38)';
+    }
+    function paintIntensity(ctx, x, y, value, size = 2) {
+      const normalized = normalizeValue(value);
+      if (state.displayMode === 'pseudocolor') ctx.fillStyle = pseudoColor(normalized);
+      else { const gray = Math.round(normalized * 255); ctx.fillStyle = `rgb(${gray},${gray},${gray})`; }
+      ctx.fillRect(x, y, size, size);
+    }
+    function drawSyntheticImage(ctx, w, h) {
+      const cx=w*.53, cy=h*.49, scale=state.layer==='residual' ? .72 : 1;
+      ctx.fillStyle='#000000'; ctx.fillRect(0,0,w,h);
+      for (let y=0;y<h;y+=2) for (let x=0;x<w;x+=2) {
+        const dx=(x-cx)/(w*.16*scale), dy=(y-cy)/(h*.26*scale), core=Math.exp(-(dx*dx+dy*dy)*2.35);
+        const ring=Math.exp(-Math.pow(Math.sqrt(dx*dx+dy*dy)-1.22,2)*20)*.18;
+        const residual=state.layer==='residual' ? Math.abs(Math.sin(x*.048+y*.031))*.24 : 0;
+        paintIntensity(ctx,x,y,Math.max(0,Math.min(255,12+220*core+85*ring+90*residual)));
+      }
+    }
+    function drawUploadedImage(ctx, w, h) {
+      ctx.fillStyle='#000000'; ctx.fillRect(0,0,w,h);
+      const source=document.createElement('canvas'), sourceCtx=source.getContext('2d');
+      source.width=w; source.height=h; sourceCtx.drawImage(state.sourceImage,0,0,w,h);
+      const pixels=sourceCtx.getImageData(0,0,w,h).data;
+      for (let y=0;y<h;y+=2) for (let x=0;x<w;x+=2) {
+        const i=(y*w+x)*4, value=.2126*pixels[i]+.7152*pixels[i+1]+.0722*pixels[i+2];
+        paintIntensity(ctx,x,y,value);
+      }
+    }
+    function annotationLabel(ctx, text, x, y, color) {
+      ctx.font='600 11px Segoe UI'; const width=ctx.measureText(text).width+14;
+      ctx.fillStyle='rgba(17,24,39,.86)'; ctx.fillRect(x,y-15,width,20);
+      ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.strokeRect(x+.5,y-14.5,width-1,19);
+      ctx.fillStyle='#f6f4f1'; ctx.fillText(text,x+7,y);
+      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x,y+5); ctx.lineTo(x+width,y+5); ctx.stroke();
+    }
+    function plotColor(value) {
+      if (state.plotPalette === 'gray') { const g=Math.round(value*255); return `rgb(${g},${g},${g})`; }
+      if (state.plotPalette === 'magma') { const r=Math.round(15+240*value), g=Math.round(12+120*Math.pow(value,1.7)), b=Math.round(45+150*Math.pow(value,2)); return `rgb(${r},${g},${b})`; }
+      const stops=[[0,[68,1,84]],[.35,[59,82,139]],[.65,[33,145,140]],[1,[253,231,37]]];
+      for(let i=1;i<stops.length;i++) if(value<=stops[i][0]) { const [a,ca]=stops[i-1],[b,cb]=stops[i],t=(value-a)/(b-a); return `rgb(${Math.round(ca[0]+(cb[0]-ca[0])*t)},${Math.round(ca[1]+(cb[1]-ca[1])*t)},${Math.round(ca[2]+(cb[2]-ca[2])*t)})`; }
+      return 'rgb(253,231,37)';
+    }
+    function drawPlotCanvas(canvas) {
+      const ctx=canvas.getContext('2d'), w=canvas.width, h=canvas.height, left=135, top=78, pw=700, ph=430;
+      ctx.clearRect(0,0,w,h); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h);
+      ctx.fillStyle='#202124'; ctx.font='600 21px Georgia'; ctx.fillText('Focal spot intensity and fitted profile',left,39);
+      ctx.fillStyle='#5f6368'; ctx.font='13px Georgia'; ctx.fillText('Normalized corrected intensity',left,61);
+      for(let y=0;y<ph;y+=4) for(let x=0;x<pw;x+=4) { const nx=x/pw, ny=y/ph, dx=(nx-.52)/.18, dy=(ny-.48)/.28, v=Math.max(0,Math.min(1,Math.exp(-(dx*dx+dy*dy)*2.3)+.12*Math.exp(-Math.pow(Math.sqrt(dx*dx+dy*dy)-1.15,2)*17))); ctx.fillStyle=plotColor(v); ctx.fillRect(left+x,top+y,4,4); }
+      ctx.strokeStyle='#202124'; ctx.lineWidth=1; ctx.strokeRect(left,top,pw,ph);
+      if(state.plotGrid){ ctx.strokeStyle='rgba(32,33,36,.18)'; ctx.lineWidth=1; for(let i=1;i<5;i++){ctx.beginPath();ctx.moveTo(left+pw*i/5,top);ctx.lineTo(left+pw*i/5,top+ph);ctx.moveTo(left,top+ph*i/5);ctx.lineTo(left+pw,top+ph*i/5);ctx.stroke();} }
+      ctx.strokeStyle='#1783ff'; ctx.lineWidth=state.plotLineWidth; ctx.beginPath(); for(let x=0;x<=pw;x+=2){const n=x/pw,y=top+ph+45-ph*.78*Math.exp(-Math.pow((n-.5)/.2,2)*3.1);if(x===0)ctx.moveTo(left+x,y);else ctx.lineTo(left+x,y);} ctx.stroke();
+      if(state.plotLabels){ ctx.fillStyle='#202124'; ctx.font='13px Georgia'; ctx.fillText('x position (µm)',left+pw/2-45,top+ph+75); ctx.save();ctx.translate(left-75,top+ph/2+35);ctx.rotate(-Math.PI/2);ctx.fillText('y position (µm)',0,0);ctx.restore(); for(let i=0;i<=4;i++){ctx.fillText(`${-20+i*10}`,left+pw*i/4-8,top+ph+20);ctx.fillText(`${20-i*10}`,left-33,top+ph*i/4+5);} ctx.fillStyle='#5f6368';ctx.font='12px Georgia';ctx.fillText('Measured field',left+20,top+ph+108);ctx.strokeStyle='#2dd4bf';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(left+115,top+ph+104);ctx.lineTo(left+145,top+ph+104);ctx.stroke();ctx.fillStyle='#5f6368';ctx.fillText('Fitted profile',left+210,top+ph+108);ctx.strokeStyle='#1783ff';ctx.lineWidth=state.plotLineWidth;ctx.beginPath();ctx.moveTo(left+300,top+ph+104);ctx.lineTo(left+330,top+ph+104);ctx.stroke(); }
+      if(state.plotColorbar){ const bx=left+pw+34, by=top, bh=ph; for(let y=0;y<bh;y++){ctx.fillStyle=plotColor(1-y/bh);ctx.fillRect(bx,by+y,18,1);} ctx.strokeStyle='#202124';ctx.strokeRect(bx,by,18,bh);ctx.fillStyle='#202124';ctx.font='11px Georgia';ctx.fillText('1.0',bx+25,by+5);ctx.fillText('0.5',bx+25,by+bh/2+4);ctx.fillText('0',bx+25,by+bh+4); }
+    }
+    function drawCanvases() {
+      document.querySelectorAll('.analysis-canvas, .spot-canvas').forEach(canvas => {
+        const ctx=canvas.getContext('2d'), w=canvas.width, h=canvas.height;
+        if (state.sourceImage) drawUploadedImage(ctx,w,h); else drawSyntheticImage(ctx,w,h);
+        const cx=w*.53, cy=h*.49;
+        if (state.layer==='model') { ctx.fillStyle='rgba(0,166,166,.09)';ctx.fillRect(0,0,w,h); }
+        if (state.layer==='residual') { ctx.fillStyle='rgba(139,92,246,.16)';ctx.fillRect(0,0,w,h); }
+        if (state.overlay) {
+          ctx.lineJoin='round'; ctx.shadowColor='rgba(0,0,0,.85)'; ctx.shadowBlur=4;
+          if (state.roi) { ctx.strokeStyle='#071114';ctx.lineWidth=5;ctx.setLineDash([7,5]);ctx.strokeRect(cx-w*.18,cy-h*.28,w*.36,h*.56);ctx.strokeStyle='#2dd4bf';ctx.lineWidth=2;ctx.strokeRect(cx-w*.18,cy-h*.28,w*.36,h*.56);ctx.setLineDash([]); }
+          if (state.crosshair) { ctx.strokeStyle='#071114';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(cx-23,cy);ctx.lineTo(cx+23,cy);ctx.moveTo(cx,cy-23);ctx.lineTo(cx,cy+23);ctx.stroke();ctx.strokeStyle='#c65746';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(cx-23,cy);ctx.lineTo(cx+23,cy);ctx.moveTo(cx,cy-23);ctx.lineTo(cx,cy+23);ctx.stroke(); }
+          ctx.strokeStyle='#071114';ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(cx,cy,w*.105,h*.18,0,0,Math.PI*2);ctx.stroke();ctx.strokeStyle='#1783ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(cx,cy,w*.105,h*.18,0,0,Math.PI*2);ctx.stroke(); ctx.shadowBlur=0;
+        }
+      });
+      document.querySelectorAll('.profile-canvas').forEach(canvas => {
+        const ctx=canvas.getContext('2d'), w=canvas.width, h=canvas.height; ctx.clearRect(0,0,w,h); ctx.fillStyle='#ffffff';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#d7e7dc';ctx.lineWidth=1;
+        for(let i=1;i<5;i++){ctx.beginPath();ctx.moveTo(0,i*h/5);ctx.lineTo(w,i*h/5);ctx.stroke();}
+        if (state.status !== 'normal' && state.status !== 'warning') { ctx.fillStyle='#756f68';ctx.font='12px Segoe UI';ctx.textAlign='center';ctx.fillText(state.status === 'blank' ? '完成分析后显示剖面' : '当前状态不可用于解释',w/2,h/2+4);ctx.textAlign='start';return; }
+        ctx.strokeStyle='#2dd4bf';ctx.lineWidth=2;ctx.beginPath();for(let x=0;x<w;x++){const n=x/w,y=h*.86-h*.68*Math.exp(-Math.pow((n-.49)/.19,2)*3.2);if(x===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.stroke();
+        ctx.strokeStyle='#1783ff';ctx.lineWidth=1;ctx.beginPath();for(let x=0;x<w;x++){const n=x/w,y=h*.87-h*.65*Math.exp(-Math.pow((n-.49)/.2,2)*2.9);if(x===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.stroke();
+      });
+      document.querySelectorAll('.plot-canvas').forEach(drawPlotCanvas);
+    }
+    function toast(message) { const el=document.getElementById('toast'); el.textContent=message; el.classList.add('show'); clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove('show'),2300); }
+    function cycle(direction) { const keys=Object.keys(VARIANTS), index=keys.indexOf(variant); variant=keys[(index+direction+keys.length)%keys.length]; const next=new URL(location.href); next.searchParams.set('variant',variant); history.replaceState({},'',next); render(); toast(`已切换到 ${VARIANTS[variant].title}`); }
+    function handleAction(action) {
+      if(action==='open') document.getElementById('fileInput').click();
+      if(action==='confirm-calibration') { state.calibrationConfirmed=true; state.flowStep=Math.max(state.flowStep,3); toast('空间标定已确认'); render(); }
+      if(action==='analyze') { if(!state.calibrationConfirmed && variant !== 'C') { state.status='blank'; render(); toast('请先确认左侧空间标定'); return; } state.calibrationConfirmed=true; state.flowStep=4; state.status='normal'; state.analysisRun++; toast('自动分析完成：计算成功，测量有效性通过'); render(); }
+      if(action==='recompute') { if(!state.calibrationConfirmed) { state.status='blank'; render(); toast('请先确认空间标定，再重算'); return; } state.flowStep=4; state.analysisRun++; state.status='normal'; toast('已应用高级参数并完成重算'); render(); }
+      if(action==='export') { state.flowStep=5; toast('原型动作：已准备可追溯测量报告（未写入磁盘）'); render(); }
+      if(action==='export-report') { const name=state.reportName.trim() || 'spot-analyzer-report'; const stamp=state.reportTimestamp ? `-${new Date().toISOString().slice(0,16).replace(/[-:T]/g,'')}` : ''; const fileName=`${name}${stamp}.${state.reportFormat}`; state.flowStep=5; render(); toast(`原型动作：已准备 ${fileName}（未写入磁盘）`); }
+      if(action==='export-figure') toast('原型动作：已准备论文图导出（PNG / SVG，未写入磁盘）');
+      if(action==='reset-plot') { state.plotPreset='paper'; state.plotPalette='viridis'; state.plotLineWidth=2; state.plotLabels=true; state.plotGrid=true; state.plotColorbar=true; render(); toast('已恢复论文图预设'); }
+      if(action==='reset-view') { state.roi=true; state.crosshair=true; state.tool='roi'; render(); toast('视图已重置'); }
+    }
+    document.addEventListener('click', event => {
+      const target=event.target.closest('[data-page],[data-layer],[data-toggle],[data-tool],[data-action],[data-display-mode],[data-plot-preset]'); if(!target)return;
+      if(target.dataset.page) { state.page=target.dataset.page; render(); toast(state.page==='analysis' ? '已切换到分析模式' : '已切换到绘图模式'); }
+      if(target.dataset.layer) { state.layer=target.dataset.layer; render(); toast(`显示切换为：${target.textContent}`); }
+      if(target.dataset.displayMode) { state.displayMode=target.dataset.displayMode; render(); toast(state.displayMode==='pseudocolor' ? '已切换伪彩显示' : '已切换灰度显示'); }
+      if(target.dataset.plotPreset) { const presets={paper:['viridis',2,true,true,true],mono:['gray',1,true,true,true],presentation:['magma',3,true,false,true]}; const [palette,line,labels,grid,colorbar]=presets[target.dataset.plotPreset]; state.plotPreset=target.dataset.plotPreset; state.plotPalette=palette; state.plotLineWidth=line; state.plotLabels=labels; state.plotGrid=grid; state.plotColorbar=colorbar; render(); toast(`已应用绘图预设：${target.textContent.trim().split('\\n')[0]}`); }
+      if(target.dataset.toggle==='overlay') { state.overlay=!state.overlay; render(); }
+      if(target.dataset.tool) { state.tool=target.dataset.tool; if(state.tool==='roi')state.roi=true; render(); }
+      if(target.dataset.action) handleAction(target.dataset.action);
+    });
+    document.addEventListener('keydown', event => { if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return; if(event.key==='1'){state.page='analysis';render();} if(event.key==='2'){state.page='plot';render();} if(event.key==='ArrowLeft'){event.preventDefault();cycle(-1);} if(event.key==='ArrowRight'){event.preventDefault();cycle(1);} });
+    document.addEventListener('click', event => { const canvas=event.target.closest('.analysis-canvas, .spot-canvas'); if(!canvas || state.tool !== 'roi') return; state.roi=!state.roi; render(); toast(state.roi ? '分析区域已显示' : '分析区域已隐藏'); });
+    document.addEventListener('click', event => { const target=event.target.closest('[data-variant-cycle]'); if(!target)return; cycle(Number(target.dataset.variantCycle)); });
+    document.getElementById('statusSelect').addEventListener('change', event => { state.status=event.target.value; state.flowStep=state.status === 'blank' ? 2 : 4; render(); toast(`状态预览：${statusLabel()}`); });
+    document.addEventListener('change', event => {
+      const target=event.target;
+      if(target.closest('[data-display-normalization]')) { state.normalization=target.value; render(); toast(`显示归一化：${target.options[target.selectedIndex].text}`); return; }
+      if(target.closest('[data-plot-palette]')) { state.plotPalette=target.value; render(); return; }
+      if(target.closest('[data-plot-labels]')) { state.plotLabels=target.checked; render(); return; }
+      if(target.closest('[data-plot-grid]')) { state.plotGrid=target.checked; render(); return; }
+      if(target.closest('[data-plot-colorbar]')) { state.plotColorbar=target.checked; render(); return; }
+      if(target.closest('[data-plot-line-width]')) { state.plotLineWidth=Number(target.value); render(); return; }
+      if(target.closest('[data-report-format]')) { state.reportFormat=target.value; render(); return; }
+      if(target.closest('[data-report-name]')) { state.reportName=target.value; render(); return; }
+      if(target.closest('[data-report-timestamp]')) { state.reportTimestamp=target.checked; render(); return; }
+      if(target.closest('[data-calibration]')) { const field=target.dataset.calibration; state[field === 'x' ? 'calibrationX' : 'calibrationY']=Number(target.value); state.calibrationConfirmed=false; render(); toast('空间标定已修改，请重新确认'); return; }
+      if(target.closest('[data-roi]')) { const field=target.dataset.roi; state[field === 'width' ? 'roiWidth' : 'roiHeight']=Number(target.value); state.status='blank'; render(); toast('分析区域已修改，请重新计算'); return; }
+      if(target.closest('[data-model]')) { state.model=target.value; state.status='blank'; render(); toast('分析模型已修改，请重新计算'); return; }
+      if(target.closest('[data-preprocess]')) { state.preprocess[target.dataset.preprocess]=target.checked; state.status='blank'; render(); toast('预处理设置已修改，请重新计算'); return; }
+    });
+    document.getElementById('fileInput').addEventListener('change', event => { const file=event.target.files[0]; if(!file)return; if(!file.type.startsWith('image/')) { state.status='error'; render(); toast('无法打开：请选择 PNG 或其他图像文件'); return; } const image=new Image(); image.onload=()=>{ state.sourceImage=image; state.fileName=file.name; state.fileInfo=`本地文件 · ${image.naturalWidth} × ${image.naturalHeight} px`; state.status='blank'; state.calibrationConfirmed=false; render(); toast(`已载入 ${file.name}，请确认空间标定后分析`); }; image.src=URL.createObjectURL(file); });
+    render();
+  </script>
+</body>
+</html>
