@@ -156,6 +156,39 @@ def test_performance_baseline_reports_structured_workload_and_formal_status() ->
     assert report["environment"]["formal_environment"] is False
 
 
+def test_nonformal_performance_workload_is_incomplete(monkeypatch) -> None:
+    scene = SimpleNamespace(
+        input_array=validation.np.zeros((2, 2), dtype=validation.np.uint8),
+        manifest=SimpleNamespace(bit_depth=8),
+    )
+    monkeypatch.setattr(validation, "_performance_environment", lambda: {"formal_environment": True})
+    monkeypatch.setattr(validation, "_benchmark_scene", lambda size: scene)
+    monkeypatch.setattr(validation, "_benchmark_configuration", lambda size: object())
+    monkeypatch.setattr(validation, "analyze", lambda *args, **kwargs: SimpleNamespace(record=object()))
+    monkeypatch.setattr(validation, "_worker_request", lambda *args, **kwargs: {})
+    monkeypatch.setattr("spot_analyzer.worker.run_worker_process", lambda request: [{"kind": "completed"}])
+    clock = iter(float(index) for index in range(1000))
+    monkeypatch.setattr(validation.time, "perf_counter", lambda: next(clock))
+    result = validation.run_performance_baseline(sizes=(128, 512), repetitions=10)
+
+    assert result["formal_workload"] is False
+    assert result["formal_status"] == "incomplete"
+    assert result["passed"] is False
+    assert result["formal_workload_contract"]["violations"] == [
+        "formal_workload_requires_sizes_256_and_1024"
+    ]
+
+
+def test_empty_performance_workload_is_incomplete(monkeypatch) -> None:
+    monkeypatch.setattr(validation, "_performance_environment", lambda: {"formal_environment": True})
+    result = validation.run_performance_baseline(sizes=(), repetitions=10)
+
+    assert result["workloads"] == []
+    assert result["formal_workload"] is False
+    assert result["formal_status"] == "incomplete"
+    assert result["passed"] is False
+
+
 def _stub_performance_measurements(
     monkeypatch,
     *,
@@ -180,8 +213,11 @@ def _stub_performance_measurements(
         "spot_analyzer.worker.run_worker_process",
         lambda request: [{"kind": "completed"}],
     )
-    samples = iter((0.0, core_seconds, 10.0, 10.0 + worker_seconds))
-    monkeypatch.setattr(validation.time, "perf_counter", lambda: next(samples))
+    samples = []
+    for _ in range(20):
+        samples.extend((0.0, core_seconds))
+        samples.extend((10.0, 10.0 + worker_seconds))
+    monkeypatch.setattr(validation.time, "perf_counter", lambda: samples.pop(0))
 
 
 def test_formal_performance_target_violation_fails_section(monkeypatch) -> None:
@@ -192,13 +228,13 @@ def test_formal_performance_target_violation_fails_section(monkeypatch) -> None:
         worker_seconds=5.01,
     )
 
-    result = validation.run_performance_baseline(sizes=(1024,), repetitions=1)
+    result = validation.run_performance_baseline(sizes=(256, 1024), repetitions=10)
     section = validation._run_section("performance", lambda: result)
 
     assert result["formal_status"] == "failed"
     assert result["passed"] is False
-    assert result["workloads"][0]["core"]["target_passed"] is False
-    assert result["workloads"][0]["worker"]["target_passed"] is False
+    assert result["workloads"][1]["core"]["target_passed"] is False
+    assert result["workloads"][1]["worker"]["target_passed"] is False
     assert section["status"] == "failed"
 
 
