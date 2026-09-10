@@ -499,6 +499,7 @@ def test_report_shares_record_id_and_never_overwrites_existing_name(tmp_path) ->
     }
     assert "fit_initial_parameters" not in package.sections["diagnostics"]["fit"]
     assert package.sections["input"]["sha256"] == outcome.record.input_metadata["sha256"]
+    assert package.sections["provenance"]["canonicalizer_version"] == "rfc8785-python-0.1.4"
     assert package.sections["configuration"]["region"] == {
         "x": 64,
         "y": 64,
@@ -514,6 +515,24 @@ def test_report_shares_record_id_and_never_overwrites_existing_name(tmp_path) ->
     pdf = write_report(prepare_report(outcome.record, pdf_specification), pdf_specification)
     assert pdf.path is not None and pdf.path.suffix == ".pdf" and pdf.path.exists()
     assert pdf.sha256 == hashlib.sha256(pdf.path.read_bytes()).hexdigest()
+
+
+def test_report_export_returns_structured_failure_for_unusable_directory(tmp_path) -> None:
+    scene = generate_scene("gaussian_circular")
+    outcome = analyze(
+        InputImage(scene.input_array, bit_depth=8, encoding_semantic="relative_intensity_code", encoding_semantic_confirmed=True),
+        AnalysisConfiguration(AnalysisRegion(64, 64, 128, 128), background_region=AnalysisRegion(32, 64, 32, 128)),
+    )
+    assert outcome.record is not None
+    blocked = tmp_path / "blocked"
+    blocked.write_text("not a directory", encoding="utf-8")
+    specification = ReportSpecification("png", "blocked", blocked)
+
+    result = write_report(prepare_report(outcome.record, specification), specification)
+
+    assert result.flow_status == "export_failed"
+    assert result.path is None
+    assert result.diagnostics[0]["code"] == "report_directory_create_failed"
 
 
 def test_concurrent_report_exports_reserve_distinct_names(tmp_path) -> None:

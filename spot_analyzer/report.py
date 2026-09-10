@@ -98,12 +98,14 @@ def prepare_report(record: AnalysisRecord, specification: ReportSpecification) -
         "configuration": configuration,
         "preprocessing": {
             **asdict(record.configuration.preprocessing),
-            "branch": "standard",
+            "branch": "advanced" if record.configuration.preprocessing.advanced_processing_enabled else "standard",
+            "standard_branch_retained": bool(record.diagnostics.get("preprocessing_standard_branch", {}).get("retained", True)),
             "steps": (
                 "decode",
                 "bad_pixel_mask",
                 "affine_background",
                 "signed_correction",
+                *tuple(record.diagnostics.get("preprocessing_advanced_branch", {}).get("steps", ())),
             ),
         },
         "analysis_model": asdict(record.configuration.model),
@@ -115,6 +117,7 @@ def prepare_report(record: AnalysisRecord, specification: ReportSpecification) -
             "quality_profile": record.configuration.quality_profile,
             "profile_validation": record.configuration.profile_validation,
             "algorithm_version": record.configuration.algorithm_version,
+            "canonicalizer_version": record.diagnostics.get("canonicalizer_version"),
             "report_schema": "report-package-v1",
         },
     }
@@ -292,7 +295,16 @@ def write_report(package: ReportPackage, specification: ReportSpecification) -> 
     if format_name != package.format or report_name != package.report_name:
         raise ValueError("report package does not match export specification")
     destination = Path(specification.output_directory)
-    destination.mkdir(parents=True, exist_ok=True)
+    try:
+        destination.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        return ExportOutcome(
+            None,
+            package.record_id,
+            "export_failed",
+            None,
+            ({"code": "report_directory_create_failed", "message": str(error)},),
+        )
     stem = _safe_name(report_name)
     if specification.append_timestamp:
         stem += "-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
