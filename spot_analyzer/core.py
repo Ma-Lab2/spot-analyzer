@@ -7,7 +7,7 @@ import hashlib
 import json
 import math
 import uuid
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 from scipy.ndimage import binary_dilation, gaussian_filter, label, maximum_filter
@@ -142,6 +142,68 @@ def _plane_design(
         (np.ones(normalized_x.size), normalized_x.ravel(), normalized_y.ravel())
     )
     return design, normalized_x, normalized_y
+
+
+def _matching_background(
+    image: InputImage,
+    region: AnalysisRegion,
+    background_frame: InputImage | None,
+) -> tuple[np.ndarray | None, dict[str, Any]]:
+    """Use a background frame only when every required acquisition field matches."""
+    if background_frame is None:
+        return None, {}
+    required = ("exposure", "gain", "temperature", "optical_path", "focal_length", "acquisition_batch", "roi")
+    fields = {
+        "exposure": image.metadata.get("exposure"),
+        "gain": image.metadata.get("gain"),
+        "temperature": image.metadata.get("temperature"),
+        "optical_path": image.metadata.get("optical_path"),
+        "focal_length": image.metadata.get("focal_length"),
+        "acquisition_batch": image.metadata.get("acquisition_batch"),
+        "roi": image.metadata.get("roi", {"x": region.x, "y": region.y, "width": region.width, "height": region.height}),
+    }
+    background_fields = {key: background_frame.metadata.get(key) for key in required}
+    missing = [key for key in required if fields[key] is None or background_fields[key] is None]
+    mismatched = [key for key in required if key not in missing and fields[key] != background_fields[key]]
+    if image.background_match_unverified:
+        mismatched.append("explicit_user_override")
+    shape_match = background_frame.data.shape == image.data.shape
+    format_match = (
+        background_frame.channels == image.channels
+        and background_frame.bit_depth == image.bit_depth
+    )
+    diagnostics = {
+        "background_frame_present": True,
+        "background_frame_shape_match": shape_match,
+        "background_frame_format_match": format_match,
+        "background_match_required_fields": list(required),
+        "background_match_missing_fields": missing,
+        "background_match_mismatched_fields": mismatched,
+    }
+    if missing or mismatched or not shape_match or not format_match:
+        diagnostics["background_match_status"] = "unverified"
+        diagnostics["background_match_reason"] = "background_match_unverified"
+        return None, diagnostics
+    diagnostics["background_match_status"] = "matched"
+    diagnostics["background_source"] = "matched_frame"
+    frame = np.asarray(background_frame.data, dtype=np.float64)
+    finite = np.isfinite(frame)
+    if not np.any(finite):
+        diagnostics["background_match_status"] = "unverified"
+        diagnostics["background_match_reason"] = "background_frame_unavailable"
+        return None, diagnostics
+    residual = frame[finite] - float(np.median(frame[finite]))
+    scale = 1.4826 * float(np.median(np.abs(residual - np.median(residual))))
+    diagnostics.update({
+        "background_fit_status": "converged",
+        "background_valid_pixels": int(np.count_nonzero(finite)),
+        "background_excluded_pixels": int(np.count_nonzero(~finite)),
+        "background_noise_sigma": scale,
+        "background_residual_rms": float(np.sqrt(np.mean(residual**2))),
+        "background_normalized_rms": float(np.sqrt(np.mean(residual**2)) / scale) if scale > 1e-8 else 0.0,
+        "background_mask_hash": _mask_hash(finite),
+    })
+    return frame, diagnostics
 
 
 def _background(
@@ -300,6 +362,31 @@ def _background(
         }
     )
     return fitted, diagnostics
+
+
+def _advanced_preprocess(
+    corrected: np.ndarray,
+    bad_pixel_mask: np.ndarray,
+    configuration: AnalysisConfiguration,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Apply the explicitly configured exploratory branch without replacing standard data."""
+    advanced = np.array(corrected, dtype=np.float64, copy=True)
+    steps: list[str] = []
+    if configuration.bad_pixel_policy == "interpolate":
+        invalid = bad_pixel_mask | ~np.isfinite(advanced)
+        if np.any(invalid):
+            replacement = gaussian_filter(np.where(invalid, 0.0, advanced), sigma=1.0, radius=2)
+            support = gaussian_filter((~invalid).astype(float), sigma=1.0, radius=2)
+            advanced[invalid] = replacement[invalid] / np.maximum(support[invalid], 1e-12)
+        steps.append("bad_pixel_interpolation-v1")
+    if configuration.filtering == "gaussian":
+        advanced = gaussian_filter(advanced, sigma=1.0, radius=3, mode="nearest")
+        steps.append("gaussian_filter-v1")
+    if configuration.dpc == "gradient":
+        smooth = gaussian_filter(advanced, sigma=2.0, radius=6, mode="nearest")
+        advanced = advanced - smooth + float(np.mean(smooth))
+        steps.append("dpc_gradient-v1")
+    return advanced, {"enabled": True, "steps": steps, "version": "advanced-preprocessing-v1"}
 
 
 def _moment_metrics(
@@ -495,6 +582,15 @@ def _gaussian_fit(
         )
         fitted = result.x
         fitted_image = model(fitted)
+        degrees_of_freedom = max(int(fit_values.size - fitted.size), 1)
+        try:
+            covariance = np.linalg.pinv(result.jac.T @ result.jac) * (2.0 * result.cost / degrees_of_freedom)
+            parameter_uncertainty = np.sqrt(np.maximum(np.diag(covariance), 0.0))
+            covariance_payload: list[list[float]] | None = covariance.tolist()
+            uncertainty_payload: list[float] | None = parameter_uncertainty.tolist()
+        except np.linalg.LinAlgError:
+            covariance_payload = None
+            uncertainty_payload = None
         diagnostics = {
             "fit_converged": bool(result.success),
             "fit_nfev": int(result.nfev),
@@ -504,7 +600,13 @@ def _gaussian_fit(
             "fit_initial_parameters": [float(value) for value in initial],
             "fit_initialization_method": "local-half-height-v1",
             "fit_initialization_reasons": list(initialization_reasons),
+            "fit_covariance": covariance_payload,
+            "fit_parameter_uncertainty": uncertainty_payload,
+            "fit_degrees_of_freedom": degrees_of_freedom,
             "fit_optimizer": "bounded-least-squares-trf-v1",
+            "fit_termination_message": str(result.message),
+            "fit_optimality": float(result.optimality),
+            "fit_active_mask": [int(value) for value in result.active_mask],
             "fit_boundary_hit": bool(
                 np.any(np.isclose(fitted, lower, atol=1e-7))
                 or np.any(np.isclose(fitted, upper, atol=1e-7))
@@ -529,6 +631,16 @@ def _gaussian_fit(
     return metrics, fitted_image, diagnostics
 
 
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
 def _analysis_fingerprint(image: InputImage, configuration: AnalysisConfiguration) -> str:
     input_hash = image.sha256 or hashlib.sha256(np.ascontiguousarray(image.data).tobytes()).hexdigest()
     payload = {
@@ -543,6 +655,12 @@ def _analysis_fingerprint(image: InputImage, configuration: AnalysisConfiguratio
             "encoding_semantic_confirmed": image.encoding_semantic_confirmed,
             "byte_order": image.byte_order,
             "metadata": dict(image.metadata),
+            "background_frame": {
+                "sha256": image.background_frame.sha256 if image.background_frame is not None else None,
+                "shape": list(image.background_frame.data.shape) if image.background_frame is not None else None,
+                "metadata": dict(image.background_frame.metadata) if image.background_frame is not None else None,
+                "match_unverified": image.background_match_unverified,
+            },
         },
         "configuration": asdict(configuration),
         "analysis_contract": configuration.analysis_contract,
@@ -552,7 +670,7 @@ def _analysis_fingerprint(image: InputImage, configuration: AnalysisConfiguratio
         "algorithm_version": configuration.algorithm_version,
     }
     canonical = json.dumps(
-        payload,
+        _jsonable(payload),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -684,24 +802,26 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "analysis_region_unconfirmed"},))
     if region.x < 0 or region.y < 0 or region.x + region.width > shape[1] or region.y + region.height > shape[0]:
         return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "analysis_region_out_of_bounds"},))
-    if configuration.background_region is None or not configuration.background_region.confirmed:
-        return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "background_region_unconfirmed"},))
     background_region = configuration.background_region
-    if (
-        background_region.x < 0
-        or background_region.y < 0
-        or background_region.width <= 0
-        or background_region.height <= 0
-        or background_region.x + background_region.width > shape[1]
-        or background_region.y + background_region.height > shape[0]
-    ):
-        return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "background_region_out_of_bounds"},))
-    if _regions_overlap(region, background_region):
-        return AnalysisOutcome(
-            FlowStatus.PARAMETER_INVALID,
-            None,
-            ({"code": "background_region_overlaps_analysis_region"},),
-        )
+    matched_frame = image.background_frame if configuration.preprocessing.background_source == "matched_frame" else None
+    if matched_frame is None and (background_region is None or not background_region.confirmed):
+        return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "background_region_unconfirmed"},))
+    if background_region is not None:
+        if (
+            background_region.x < 0
+            or background_region.y < 0
+            or background_region.width <= 0
+            or background_region.height <= 0
+            or background_region.x + background_region.width > shape[1]
+            or background_region.y + background_region.height > shape[0]
+        ):
+            return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "background_region_out_of_bounds"},))
+        if _regions_overlap(region, background_region):
+            return AnalysisOutcome(
+                FlowStatus.PARAMETER_INVALID,
+                None,
+                ({"code": "background_region_overlaps_analysis_region"},),
+            )
     bad_pixel_mask, out_of_bounds_bad_pixels = _bad_pixel_mask(shape, configuration)
     if out_of_bounds_bad_pixels:
         return AnalysisOutcome(
@@ -725,14 +845,32 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     roi_slice = _region_slice(region)
     roi = data[roi_slice]
     roi_valid = measurement_valid[roi_slice]
-    background, background_diagnostics = _background(
-        data,
-        region,
-        background_region,
-        bad_pixel_mask,
-        saturated_mask,
-    )
+    matched_background, match_diagnostics = _matching_background(image, region, matched_frame)
+    if matched_background is not None:
+        background = matched_background
+        background_diagnostics = match_diagnostics
+    else:
+        if matched_frame is not None and background_region is None:
+            return AnalysisOutcome(
+                FlowStatus.PARAMETER_INVALID,
+                None,
+                ({"code": "background_region_unconfirmed", "reason": "background_match_unverified"},),
+            )
+        background, background_diagnostics = _background(
+            data,
+            region,
+            background_region,
+            bad_pixel_mask,
+            saturated_mask,
+        )
+        background_diagnostics = {**match_diagnostics, **background_diagnostics}
     corrected = data - background
+    standard_corrected = corrected
+    advanced_diagnostics: dict[str, Any] = {"enabled": False, "steps": []}
+    if configuration.preprocessing.advanced_processing_enabled:
+        corrected, advanced_diagnostics = _advanced_preprocess(
+            corrected, bad_pixel_mask, configuration.preprocessing
+        )
     positive = np.maximum(corrected, 0.0)
     roi_corrected = corrected[roi_slice]
     roi_positive = positive[roi_slice]
@@ -740,6 +878,8 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     localization = np.where(measurement_valid, corrected, np.nan)
     center_xy = _subpixel_peak(localization)
     reasons: set[str] = set()
+    if background_diagnostics.get("background_match_status") == "unverified":
+        reasons.add("background_match_unverified")
     bad_count = int(np.count_nonzero(bad_pixel_mask))
     if bad_count:
         reasons.add("bad_pixels_present")
@@ -850,7 +990,18 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         roi_valid,
         local_center,
     )
-    estimated_fwhm_major = math.sqrt(8.0 * math.log(2.0)) * max(initial_sigma_x, initial_sigma_y)
+    standard_roi_positive = np.maximum(standard_corrected[roi_slice], 0.0)
+    standard_sigma_x, standard_sigma_y, _ = _gaussian_initial_widths(
+        standard_roi_positive,
+        roi_valid,
+        local_center,
+    )
+    standard_fwhm = math.sqrt(8.0 * math.log(2.0)) * max(standard_sigma_x, standard_sigma_y)
+    advanced_fwhm = math.sqrt(8.0 * math.log(2.0)) * max(initial_sigma_x, initial_sigma_y)
+    advanced_sensitivity = abs(advanced_fwhm - standard_fwhm) / max(standard_fwhm, 1e-12)
+    if configuration.preprocessing.advanced_processing_enabled and advanced_sensitivity > 0.10:
+        reasons.add("advanced_sensitivity_exceeded")
+    estimated_fwhm_major = advanced_fwhm
     separation_threshold = max(3.0, 0.5 * estimated_fwhm_major)
     candidate_threshold = max(0.2 * core_peak, 5.0 * noise)
     supported_signal = roi_valid & (roi_positive >= candidate_threshold) if core_peak > 0 else np.zeros_like(roi_valid)
@@ -937,6 +1088,7 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         "background_noise_unavailable",
         "background_residual_high",
         "core_support_insufficient",
+        "advanced_sensitivity_exceeded",
     }
     if core_peak <= 0 or "center_outside_region" in reasons:
         metrics = _empty_metrics(
@@ -988,7 +1140,7 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
             )
             fit_reasons = set(reasons)
             fit_status = MeasurementStatus.INVALID if hard_invalid & reasons else MeasurementStatus.VALID
-            if {"multiple_peaks", "ring_candidate", "bad_pixels_present", "bad_pixel_in_core", "core_support_caution", "background_residual_caution", "low_snr_caution"} & reasons and fit_status != MeasurementStatus.INVALID:
+            if {"multiple_peaks", "ring_candidate", "bad_pixels_present", "bad_pixel_in_core", "core_support_caution", "background_residual_caution", "background_match_unverified", "low_snr_caution"} & reasons and fit_status != MeasurementStatus.INVALID:
                 fit_status = MeasurementStatus.CAUTION
             if not fit_diagnostics["fit_converged"] or fit_diagnostics["fit_boundary_hit"]:
                 fit_status = MeasurementStatus.INVALID
@@ -1136,6 +1288,15 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         "fit": fit_diagnostics,
         "profile_validation": configuration.profile_validation,
         "quality_status_before_profile_cap": quality_before_cap.value,
+        "preprocessing_standard_branch": {"retained": True, "version": configuration.preprocessing.version},
+        "preprocessing_advanced_branch": {
+            **advanced_diagnostics,
+            "standard_fwhm_estimate": standard_fwhm,
+            "advanced_fwhm_estimate": advanced_fwhm,
+            "sensitivity_fraction": advanced_sensitivity,
+            "sensitivity_threshold": 0.10,
+            "sensitivity_gate": "failed" if "advanced_sensitivity_exceeded" in reasons else "passed",
+        },
     }
     statuses = [metric.status for metric in metrics.values() if metric.status != MeasurementStatus.UNAVAILABLE]
     summary = (
@@ -1160,6 +1321,7 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         fitted_intensity=fitted_image,
         fit_residual_intensity=fit_residual_image,
         measurement_mask=measurement_valid,
+        standard_corrected_intensity=standard_corrected,
         core_mask=core_mask,
         input_metadata={
             "asset_id": image.asset_id,
@@ -1174,6 +1336,13 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
             "encoding_semantic_confirmed": image.encoding_semantic_confirmed,
             "metadata": dict(image.metadata),
             "read_status": image.read_status,
+            "background_frame": {
+                "asset_id": image.background_frame.asset_id,
+                "sha256": image.background_frame.sha256,
+                "uri_hint": image.background_frame.uri_hint,
+                "metadata": dict(image.background_frame.metadata),
+            } if image.background_frame is not None else None,
+            "background_match_unverified_requested": image.background_match_unverified,
         },
     )
     return AnalysisOutcome(FlowStatus.COMPUTED, record)

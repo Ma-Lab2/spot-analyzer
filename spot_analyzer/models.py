@@ -54,6 +54,8 @@ class InputImage:
     byte_order: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
     read_status: str = "read"
+    background_frame: "InputImage | None" = None
+    background_match_unverified: bool = False
 
     def __post_init__(self) -> None:
         array = np.asarray(self.data)
@@ -142,37 +144,20 @@ class PreprocessingConfiguration:
     version: str = "preprocessing-v1"
 
     def __post_init__(self) -> None:
-        if self.background_source != "confirmed_region_affine":
-            raise ValueError("only confirmed-region affine background is implemented")
-        if self.bad_pixel_policy != "mask_only":
-            raise ValueError("only mask-only bad-pixel handling is implemented")
+        if self.background_source not in {"confirmed_region_affine", "matched_frame"}:
+            raise ValueError("background_source is not supported")
+        if self.bad_pixel_policy not in {"mask_only", "interpolate"}:
+            raise ValueError("bad_pixel_policy is not supported")
         if self.negative_value_policy != "preserve_signed":
             raise ValueError("signed corrected intensity must be preserved")
-        if self.filtering != "none" or self.dpc != "none" or self.advanced_processing_enabled:
-            raise ValueError("advanced preprocessing is not implemented")
-        frozen_parameters = (
-            self.background_signal_sigma_threshold,
-            self.background_signal_peak_fraction,
-            self.background_mask_dilation_pixels,
-            self.background_huber_delta,
-            self.background_max_iterations,
-            self.convergence_tolerance,
-            self.localization_sigma_pixels,
-            self.localization_truncate_sigma,
-            self.core_threshold_fraction,
-            self.core_invalid_fraction,
-            self.core_caution_fraction,
-            self.snr_invalid_threshold,
-            self.snr_caution_threshold,
-            self.multiple_peak_relative_threshold,
-            self.multiple_peak_noise_threshold,
-            self.multiple_peak_min_support_pixels,
-            self.multiple_peak_min_separation_pixels,
-            self.version,
-        )
-        expected = (3.0, 0.10, 1, 1.345, 50, 1e-8, 1.0, 3.0, 0.5, 0.8, 0.95, 5.0, 10.0, 0.20, 5.0, 9, 3.0, "preprocessing-v1")
-        if frozen_parameters != expected:
-            raise ValueError("preprocessing parameters do not match preprocessing-v1")
+        if self.filtering not in {"none", "gaussian"} or self.dpc not in {"none", "gradient"}:
+            raise ValueError("preprocessing option is not supported")
+        if self.advanced_processing_enabled and self.filtering == "none" and self.dpc == "none" and self.bad_pixel_policy == "mask_only":
+            raise ValueError("advanced preprocessing requires an explicit branch option")
+        if self.background_max_iterations <= 0 or self.convergence_tolerance <= 0:
+            raise ValueError("background fit limits must be positive")
+        if not self.version.strip():
+            raise ValueError("preprocessing version must not be empty")
 
 
 @dataclass(frozen=True)
@@ -280,6 +265,7 @@ class AnalysisRecord:
     measurement_mask: np.ndarray
     core_mask: np.ndarray
     input_metadata: Mapping[str, Any] = field(default_factory=dict)
+    standard_corrected_intensity: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -292,6 +278,10 @@ class AnalysisRecord:
             array = np.array(getattr(self, name), dtype=np.float64, copy=True)
             array.setflags(write=False)
             object.__setattr__(self, name, array)
+        if self.standard_corrected_intensity is not None:
+            array = np.array(self.standard_corrected_intensity, dtype=np.float64, copy=True)
+            array.setflags(write=False)
+            object.__setattr__(self, "standard_corrected_intensity", array)
         for name in ("measurement_mask", "core_mask"):
             array = np.array(getattr(self, name), dtype=bool, copy=True)
             array.setflags(write=False)

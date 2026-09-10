@@ -13,14 +13,14 @@
 - `spot_analyzer.input.decode_png`：8/16 位灰度 PNG 适配器、IHDR 位深核对、16 位 PNG 网络字节序记录、PNG 格式检查、RGB 通道一致性记录、输入 URI/元数据快照和 expected SHA-256 核验；
 - `spot_analyzer.worker`：`analysis-request-v1` / `analysis-event-v1` / `analysis-result-v1` 的资产路径或 file URI + expected hash NDJSON 路径；协议拒绝跨进程内联整幅像素数组，要求完整配置快照和输出策略，并把派生数组原子写入运行目录后返回 URI/hash/生成参数；
 - `spot_analyzer.report`：共享 `record_id` / `analysis_fingerprint` 的不可变 `ReportPackage` PNG/PDF 原型，展示输入、校正、正信号、拟合、残差、mask、中心剖面和能量曲线，记录输出 SHA-256，并用独占占位和原子替换避免并发同名覆盖；
-- `spot_analyzer.core`：加入版本化坏点坐标、统一测量有效 mask、背景/拟合/残差 mask 统计及哈希；
+- `spot_analyzer.core`：加入版本化坏点坐标、统一测量有效 mask、背景/拟合/残差 mask 统计及哈希；支持完整采集条件字段匹配的背景帧优先路径，保留确认保护区仿射降级并记录逐字段不匹配；支持显式高级预处理分支（坏点插值、Gaussian filtering、DPC gradient），始终保留标准校正数组并记录 >10% 核心宽度敏感性门控；拟合记录终止信息、活动边界、协方差和参数不确定度估计；
 - `tests/`：核心、适配器、真实 worker 子进程、报告、manifest、真实 fixture 分析和 32 个低 SNR 固定种子测试。
 
 ## 测试结果
 
 ```text
 python -m pytest -q
-78 passed
+82 passed
 
 python -m compileall -q spot_analyzer tests
 通过，无输出
@@ -51,8 +51,8 @@ VS Code diagnostics
 3. 报告已加入基础审计视图，但还缺坐标标尺、ROI/中心叠加、完整图例、派生报告资产清单和更严格的 PDF/PNG 语义结构检查，仍不是 Issue #8 的最终报告；
 4. worker 已实现资产引用、expected hash、完整请求快照、真实子进程 NDJSON 和运行目录派生资产写出；取消、超时、强制崩溃、stderr 诊断和导出失败烟测仍需实现；
 5. 当前只验证直接核心与 worker/CLI seam 的一致性；仓库中尚无 WPF 调用层，因此真正的 UI/CLI 端到端一致性仍待 Windows 外壳实现后验证；
-6. 高级预处理当前被显式拒绝；标准/高级双分支和敏感性比较尚未实现。匹配背景帧优先路径也尚未实现，当前只支持经确认且与分析区域不重叠的保护区仿射背景；
-7. 物理域已覆盖缺失标定门控、方形像元换算、非方形像元主轴协方差变换和物理域 EE 重算；拟合 covariance/不确定度传播仍未实现；
+6. 已实现匹配背景帧优先路径：尺寸、通道、位深及曝光/增益/温度/光路/焦距/批次/ROI 字段全部匹配时使用背景帧；缺字段或单字段不匹配时记录 `background_match_unverified` 并降级到确认保护区仿射背景。已实现显式高级预处理双分支和 >10% 核心宽度敏感性门控；高级分支不能绕过标准质量无效条件。仍需更广泛的真实采集条件 fixture 证据；
+7. 物理域已覆盖缺失标定门控、方形像元换算、非方形像元主轴协方差变换和物理域 EE 重算；拟合已记录协方差、参数不确定度估计、终止信息和活动边界，但物理域不确定度传播仍未实现；
 8. `analysis_fingerprint` 仍使用稳定排序 JSON 原型，尚未替换为完整 RFC 8785 兼容实现；
 9. `pyproject.toml` 已固定 Python 3.12 范围和当前依赖版本，但本轮实际测试解释器仍为 Python 3.10.11；Python 3.12 构建、PyInstaller one-folder worker、.NET 8 self-contained 外壳和无开发环境的干净 Windows portable ZIP 烟测尚未执行。
 

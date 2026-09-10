@@ -16,7 +16,7 @@ import pytest
 import numpy as np
 from PIL import Image
 
-from spot_analyzer import AnalysisConfiguration, AnalysisRegion, InputImage, analyze, decode_png
+from spot_analyzer import AnalysisConfiguration, AnalysisRegion, InputImage, PreprocessingConfiguration, analyze, decode_png
 from spot_analyzer.report import ReportSpecification, prepare_report, write_report
 from spot_analyzer.synthetic import generate_scene
 from spot_analyzer.worker import handle_request
@@ -128,6 +128,148 @@ def test_png_adapter_rejects_non_identical_rgb_channels() -> None:
 
     assert outcome.image is None
     assert outcome.diagnostics[0]["code"] == "rgb_channels_not_identical"
+
+
+def test_matched_background_frame_is_used_when_all_acquisition_metadata_matches() -> None:
+    scene = generate_scene("gaussian_circular")
+    metadata = {
+        "exposure": 10.0,
+        "gain": 2.0,
+        "temperature": 21.5,
+        "optical_path": "path-a",
+        "focal_length": 50.0,
+        "acquisition_batch": "batch-1",
+        "roi": {"x": 64, "y": 64, "width": 128, "height": 128},
+    }
+    background = InputImage(
+        np.full_like(scene.input_array, 12.0),
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata=metadata,
+        sha256="background-hash",
+    )
+    image = InputImage(
+        scene.input_array,
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata=metadata,
+        background_frame=background,
+    )
+    config = AnalysisConfiguration(
+        AnalysisRegion(64, 64, 128, 128),
+        preprocessing=PreprocessingConfiguration(background_source="matched_frame"),
+    )
+
+    outcome = analyze(image, config)
+
+    assert outcome.record is not None
+    assert outcome.record.diagnostics["background_source"] == "matched_frame"
+    assert outcome.record.diagnostics["background_match_status"] == "matched"
+    assert np.allclose(outcome.record.corrected_intensity, scene.input_array - 12.0)
+
+
+def test_background_frame_with_one_mismatched_field_falls_back_with_caution() -> None:
+    scene = generate_scene("gaussian_circular")
+    metadata = {
+        "exposure": 10.0,
+        "gain": 2.0,
+        "temperature": 21.5,
+        "optical_path": "path-a",
+        "focal_length": 50.0,
+        "acquisition_batch": "batch-1",
+        "roi": {"x": 64, "y": 64, "width": 128, "height": 128},
+    }
+    mismatched = dict(metadata, gain=3.0)
+    background = InputImage(
+        np.full_like(scene.input_array, 12.0),
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata=mismatched,
+    )
+    image = InputImage(
+        scene.input_array,
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata=metadata,
+        background_frame=background,
+    )
+    config = AnalysisConfiguration(
+        AnalysisRegion(64, 64, 128, 128),
+        background_region=AnalysisRegion(32, 64, 32, 128),
+        preprocessing=PreprocessingConfiguration(background_source="matched_frame"),
+    )
+
+    outcome = analyze(image, config)
+
+    assert outcome.record is not None
+    assert outcome.record.diagnostics["background_match_status"] == "unverified"
+    assert "background_match_unverified" in outcome.record.diagnostics["reasons"]
+    assert "gain" in outcome.record.diagnostics["background_match_mismatched_fields"]
+    assert outcome.record.summary_status.value == "caution"
+
+
+def test_matched_background_requires_complete_metadata() -> None:
+    scene = generate_scene("gaussian_circular")
+    background = InputImage(
+        np.zeros_like(scene.input_array),
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata={},
+    )
+    image = InputImage(
+        scene.input_array,
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata={"exposure": 10.0},
+        background_frame=background,
+    )
+    config = AnalysisConfiguration(
+        AnalysisRegion(64, 64, 128, 128),
+        background_region=AnalysisRegion(32, 64, 32, 128),
+        preprocessing=PreprocessingConfiguration(background_source="matched_frame"),
+    )
+
+    outcome = analyze(image, config)
+
+    assert outcome.record is not None
+    assert outcome.record.diagnostics["background_match_status"] == "unverified"
+    assert set(outcome.record.diagnostics["background_match_missing_fields"]) >= {
+        "gain", "temperature", "optical_path", "focal_length", "acquisition_batch", "roi",
+    }
+
+
+def test_advanced_preprocessing_retains_standard_branch_and_records_sensitivity() -> None:
+    scene = generate_scene("gaussian_circular")
+    image = InputImage(
+        scene.input_array,
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+    )
+    config = AnalysisConfiguration(
+        AnalysisRegion(64, 64, 128, 128),
+        background_region=AnalysisRegion(32, 64, 32, 128),
+        preprocessing=PreprocessingConfiguration(
+            advanced_processing_enabled=True,
+            filtering="gaussian",
+        ),
+    )
+
+    outcome = analyze(image, config)
+
+    assert outcome.record is not None
+    assert outcome.record.standard_corrected_intensity is not None
+    assert outcome.record.diagnostics["preprocessing_standard_branch"]["retained"] is True
+    advanced = outcome.record.diagnostics["preprocessing_advanced_branch"]
+    assert advanced["enabled"] is True
+    assert advanced["steps"] == ("gaussian_filter-v1",)
+    assert 0.0 <= advanced["sensitivity_fraction"]
 
 
 def test_worker_asset_request_validates_hash_and_matches_direct_core(tmp_path) -> None:
