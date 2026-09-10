@@ -6,6 +6,7 @@ import math
 import pytest
 
 from spot_analyzer import AnalysisConfiguration, AnalysisRegion, InputImage, analyze
+from spot_analyzer import validation
 from spot_analyzer.core import _propagated_fwhm_uncertainty
 from spot_analyzer.synthetic import generate_scene
 from spot_analyzer.validation import (
@@ -139,6 +140,11 @@ def test_performance_baseline_reports_structured_workload_and_formal_status() ->
     workload = report["workloads"][0]
     assert workload["image_size"] == {"width": 256, "height": 256}
     assert workload["repetitions"] == 1
+    assert workload["warmup"] == {
+        "runs": 1,
+        "timed": False,
+        "modes": {"core": "unmeasured_analyze", "worker": "unmeasured_process_png_analysis_derived_write"},
+    }
     for kind in ("core", "worker"):
         assert len(workload[kind]["runs_seconds"]) == 1
         assert workload[kind]["p50_seconds"] >= 0
@@ -146,6 +152,23 @@ def test_performance_baseline_reports_structured_workload_and_formal_status() ->
         assert workload[kind]["max_seconds"] >= 0
     assert report["formal_status"] in {"passed", "incomplete"}
     assert report["environment"]["formal_environment"] is False
+
+
+def test_performance_warmup_is_not_in_hot_samples(monkeypatch) -> None:
+    calls = 0
+    original_analyze = validation.analyze
+
+    def counted_analyze(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_analyze(*args, **kwargs)
+
+    monkeypatch.setattr(validation, "analyze", counted_analyze)
+    report = validation.run_performance_baseline(sizes=(256,), repetitions=1)
+
+    assert calls == 2
+    assert len(report["workloads"][0]["core"]["runs_seconds"]) == 1
+    assert report["workloads"][0]["warmup"]["timed"] is False
 
 
 def test_issue10_validation_exposes_performance_section_status(monkeypatch) -> None:

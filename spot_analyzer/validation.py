@@ -955,6 +955,14 @@ def run_performance_baseline(
         for size in size_values:
             scene = _benchmark_scene(size)
             configuration = _benchmark_configuration(size)
+            # Warm each workload once without starting the clock.  This keeps
+            # import, allocator, and one-time algorithm setup out of hot samples.
+            warmup_outcome = analyze(
+                InputImage(scene.input_array, bit_depth=scene.manifest.bit_depth, encoding_semantic="relative_intensity_code", encoding_semantic_confirmed=True),
+                configuration,
+            )
+            if warmup_outcome.record is None:
+                raise RuntimeError(f"core benchmark warm-up failed for {size}x{size}")
             core_times: list[float] = []
             for _ in range(repetitions):
                 started = time.perf_counter()
@@ -966,6 +974,10 @@ def run_performance_baseline(
                 if outcome.record is None:
                     raise RuntimeError(f"core benchmark failed for {size}x{size}")
                 core_times.append(elapsed)
+            warmup_request = _worker_request(scene, configuration, root / f"{size}-warmup.png", root / f"assets-{size}-warmup")
+            warmup_messages = run_worker_process(warmup_request)
+            if not warmup_messages or warmup_messages[-1].get("kind") != "completed":
+                raise RuntimeError(f"worker benchmark warm-up failed for {size}x{size}")
             worker_times: list[float] = []
             for index in range(repetitions):
                 request = _worker_request(scene, configuration, root / f"{size}-{index}.png", root / f"assets-{size}-{index}")
@@ -980,6 +992,11 @@ def run_performance_baseline(
             workloads.append({
                 "image_size": {"width": size, "height": size},
                 "repetitions": repetitions,
+                "warmup": {
+                    "runs": 1,
+                    "timed": False,
+                    "modes": {"core": "unmeasured_analyze", "worker": "unmeasured_process_png_analysis_derived_write"},
+                },
                 "core": {"mode": "hot_analyze", **core, "target_p95_seconds": 2.0 if size == 1024 else None, "target_passed": size != 1024 or core["p95_seconds"] <= 2.0},
                 "worker": {"mode": "cold_process_png_analysis_derived_write", **worker, "target_p95_seconds": 5.0 if size == 1024 else None, "target_passed": size != 1024 or worker["p95_seconds"] <= 5.0},
             })
