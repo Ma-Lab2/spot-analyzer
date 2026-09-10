@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from spot_analyzer.identity import canonical_bytes, fingerprint, validate_golden_vectors
+from spot_analyzer.validation import run_identity_validation, run_issue10_validation
 
 
 ROOT = Path(__file__).parents[1]
@@ -33,3 +34,16 @@ def test_committed_golden_vectors_are_checked_in_a_child_process() -> None:
     assert result["failures"] == []
     assert result["vector_count"] == 3
     assert result["status"] in {"passed", "incomplete"}
+
+
+def test_identity_validation_reports_golden_vectors_and_worker_parity() -> None:
+    result = run_identity_validation(ROOT / "docs/validation/issue-10-fingerprint-golden-vectors.json")
+    assert result["status"] in {"passed", "incomplete"}
+    assert result["golden_vectors"]["failures"] == []
+    assert result["worker_parity"]["status"] == "passed"
+
+
+def test_issue10_validation_exposes_identity_section() -> None:
+    result = run_issue10_validation(manifests={}, seeds=(), golden_vector_path=ROOT / "missing-vectors.json")
+    assert result["sections"]["identity"]["status"] == "incomplete"
+    assert result["overall_status"] in {"incomplete", "failed"}

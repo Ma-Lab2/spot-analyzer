@@ -24,6 +24,7 @@ VALIDATION_SECTION_STATUSES = frozenset({"passed", "failed", "incomplete"})
 _PROFILE_VALIDATION = "provisional"
 
 from .core import analyze
+from .identity import validate_golden_vectors
 from .input import decode_png
 from .models import AnalysisConfiguration, AnalysisRecord, AnalysisRegion, InputImage
 from .oracle import circular_gaussian_oracle, scene_oracle
@@ -397,13 +398,16 @@ def _run_section(name: str, operation: Any, *, available: bool = True) -> dict[s
             "result": None,
             "error": {"type": type(exc).__name__, "message": str(exc)},
         }
-    if "passed" in result:
-        passed = bool(result["passed"])
+    if result.get("status") in VALIDATION_SECTION_STATUSES:
+        status = str(result["status"])
+    elif "passed" in result:
+        status = _section_status(passed=bool(result["passed"]))
     elif "results" in result:
         passed = bool(result["results"]) and all(item.get("passed", False) for item in result["results"])
+        status = _section_status(passed=passed)
     else:
-        passed = False
-    return {"name": name, "status": _section_status(passed=passed), "result": result}
+        status = "incomplete"
+    return {"name": name, "status": status, "result": result}
 
 
 def _aggregate_status(sections: Mapping[str, Mapping[str, Any]]) -> str:
@@ -553,11 +557,89 @@ def run_report_validation(output_directory: str | Path | None = None) -> dict[st
     }
 
 
+def _worker_parity_validation() -> dict[str, Any]:
+    """Compare one direct analysis with the real NDJSON worker child process."""
+    from .worker import run_worker_process
+
+    scene = generate_scene("gaussian_circular", seed=0)
+    configuration = _scene_configuration(scene)
+    with tempfile.TemporaryDirectory(prefix="spot-identity-parity-") as temporary:
+        root = Path(temporary)
+        request = _worker_request(scene, configuration, root / "input.png", root / "assets")
+        decoded = decode_png(
+            request["input"]["asset"]["path"],
+            confirm_relative_intensity=True,
+            expected_sha256=request["input"]["asset"]["expected_sha256"],
+        )
+        if decoded.image is None:
+            return {"status": "failed", "passed": False, "reason": "direct_input_decode_failed"}
+        direct = analyze(decoded.image, configuration)
+        if direct.record is None:
+            return {"status": "failed", "passed": False, "reason": "direct_analysis_failed"}
+        messages = run_worker_process(request)
+    terminal = messages[-1] if messages else {}
+    worker_record = terminal.get("record") if terminal.get("kind") == "completed" else None
+    if not isinstance(worker_record, Mapping):
+        return {
+            "status": "failed",
+            "passed": False,
+            "reason": "worker_analysis_failed",
+            "terminal": terminal,
+        }
+    direct_record = direct.record
+    direct_metrics = direct_record.reportable_metrics()
+    worker_metrics = worker_record.get("metrics")
+    checks = {
+        "flow_status": direct.flow_status.value == worker_record.get("flow_status"),
+        "summary_status": direct_record.summary_status.value == worker_record.get("summary_status"),
+        "analysis_fingerprint": direct_record.analysis_fingerprint == worker_record.get("analysis_fingerprint"),
+        "metrics": direct_metrics == worker_metrics,
+        "diagnostic_reasons": sorted(direct_record.diagnostics.get("reasons", ()))
+        == sorted(worker_record.get("diagnostics", {}).get("reasons", ())),
+    }
+    passed = all(checks.values())
+    return {
+        "status": "passed" if passed else "failed",
+        "passed": passed,
+        "checks": checks,
+        "analysis_fingerprint": direct_record.analysis_fingerprint,
+    }
+
+
+def run_identity_validation(
+    golden_vector_path: str | Path = Path("docs/validation/issue-10-fingerprint-golden-vectors.json"),
+) -> dict[str, Any]:
+    """Validate golden vectors and direct-core/worker identity parity."""
+    golden = validate_golden_vectors(golden_vector_path)
+    try:
+        parity = _worker_parity_validation()
+    except Exception as exc:
+        parity = {
+            "status": "failed",
+            "passed": False,
+            "error": {"type": type(exc).__name__, "message": str(exc)},
+        }
+    statuses = {golden.get("status"), parity.get("status")}
+    status = "failed" if "failed" in statuses else "incomplete" if "incomplete" in statuses else "passed"
+    return {
+        "status": status,
+        "passed": status == "passed",
+        "golden_vectors": golden,
+        "worker_parity": parity,
+        "incomplete_reason": (
+            "formal_identity_validation_requires_python_3_12"
+            if status == "incomplete" and golden.get("status") == "incomplete"
+            else None
+        ),
+    }
+
+
 def run_issue10_validation(
     manifests: Mapping[str, int] | None = None,
     seeds: Iterable[int] = range(32),
     real_manifest_path: str | Path = Path("docs/validation/issue-10-real-fixtures.json"),
     real_fixture_root: str | Path | None = None,
+    golden_vector_path: str | Path = Path("docs/validation/issue-10-fingerprint-golden-vectors.json"),
 ) -> dict[str, Any]:
     """Run the Issue #10 synthetic and low-SNR sections in one JSON-ready operation.
 
@@ -587,6 +669,10 @@ def run_issue10_validation(
         "report": _run_section(
             "report",
             run_report_validation,
+        ),
+        "identity": _run_section(
+            "identity",
+            lambda: run_identity_validation(golden_vector_path),
         ),
     }
     identity = {
