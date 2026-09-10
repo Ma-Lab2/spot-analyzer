@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from spot_analyzer import AnalysisConfiguration, AnalysisRegion, InputImage, analyze
 from spot_analyzer.synthetic import generate_scene
 from spot_analyzer.validation import load_manifest, run_low_snr_regression, run_manifest_regression
 
@@ -45,6 +46,36 @@ def test_complete_manifest_matrix_passes_its_declared_evidence_policy() -> None:
     assert len(report["results"]) == 9
     assert all(result["metric_gates_passed"] for result in report["results"])
     assert all(result["passed"] for result in report["results"])
+
+
+def test_fingerprint_uses_rfc8785_and_records_canonicalizer_provenance() -> None:
+    scene = generate_scene("gaussian_circular", seed=7)
+    first = InputImage(
+        scene.input_array,
+        bit_depth=8,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata={"gain": 2, "exposure": 10},
+    )
+    second = InputImage(
+        scene.input_array,
+        bit_depth=8,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata={"exposure": 10, "gain": 2},
+    )
+    configuration = AnalysisConfiguration(
+        AnalysisRegion(64, 64, 128, 128),
+        background_region=AnalysisRegion(32, 64, 32, 128),
+    )
+
+    first_outcome = analyze(first, configuration)
+    second_outcome = analyze(second, configuration)
+
+    assert first_outcome.record is not None
+    assert second_outcome.record is not None
+    assert first_outcome.record.analysis_fingerprint == second_outcome.record.analysis_fingerprint
+    assert first_outcome.record.diagnostics["canonicalizer_version"] == "rfc8785-python-0.1.4"
 
 
 def test_low_snr_aggregate_records_bias_and_gate_distribution() -> None:

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, replace
 import hashlib
-import json
 import math
 import uuid
 from typing import Any, Mapping
 
 import numpy as np
+import rfc8785
 from scipy.ndimage import binary_dilation, gaussian_filter, label, maximum_filter
 from scipy.optimize import least_squares
 
@@ -27,6 +27,7 @@ from .models import (
 
 _METHOD = "analysis-core-v1"
 _MASK_VERSION = "measurement-mask-v1"
+_CANONICALIZER_VERSION = "rfc8785-python-0.1.4"
 
 
 def _reason_tuple(reasons: set[str]) -> tuple[str, ...]:
@@ -668,14 +669,9 @@ def _analysis_fingerprint(image: InputImage, configuration: AnalysisConfiguratio
         "quality_profile": configuration.quality_profile,
         "profile_validation": "provisional",
         "algorithm_version": configuration.algorithm_version,
+        "canonicalizer_version": _CANONICALIZER_VERSION,
     }
-    canonical = json.dumps(
-        _jsonable(payload),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
+    canonical = rfc8785.dumps(_jsonable(payload))
     return "sha256-" + hashlib.sha256(canonical).hexdigest()
 
 
@@ -1287,6 +1283,7 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         "reasons": list(_reason_tuple(reasons)),
         "fit": fit_diagnostics,
         "profile_validation": configuration.profile_validation,
+        "canonicalizer_version": _CANONICALIZER_VERSION,
         "quality_status_before_profile_cap": quality_before_cap.value,
         "preprocessing_standard_branch": {"retained": True, "version": configuration.preprocessing.version},
         "preprocessing_advanced_branch": {

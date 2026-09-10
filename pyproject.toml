@@ -11,6 +11,7 @@ dependencies = [
   "numpy==2.2.6",
   "scipy==1.15.3",
   "Pillow==12.2.0",
+  "rfc8785==0.1.4",
 ]
 
 [tool.pytest.ini_options]
