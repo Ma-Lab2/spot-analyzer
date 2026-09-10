@@ -1,0 +1,2719 @@
+{
+  "acceptance": {
+    "bounded_limitations": [
+      "real_fixtures",
+      "identity",
+      "performance"
+    ],
+    "calculation_success": true,
+    "implementation_complete": true,
+    "measurement_validity": "section-specific; see results",
+    "production_release": "out_of_scope",
+    "user_acceptance": "pending",
+    "validation_complete": false
+  },
+  "artifacts": {
+    "json": "docs\\validation\\issue-10-formal-results.json",
+    "markdown": "docs\\validation\\issue-10-formal-acceptance.md"
+  },
+  "contract": "validation-contract-v1",
+  "environment": {
+    "machine": "AMD64",
+    "numpy": "2.2.6",
+    "pillow": "12.2.0",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
+    "python": "3.10.11",
+    "python_implementation": "CPython",
+    "scipy": "1.15.3",
+    "spot_analyzer": "0.1.0"
+  },
+  "identity": {
+    "analysis_contract": "analysis-contract-v1",
+    "generator_version": "synthetic-scenes-v1",
+    "profile_validation": "provisional",
+    "quality_profile": "quality-profile-v1",
+    "standard_profile": "standard-profile-v1",
+    "validation_contract": "validation-contract-v1"
+  },
+  "incomplete_items": [
+    "real_fixtures",
+    "identity",
+    "performance"
+  ],
+  "issue": 10,
+  "overall_status": "incomplete",
+  "sections": {
+    "identity": {
+      "name": "identity",
+      "result": {
+        "golden_vectors": {
+          "canonicalizer_version": "rfc8785-python-0.1.4",
+          "failures": [],
+          "incomplete_reason": "formal_validation_requires_python_3_12",
+          "name": "identity",
+          "python": "3.10.11",
+          "status": "incomplete",
+          "vector_count": 3
+        },
+        "incomplete_reason": "formal_identity_validation_requires_python_3_12",
+        "passed": false,
+        "status": "incomplete",
+        "worker_parity": {
+          "analysis_fingerprint": "sha256-9fb20048c133d0c07e53a463b5071efc6692375d5babf6879a814f0ede463388",
+          "checks": {
+            "analysis_fingerprint": true,
+            "derived_asset_identity": true,
+            "record_semantics": true
+          },
+          "differences": [],
+          "passed": true,
+          "status": "passed"
+        }
+      },
+      "status": "incomplete"
+    },
+    "low_snr": {
+      "name": "low_snr",
+      "result": {
+        "bias": {
+          "available_case_count": 17,
+          "mad_error": 0.8007031023557332,
+          "median_error": 1.8220418075817832,
+          "metric": "gaussian_fwhm_major",
+          "p95_absolute_error": 3.7593381838217255,
+          "unit": "px"
+        },
+        "case_count": 32,
+        "cases": [
+          {
+            "analysis_fingerprint": "sha256-e69863dbbfbe067600d81317d96bc553c6fe282c62e1dba6cb6af95e59bbe842",
+            "flow_status": "computed",
+            "fwhm_error_px": 2.19858507625581,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 0,
+            "snr": 5.013970307744151,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-4bf070cddf8c9852d16f2ba107a665fedf9037f85e07023bcdce17a8d5ab8fcc",
+            "flow_status": "computed",
+            "fwhm_error_px": 1.017211770335397,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 1,
+            "snr": 5.962839715796534,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-2f968dad64e2d90aa690341ab7be4acaee25a27c5747c78fdcdb1aae72770951",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 2,
+            "snr": -3.2752456991322876,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-3f1d639fd22902c69b83c09960e41eab99a19dd1761fd24c87c04efe82be73d4",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 3,
+            "snr": 0.4781457651150431,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-2dd07a6ade50810e534549762de671ba53c6a4e0443186b1517908b4129fbd12",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 4,
+            "snr": -3.2973011003468016,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-6e6d15ed747271674bdab604d548f4c15e74fa6415dd7f49c111c88cb35943ab",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 5,
+            "snr": -3.809667974553453,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-9485734eefce3a80fcd481cb36a073f04b5525b7000b2367db64abed2744a259",
+            "flow_status": "computed",
+            "fwhm_error_px": 2.6227449099375164,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 6,
+            "snr": 8.40150997248419,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-660e5376169a366fd93b8a278a2669f66486b0ee1fa1ecd40f0ea53eb9850a5c",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 7,
+            "snr": -3.2881842266481645,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-00ce8fa6ec9b838b9253998bf2377b50c8913a05fc9bfad7a3583cc9bc21cb2a",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 8,
+            "snr": -3.0737232504700276,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-0c90f9cc791e65a3cca972296442f0106e8818bb5c429b932cf5b74933e8bd3c",
+            "flow_status": "computed",
+            "fwhm_error_px": 2.599763261024137,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 9,
+            "snr": 5.349504532280276,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-0a0982f78b9443a4c5e2c44810d257e89772df93231020cf0a1b65f745e5caab",
+            "flow_status": "computed",
+            "fwhm_error_px": -1.7272947785567538,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 10,
+            "snr": 5.514156160587832,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-e0b7617ed5cc69ef7cb1fe6748e06b23830277f2d1228d3a11c06d32907fdbfc",
+            "flow_status": "computed",
+            "fwhm_error_px": 2.408944707677051,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 11,
+            "snr": 5.774409917794833,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-1283c08fc5251e209653da29d81ec1718c5e376f3f69e823c4be1e0eaf5193e2",
+            "flow_status": "computed",
+            "fwhm_error_px": 1.1919156933360568,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "low_snr",
+              "ring_candidate"
+            ],
+            "seed": 12,
+            "snr": 4.890364987146449,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-68239038574862837deeb0be400a8f2b7f0d0d2ef69edeb1139d31360f685463",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 13,
+            "snr": -2.234056905901321,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-9eb609412de0a76c1c38ced3021412af12749b57ddb623c8c64af422bafa3d32",
+            "flow_status": "computed",
+            "fwhm_error_px": 1.8220418075817832,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 14,
+            "snr": 5.322554664141025,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-c754a5df8b58494868e8b48310eb59a900cd33c0668ffc95d95421e9f70b82f8",
+            "flow_status": "computed",
+            "fwhm_error_px": 3.034963105912837,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 15,
+            "snr": 5.937284572502462,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-341684f1e95803830d46ce89250bf99bff374bd195be02d3d92215f074e28393",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 16,
+            "snr": -3.0090966761897984,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-f57bce72697a4f0d5e64d6cc191c636671dcb6a1afb27b3348a6190e42e56ab6",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 17,
+            "snr": -3.4348900553572146,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-b450fc1179a5746b3529ad802303f3864e718683cdc54769ea5a662bd809b4f8",
+            "flow_status": "computed",
+            "fwhm_error_px": 1.2928735144300276,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 18,
+            "snr": 5.198157455765276,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-848628895b75348147a7b6fe209e4cdb783600034ab4f1cc4c85bf5bf5e60eb8",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 19,
+            "snr": -1.5167715604138243,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-a52b102069c9309383eb647577128be6e370963118200d1917fb193a422b35a7",
+            "flow_status": "computed",
+            "fwhm_error_px": 3.75437505860749,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "low_snr",
+              "ring_candidate"
+            ],
+            "seed": 20,
+            "snr": 4.4252738710024735,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-f9fb52c1b4febdeaf1e4d555c1ff3f3a122324036ab050f6b5b80b9dc9578599",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 21,
+            "snr": -3.0450033387441833,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-5aa59c27cfc1436a29a3a72374e3f5fc31fb9a4deca7d6cd4cfe3f4944772e8c",
+            "flow_status": "computed",
+            "fwhm_error_px": 3.1774770474578133,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 22,
+            "snr": 7.138745894545087,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-c84e13bf145ef20c3adffc361589a7cb13d401a8835ab842b31f8373c05f373d",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 23,
+            "snr": -4.299898346939339,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-2d6e8a81dad36efa70b57211ddcff6c19dd12b912a94ca2f463181578cde4912",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 24,
+            "snr": -4.164653210524512,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-ef5163158a44a275f952c135d4ec9698207140a1c77ac5d4f31e3ed7a7157c2f",
+            "flow_status": "computed",
+            "fwhm_error_px": 0.7706612429588446,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "low_snr",
+              "ring_candidate"
+            ],
+            "seed": 25,
+            "snr": 4.969354979732036,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-3e6d7ad82de89e4f0301740ee0d719e8d4f17a8367476f57d73cf758ccbb543e",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 26,
+            "snr": -2.8013502468735996,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-5ce7947c0face407ac38a4084976be985d54729ac9ad04b129c30b9528e3b49d",
+            "flow_status": "computed",
+            "fwhm_error_px": 0.6722382752490255,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 27,
+            "snr": 7.859306730006206,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-8669dbceb9e7f91907a3b181aac0ac68ff296268d284ca0e8075b00c50ca6c6b",
+            "flow_status": "computed",
+            "fwhm_error_px": null,
+            "passed": true,
+            "quantitative_values_gated": true,
+            "reasons": [
+              "center_outside_region",
+              "low_snr",
+              "no_positive_signal"
+            ],
+            "seed": 28,
+            "snr": -3.2775586113364255,
+            "summary_status": "invalid"
+          },
+          {
+            "analysis_fingerprint": "sha256-998e6dab0ed22c471d4948d64bc4fb47ba5f9db9972c30b7276f5e8cf9ea0d8a",
+            "flow_status": "computed",
+            "fwhm_error_px": 1.4299318566651742,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 29,
+            "snr": 7.6415116218135495,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-7826a872e40c00911af45810948b8fe0e00d2bb3d9673718fd66ca572ad0cb0c",
+            "flow_status": "computed",
+            "fwhm_error_px": 1.3200448258882211,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 30,
+            "snr": 5.18782968459848,
+            "summary_status": "caution"
+          },
+          {
+            "analysis_fingerprint": "sha256-204f9f11fab55e912648e3d8ff67acedfa61c60ce6a375ca571aabe51b816d87",
+            "flow_status": "computed",
+            "fwhm_error_px": 3.7791906846786674,
+            "passed": true,
+            "quantitative_values_gated": false,
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "seed": 31,
+            "snr": 6.96994038265755,
+            "summary_status": "caution"
+          }
+        ],
+        "passed": true,
+        "reason_code_distribution": {
+          "center_outside_region": 15,
+          "low_snr": 18,
+          "low_snr_caution": 14,
+          "no_positive_signal": 15,
+          "ring_candidate": 17
+        },
+        "scene_id": "low_snr_seeded",
+        "seed_range": [
+          0,
+          31,
+          1
+        ],
+        "status_distribution": {
+          "caution": 14,
+          "invalid": 18
+        }
+      },
+      "status": "passed"
+    },
+    "performance": {
+      "name": "performance",
+      "result": {
+        "environment": {
+          "formal_dependencies": {
+            "numpy": true,
+            "pillow": true,
+            "scipy": true
+          },
+          "formal_environment": false,
+          "formal_python": false,
+          "machine": "AMD64",
+          "memory": {
+            "current_mb": 80.05078125,
+            "source": "psutil"
+          },
+          "numpy": "2.2.6",
+          "pillow": "12.2.0",
+          "platform": "Windows-10-10.0.26200-SP0",
+          "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
+          "python": "3.10.11",
+          "python_implementation": "CPython",
+          "scipy": "1.15.3",
+          "spot_analyzer": "0.1.0"
+        },
+        "formal_status": "incomplete",
+        "formal_workload": true,
+        "formal_workload_contract": {
+          "requested_repetitions": 10,
+          "requested_sizes": [
+            256,
+            1024
+          ],
+          "required_repetitions": 10,
+          "required_sizes": [
+            256,
+            1024
+          ],
+          "violations": []
+        },
+        "incomplete_reason": "formal performance evidence requires Python 3.12 and locked dependencies",
+        "passed": false,
+        "workloads": [
+          {
+            "core": {
+              "max_seconds": 0.038941699999668344,
+              "mode": "hot_analyze",
+              "p50_seconds": 0.03474695000022621,
+              "p95_seconds": 0.038267104999749786,
+              "runs_seconds": [
+                0.03411770000002434,
+                0.03472440000041388,
+                0.03329369999937626,
+                0.037442599999849335,
+                0.038941699999668344,
+                0.03506169999945996,
+                0.034769500000038533,
+                0.03397309999945719,
+                0.032811700000820565,
+                0.03695979999974952
+              ],
+              "target_p95_seconds": null,
+              "target_passed": true
+            },
+            "image_size": {
+              "height": 256,
+              "width": 256
+            },
+            "repetitions": 10,
+            "warmup": {
+              "modes": {
+                "core": "unmeasured_analyze",
+                "worker": "unmeasured_process_png_analysis_derived_write"
+              },
+              "runs": 1,
+              "timed": false
+            },
+            "worker": {
+              "max_seconds": 0.4043554999998378,
+              "mode": "cold_process_png_analysis_derived_write",
+              "p50_seconds": 0.37092484999948283,
+              "p95_seconds": 0.39955660999980863,
+              "runs_seconds": [
+                0.3691022000002704,
+                0.3697691000006671,
+                0.39369129999977304,
+                0.37672959999963496,
+                0.3705272999995941,
+                0.387462400000004,
+                0.4043554999998378,
+                0.35814050000044517,
+                0.37132239999937156,
+                0.365759799999978
+              ],
+              "target_p95_seconds": null,
+              "target_passed": true
+            }
+          },
+          {
+            "core": {
+              "max_seconds": 0.09956300000067131,
+              "mode": "hot_analyze",
+              "p50_seconds": 0.09529805000011038,
+              "p95_seconds": 0.09817556000016338,
+              "runs_seconds": [
+                0.09546959999988758,
+                0.08978630000001431,
+                0.0910198000001401,
+                0.09956300000067131,
+                0.09366700000009587,
+                0.09611970000059955,
+                0.09617690000050061,
+                0.09647979999954259,
+                0.09419609999986278,
+                0.09512650000033318
+              ],
+              "target_p95_seconds": 2.0,
+              "target_passed": true
+            },
+            "image_size": {
+              "height": 1024,
+              "width": 1024
+            },
+            "repetitions": 10,
+            "warmup": {
+              "modes": {
+                "core": "unmeasured_analyze",
+                "worker": "unmeasured_process_png_analysis_derived_write"
+              },
+              "runs": 1,
+              "timed": false
+            },
+            "worker": {
+              "max_seconds": 0.5180302999997366,
+              "mode": "cold_process_png_analysis_derived_write",
+              "p50_seconds": 0.4903233,
+              "p95_seconds": 0.5144278249998024,
+              "runs_seconds": [
+                0.47303050000027724,
+                0.48004779999973834,
+                0.47759359999963635,
+                0.478117800000291,
+                0.492623399999502,
+                0.5025759999998627,
+                0.5100247999998828,
+                0.49894829999993817,
+                0.5180302999997366,
+                0.48802320000049804
+              ],
+              "target_p95_seconds": 5.0,
+              "target_passed": true
+            }
+          }
+        ]
+      },
+      "status": "incomplete"
+    },
+    "real_fixtures": {
+      "name": "real_fixtures",
+      "result": {
+        "absolute_physical_accuracy_claim": false,
+        "behavioral_evidence_only": true,
+        "fixture_count": 6,
+        "fixtures": [
+          {
+            "actual_sha256": "096d4ae25dacf44f68b7957ec2c667fa72c9bfbca39e50326fcdfeb59ef71fef",
+            "behavioral_evidence_only": true,
+            "channels": 1,
+            "channels_identical": false,
+            "flow_status": "computed",
+            "input_semantics_confirmed": true,
+            "kind": "gray_input",
+            "manifest_metadata": {
+              "acquisition": {
+                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "metadata_version": "fixture-metadata-v1"
+              },
+              "input_semantics": "relative_intensity_code",
+              "provenance": {
+                "source_asset": "Spot/20251016/1.png",
+                "source_snapshot": "spot-inputs-2026-09-10"
+              }
+            },
+            "metadata_recorded": true,
+            "metadata_validation": "incomplete",
+            "passed": false,
+            "path": "D:\\Files\\CLAPA2\\Spot\\20251016\\1.png",
+            "reason_codes": [
+              "acquisition_metadata_placeholder"
+            ],
+            "relative_path": "20251016/1.png",
+            "repeatability_passed": false,
+            "sha256": "096d4ae25dacf44f68b7957ec2c667fa72c9bfbca39e50326fcdfeb59ef71fef",
+            "status": "incomplete"
+          },
+          {
+            "actual_sha256": "5f3f10771c9990018d8437ac6a91e18b96fd4677ffdf1916b6a98b03e1cd83da",
+            "behavioral_evidence_only": true,
+            "channels": 1,
+            "channels_identical": false,
+            "flow_status": "computed",
+            "input_semantics_confirmed": true,
+            "kind": "blank_gray_input",
+            "manifest_metadata": {
+              "acquisition": {
+                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "metadata_version": "fixture-metadata-v1"
+              },
+              "input_semantics": "relative_intensity_code",
+              "provenance": {
+                "source_asset": "Spot/20251016/2.png",
+                "source_snapshot": "spot-inputs-2026-09-10"
+              }
+            },
+            "metadata_recorded": true,
+            "metadata_validation": "incomplete",
+            "passed": false,
+            "path": "D:\\Files\\CLAPA2\\Spot\\20251016\\2.png",
+            "reason_codes": [
+              "acquisition_metadata_placeholder"
+            ],
+            "relative_path": "20251016/2.png",
+            "repeatability_passed": false,
+            "sha256": "5f3f10771c9990018d8437ac6a91e18b96fd4677ffdf1916b6a98b03e1cd83da",
+            "status": "incomplete"
+          },
+          {
+            "actual_sha256": "6b5623cdd5edece19e48e7765f42a1b96c0af9f7c7dd206e7a062d7514ba1722",
+            "behavioral_evidence_only": true,
+            "channels": 1,
+            "channels_identical": false,
+            "flow_status": "computed",
+            "input_semantics_confirmed": true,
+            "kind": "gray_input",
+            "manifest_metadata": {
+              "acquisition": {
+                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "metadata_version": "fixture-metadata-v1"
+              },
+              "input_semantics": "relative_intensity_code",
+              "provenance": {
+                "source_asset": "Spot/20251016/3.png",
+                "source_snapshot": "spot-inputs-2026-09-10"
+              }
+            },
+            "metadata_recorded": true,
+            "metadata_validation": "incomplete",
+            "passed": false,
+            "path": "D:\\Files\\CLAPA2\\Spot\\20251016\\3.png",
+            "reason_codes": [
+              "acquisition_metadata_placeholder"
+            ],
+            "relative_path": "20251016/3.png",
+            "repeatability_passed": false,
+            "sha256": "6b5623cdd5edece19e48e7765f42a1b96c0af9f7c7dd206e7a062d7514ba1722",
+            "status": "incomplete"
+          },
+          {
+            "actual_sha256": "56f2aacf76f7b0f78e6b5108fef0bed8490657246b2d1bf8c345a7807f7dc268",
+            "behavioral_evidence_only": true,
+            "channels": 1,
+            "channels_identical": false,
+            "flow_status": "computed",
+            "input_semantics_confirmed": true,
+            "kind": "gray_input",
+            "manifest_metadata": {
+              "acquisition": {
+                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "metadata_version": "fixture-metadata-v1"
+              },
+              "input_semantics": "relative_intensity_code",
+              "provenance": {
+                "source_asset": "Spot/20260607/1-7.png",
+                "source_snapshot": "spot-inputs-2026-09-10"
+              }
+            },
+            "metadata_recorded": true,
+            "metadata_validation": "incomplete",
+            "passed": false,
+            "path": "D:\\Files\\CLAPA2\\Spot\\20260607\\1-7.png",
+            "reason_codes": [
+              "acquisition_metadata_placeholder"
+            ],
+            "relative_path": "20260607/1-7.png",
+            "repeatability_passed": false,
+            "sha256": "56f2aacf76f7b0f78e6b5108fef0bed8490657246b2d1bf8c345a7807f7dc268",
+            "status": "incomplete"
+          },
+          {
+            "actual_sha256": "39e5f52f8287ce8bb0e447ae35573922749c87c95766b39eab7dea3416ef15c1",
+            "behavioral_evidence_only": true,
+            "channels": 1,
+            "channels_identical": false,
+            "flow_status": "computed",
+            "input_semantics_confirmed": true,
+            "kind": "gray_input",
+            "manifest_metadata": {
+              "acquisition": {
+                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "metadata_version": "fixture-metadata-v1"
+              },
+              "input_semantics": "relative_intensity_code",
+              "provenance": {
+                "source_asset": "Spot/20260607/2-7\u53f3\u4e0b.png",
+                "source_snapshot": "spot-inputs-2026-09-10"
+              }
+            },
+            "metadata_recorded": true,
+            "metadata_validation": "incomplete",
+            "passed": false,
+            "path": "D:\\Files\\CLAPA2\\Spot\\20260607\\2-7\u53f3\u4e0b.png",
+            "reason_codes": [
+              "acquisition_metadata_placeholder"
+            ],
+            "relative_path": "20260607/2-7\u53f3\u4e0b.png",
+            "repeatability_passed": false,
+            "sha256": "39e5f52f8287ce8bb0e447ae35573922749c87c95766b39eab7dea3416ef15c1",
+            "status": "incomplete"
+          },
+          {
+            "actual_sha256": "5d7f073dde5fe2d1b04617f6907250ddcb4c0a93cf6db7b3109a198abdbf5db4",
+            "behavioral_evidence_only": true,
+            "channels": 3,
+            "channels_identical": true,
+            "flow_status": "computed",
+            "input_semantics_confirmed": true,
+            "kind": "rgb_display_excluded",
+            "manifest_metadata": {
+              "acquisition": {
+                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
+                "metadata_version": "fixture-metadata-v1"
+              },
+              "input_semantics": "relative_intensity_code",
+              "provenance": {
+                "source_asset": "Spot/20260901/1.PNG",
+                "source_snapshot": "spot-inputs-2026-09-10"
+              }
+            },
+            "metadata_recorded": true,
+            "metadata_validation": "incomplete",
+            "passed": false,
+            "path": "D:\\Files\\CLAPA2\\Spot\\20260901\\1.PNG",
+            "reason_codes": [
+              "acquisition_metadata_placeholder"
+            ],
+            "relative_path": "20260901/1.PNG",
+            "repeatability_passed": false,
+            "sha256": "5d7f073dde5fe2d1b04617f6907250ddcb4c0a93cf6db7b3109a198abdbf5db4",
+            "status": "incomplete"
+          }
+        ],
+        "manifest_schema": "real-fixture-manifest-v1",
+        "manifest_sha256": "sha256-82121f5ea38a5b07046215b06479f4a40e1b992e1bb49dd48ed4eeeab4e1d6c7",
+        "manifest_status": "loaded",
+        "manifest_version": "real-fixture-manifest-v1",
+        "passed": false,
+        "root": "D:\\Files\\CLAPA2\\Spot",
+        "status": "incomplete"
+      },
+      "status": "incomplete"
+    },
+    "report": {
+      "name": "report",
+      "result": {
+        "analysis_fingerprint": "sha256-4c02addccfcad56b22d53a0a77a3d9535300a40875bfac5def72bfa7c56e1658",
+        "behavioral_evidence_only": false,
+        "checks": {
+          "coordinate_units": true,
+          "derived_asset_identity": true,
+          "energy_curve_context": true,
+          "export_conflict_safety": true,
+          "export_identity": true,
+          "exports": true,
+          "gating_values": true,
+          "input_read_only": true,
+          "no_internal_trials": true,
+          "profile_axis": true,
+          "provenance": true,
+          "quality_status": true,
+          "record_identity": true,
+          "record_semantics": true,
+          "report_naming": true,
+          "visual_identity": true
+        },
+        "exports": [
+          {
+            "format": "png",
+            "path": "C:\\Users\\16520\\AppData\\Local\\Temp\\spot-report-validation-a42kvzh2\\issue-15-png.png",
+            "record_id": "record-7326cf74f0e447f88693af4f988e44f2",
+            "sha256": "bd4be81cd7db46959f031f1b6eabbc5e8919d5fe950a9c9c7776d731afec643e",
+            "status": "exported",
+            "uri": "file:///C:/Users/16520/AppData/Local/Temp/spot-report-validation-a42kvzh2/issue-15-png.png"
+          },
+          {
+            "format": "pdf",
+            "path": "C:\\Users\\16520\\AppData\\Local\\Temp\\spot-report-validation-a42kvzh2\\issue-15-pdf.pdf",
+            "record_id": "record-7326cf74f0e447f88693af4f988e44f2",
+            "sha256": "920c6c7b6b5facd3258e47333805eb1ff61afc9e07c2cc67937cc6aa7b8322c9",
+            "status": "exported",
+            "uri": "file:///C:/Users/16520/AppData/Local/Temp/spot-report-validation-a42kvzh2/issue-15-pdf.pdf"
+          }
+        ],
+        "passed": true,
+        "record_id": "record-7326cf74f0e447f88693af4f988e44f2",
+        "status": "passed"
+      },
+      "status": "passed"
+    },
+    "synthetic": {
+      "name": "synthetic",
+      "result": {
+        "generator_version": "synthetic-scenes-v1",
+        "results": [
+          {
+            "comparison_policy": "analytic",
+            "comparisons": [
+              {
+                "absolute_error": 3.552713678800501e-15,
+                "expected": 23.548200450309494,
+                "key": "fwhm",
+                "measured": 23.548200450309498,
+                "passed": true,
+                "reason": "",
+                "relative_error": 1.5086985887933562e-16
+              },
+              {
+                "absolute_error": 1.4770562017929478e-07,
+                "expected": 40.0,
+                "key": "d4sigma",
+                "measured": 39.99999985229438,
+                "passed": true,
+                "reason": "",
+                "relative_error": 3.6926405044823697e-09
+              },
+              {
+                "absolute_error": 0.005497929215833253,
+                "expected": 11.774100225154747,
+                "key": "ee50",
+                "measured": 11.768602295938914,
+                "passed": true,
+                "reason": "",
+                "relative_error": 0.0004669511139447595
+              },
+              {
+                "absolute_error": 0.09465748236208782,
+                "expected": 17.941225779941014,
+                "key": "ee80",
+                "measured": 17.846568297578926,
+                "passed": true,
+                "reason": "",
+                "relative_error": 0.005275976319740569
+              },
+              {
+                "absolute_error": 4.263256414560601e-12,
+                "expected": 127.5,
+                "key": "center_x",
+                "measured": 127.49999999999574,
+                "passed": true,
+                "reason": "",
+                "relative_error": 3.343730521224001e-14
+              },
+              {
+                "absolute_error": 0.0,
+                "expected": 127.5,
+                "key": "center_y",
+                "measured": 127.5,
+                "passed": true,
+                "reason": "",
+                "relative_error": 0.0
+              }
+            ],
+            "comparisons_passed": true,
+            "flow_status": "computed",
+            "forbidden_reason_codes_passed": true,
+            "manifest": {
+              "analysis_contract": "analysis-contract-v1",
+              "bit_depth": 8,
+              "center_xy": [
+                127.5,
+                127.5
+              ],
+              "comparison_policy": "analytic",
+              "expected_quality_status": "valid",
+              "expected_reported_statuses": [
+                "caution",
+                "invalid"
+              ],
+              "forbidden_reason_codes": [],
+              "generator_version": "synthetic-scenes-v1",
+              "input_sha256": "c5e3a61f49fa9a7e47bcd7a1184b94461cd321c3df42cd23ca0705b9df67fd29",
+              "model": "gaussian",
+              "parameters": {
+                "amplitude": 200.0,
+                "background": 10.0,
+                "width": 20.0
+              },
+              "pixel_pitch_um": [
+                0.1,
+                0.1
+              ],
+              "profile_validation": "provisional",
+              "quality_profile": "quality-profile-v1",
+              "reference_sha256": "c5e3a61f49fa9a7e47bcd7a1184b94461cd321c3df42cd23ca0705b9df67fd29",
+              "required_reason_codes": [],
+              "scene_id": "gaussian_circular",
+              "seed": 0,
+              "shape": [
+                256,
+                256
+              ],
+              "standard_profile": "standard-profile-v1",
+              "tolerances": {
+                "angle_absolute_degrees": 2.0,
+                "center_absolute_pixels": 0.5,
+                "d4sigma_relative": 0.05,
+                "ee_radius_absolute_fwhm_fraction": 0.02,
+                "fwhm_relative": 0.05
+              }
+            },
+            "metric_gates_passed": true,
+            "metric_outcomes": {
+              "centroid_offset": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "concentration_rref": {
+                "reason_codes": [
+                  "rref_missing"
+                ],
+                "reported_value_is_null": true,
+                "status": "unavailable"
+              },
+              "ee50": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "ee80": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "fit_residual": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_angle": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_ellipticity": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_fwhm_major": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_fwhm_minor": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_angle": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_major": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_minor": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "peak_center": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "quality_diagnostics": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              }
+            },
+            "passed": true,
+            "quality_status_before_profile_cap": "valid",
+            "reasons": [],
+            "reported_status_passed": true,
+            "required_reason_codes_passed": true,
+            "scene_id": "gaussian_circular",
+            "seed": 0,
+            "status_expectation_passed": true,
+            "summary_status": "caution",
+            "versions_passed": true
+          },
+          {
+            "comparison_policy": "analytic",
+            "comparisons": [
+              {
+                "absolute_error": 0.0,
+                "expected": 28.25784054037139,
+                "key": "fwhm_major",
+                "measured": 28.25784054037139,
+                "passed": true,
+                "reason": "",
+                "relative_error": 0.0
+              },
+              {
+                "absolute_error": 0.0,
+                "expected": 14.128920270185695,
+                "key": "fwhm_minor",
+                "measured": 14.128920270185695,
+                "passed": true,
+                "reason": "",
+                "relative_error": 0.0
+              },
+              {
+                "absolute_error": 0.028880811991221833,
+                "expected": 48.0,
+                "key": "d4sigma_major",
+                "measured": 48.02888081199122,
+                "passed": true,
+                "reason": "",
+                "relative_error": 0.0006016835831504549
+              },
+              {
+                "absolute_error": 3.547561636452201e-05,
+                "expected": 24.0,
+                "key": "d4sigma_minor",
+                "measured": 24.000035475616365,
+                "passed": true,
+                "reason": "",
+                "relative_error": 1.4781506818550838e-06
+              },
+              {
+                "absolute_error": 0.0,
+                "expected": 30.0,
+                "key": "angle",
+                "measured": 29.999999999999996,
+                "passed": true,
+                "reason": "",
+                "relative_error": 0.0
+              },
+              {
+                "absolute_error": 0.10853912034174051,
+                "expected": 10.51189802081432,
+                "key": "ee50",
+                "measured": 10.403358900472579,
+                "passed": true,
+                "reason": "",
+                "relative_error": 0.010325358952952663
+              },
+              {
+                "absolute_error": 0.048784084701765096,
+                "expected": 16.80773631397161,
+                "key": "ee80",
+                "measured": 16.856520398673375,
+                "passed": true,
+                "reason": "",
+                "relative_error": 0.0029024779893299974
+              },
+              {
+                "absolute_error": 0.3657471952296163,
+                "expected": 127.5,
+                "key": "center_x",
+                "measured": 127.13425280477038,
+                "passed": true,
+                "reason": "",
+                "relative_error": 0.0028686054527813044
+              },
+              {
+                "absolute_error": 0.19921989859520295,
+                "expected": 127.5,
+                "key": "center_y",
+                "measured": 127.3007801014048,
+                "passed": true,
+                "reason": "",
+                "relative_error": 0.001562509008589827
+              }
+            ],
+            "comparisons_passed": true,
+            "flow_status": "computed",
+            "forbidden_reason_codes_passed": true,
+            "manifest": {
+              "analysis_contract": "analysis-contract-v1",
+              "bit_depth": 8,
+              "center_xy": [
+                127.5,
+                127.5
+              ],
+              "comparison_policy": "analytic",
+              "expected_quality_status": "valid",
+              "expected_reported_statuses": [
+                "caution",
+                "invalid"
+              ],
+              "forbidden_reason_codes": [],
+              "generator_version": "synthetic-scenes-v1",
+              "input_sha256": "b9ca54f930164377b9b99f435865795c6a5a9b8b9114e0e84650b113919c11b1",
+              "model": "gaussian",
+              "parameters": {
+                "amplitude": 200.0,
+                "angle_degrees": 30.0,
+                "background": 10.0,
+                "width_x": 24.0,
+                "width_y": 12.0
+              },
+              "pixel_pitch_um": [
+                0.1,
+                0.1
+              ],
+              "profile_validation": "provisional",
+              "quality_profile": "quality-profile-v1",
+              "reference_sha256": "b9ca54f930164377b9b99f435865795c6a5a9b8b9114e0e84650b113919c11b1",
+              "required_reason_codes": [],
+              "scene_id": "gaussian_elliptical_rotated",
+              "seed": 0,
+              "shape": [
+                256,
+                256
+              ],
+              "standard_profile": "standard-profile-v1",
+              "tolerances": {
+                "angle_absolute_degrees": 2.0,
+                "center_absolute_pixels": 0.5,
+                "d4sigma_relative": 0.05,
+                "ee_radius_absolute_fwhm_fraction": 0.02,
+                "fwhm_relative": 0.05
+              }
+            },
+            "metric_gates_passed": true,
+            "metric_outcomes": {
+              "centroid_offset": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "concentration_rref": {
+                "reason_codes": [
+                  "rref_missing"
+                ],
+                "reported_value_is_null": true,
+                "status": "unavailable"
+              },
+              "ee50": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "ee80": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "fit_residual": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_angle": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_ellipticity": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_fwhm_major": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_fwhm_minor": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_angle": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_major": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_minor": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "peak_center": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "quality_diagnostics": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              }
+            },
+            "passed": true,
+            "quality_status_before_profile_cap": "valid",
+            "reasons": [],
+            "reported_status_passed": true,
+            "required_reason_codes_passed": true,
+            "scene_id": "gaussian_elliptical_rotated",
+            "seed": 0,
+            "status_expectation_passed": true,
+            "summary_status": "caution",
+            "versions_passed": true
+          },
+          {
+            "comparison_policy": "diagnostic",
+            "comparisons": [],
+            "comparisons_passed": true,
+            "flow_status": "computed",
+            "forbidden_reason_codes_passed": true,
+            "manifest": {
+              "analysis_contract": "analysis-contract-v1",
+              "bit_depth": 8,
+              "center_xy": [
+                127.5,
+                127.5
+              ],
+              "comparison_policy": "diagnostic",
+              "expected_quality_status": "caution",
+              "expected_reported_statuses": [
+                "caution",
+                "invalid"
+              ],
+              "forbidden_reason_codes": [],
+              "generator_version": "synthetic-scenes-v1",
+              "input_sha256": "77bb736b709fae2f9adb5ef811a6af0514886623dbb123a1c8242a021e8cf278",
+              "model": "gaussian",
+              "parameters": {
+                "amplitude": 200.0,
+                "background": 10.0,
+                "secondary_amplitude": 70.0,
+                "secondary_offset": [
+                  35.0,
+                  0.0
+                ],
+                "width": 20.0
+              },
+              "pixel_pitch_um": [
+                0.1,
+                0.1
+              ],
+              "profile_validation": "provisional",
+              "quality_profile": "quality-profile-v1",
+              "reference_sha256": "77bb736b709fae2f9adb5ef811a6af0514886623dbb123a1c8242a021e8cf278",
+              "required_reason_codes": [
+                "multiple_peaks"
+              ],
+              "scene_id": "two_gaussian_multimodal",
+              "seed": 0,
+              "shape": [
+                256,
+                256
+              ],
+              "standard_profile": "standard-profile-v1",
+              "tolerances": {}
+            },
+            "metric_gates_passed": true,
+            "metric_outcomes": {
+              "centroid_offset": {
+                "reason_codes": [
+                  "multiple_peaks"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "concentration_rref": {
+                "reason_codes": [
+                  "rref_missing"
+                ],
+                "reported_value_is_null": true,
+                "status": "unavailable"
+              },
+              "ee50": {
+                "reason_codes": [
+                  "multiple_peaks",
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "ee80": {
+                "reason_codes": [
+                  "multiple_peaks",
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "fit_residual": {
+                "reason_codes": [
+                  "fit_residual_high",
+                  "multiple_peaks"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_angle": {
+                "reason_codes": [
+                  "fit_residual_high",
+                  "multiple_peaks"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_ellipticity": {
+                "reason_codes": [
+                  "fit_residual_high",
+                  "multiple_peaks"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_fwhm_major": {
+                "reason_codes": [
+                  "fit_residual_high",
+                  "multiple_peaks"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_fwhm_minor": {
+                "reason_codes": [
+                  "fit_residual_high",
+                  "multiple_peaks"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "moment_angle": {
+                "reason_codes": [
+                  "multiple_peaks"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_major": {
+                "reason_codes": [
+                  "multiple_peaks"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_minor": {
+                "reason_codes": [
+                  "multiple_peaks"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "peak_center": {
+                "reason_codes": [
+                  "multiple_peaks"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "quality_diagnostics": {
+                "reason_codes": [
+                  "multiple_peaks"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              }
+            },
+            "passed": true,
+            "quality_status_before_profile_cap": "invalid",
+            "reasons": [
+              "multiple_peaks"
+            ],
+            "reported_status_passed": true,
+            "required_reason_codes_passed": true,
+            "scene_id": "two_gaussian_multimodal",
+            "seed": 0,
+            "status_expectation_passed": true,
+            "summary_status": "invalid",
+            "versions_passed": true
+          },
+          {
+            "comparison_policy": "diagnostic",
+            "comparisons": [],
+            "comparisons_passed": true,
+            "flow_status": "computed",
+            "forbidden_reason_codes_passed": true,
+            "manifest": {
+              "analysis_contract": "analysis-contract-v1",
+              "bit_depth": 8,
+              "center_xy": [
+                127.5,
+                127.5
+              ],
+              "comparison_policy": "diagnostic",
+              "expected_quality_status": "caution",
+              "expected_reported_statuses": [
+                "caution",
+                "invalid"
+              ],
+              "forbidden_reason_codes": [],
+              "generator_version": "synthetic-scenes-v1",
+              "input_sha256": "94351f823d89d5956b834985b663c0c09164ce68a97ce06e056f3aadd0b5b499",
+              "model": "airy",
+              "parameters": {
+                "alpha": 0.22,
+                "amplitude": 200.0,
+                "background": 10.0
+              },
+              "pixel_pitch_um": [
+                0.1,
+                0.1
+              ],
+              "profile_validation": "provisional",
+              "quality_profile": "quality-profile-v1",
+              "reference_sha256": "94351f823d89d5956b834985b663c0c09164ce68a97ce06e056f3aadd0b5b499",
+              "required_reason_codes": [
+                "ring_candidate"
+              ],
+              "scene_id": "airy_sidelobe",
+              "seed": 0,
+              "shape": [
+                256,
+                256
+              ],
+              "standard_profile": "standard-profile-v1",
+              "tolerances": {}
+            },
+            "metric_gates_passed": true,
+            "metric_outcomes": {
+              "centroid_offset": {
+                "reason_codes": [
+                  "provisional_profile",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "concentration_rref": {
+                "reason_codes": [
+                  "rref_missing"
+                ],
+                "reported_value_is_null": true,
+                "status": "unavailable"
+              },
+              "ee50": {
+                "reason_codes": [
+                  "provisional_profile",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "ee80": {
+                "reason_codes": [
+                  "provisional_profile",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "fit_residual": {
+                "reason_codes": [
+                  "fit_residual_high",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_angle": {
+                "reason_codes": [
+                  "fit_residual_high",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_ellipticity": {
+                "reason_codes": [
+                  "fit_residual_high",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_fwhm_major": {
+                "reason_codes": [
+                  "fit_residual_high",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_fwhm_minor": {
+                "reason_codes": [
+                  "fit_residual_high",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "moment_angle": {
+                "reason_codes": [
+                  "provisional_profile",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_major": {
+                "reason_codes": [
+                  "provisional_profile",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_minor": {
+                "reason_codes": [
+                  "provisional_profile",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "peak_center": {
+                "reason_codes": [
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "quality_diagnostics": {
+                "reason_codes": [
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              }
+            },
+            "passed": true,
+            "quality_status_before_profile_cap": "invalid",
+            "reasons": [
+              "ring_candidate"
+            ],
+            "reported_status_passed": true,
+            "required_reason_codes_passed": true,
+            "scene_id": "airy_sidelobe",
+            "seed": 0,
+            "status_expectation_passed": true,
+            "summary_status": "invalid",
+            "versions_passed": true
+          },
+          {
+            "comparison_policy": "diagnostic",
+            "comparisons": [],
+            "comparisons_passed": true,
+            "flow_status": "computed",
+            "forbidden_reason_codes_passed": true,
+            "manifest": {
+              "analysis_contract": "analysis-contract-v1",
+              "bit_depth": 8,
+              "center_xy": [
+                127.5,
+                127.5
+              ],
+              "comparison_policy": "diagnostic",
+              "expected_quality_status": "caution",
+              "expected_reported_statuses": [
+                "caution",
+                "invalid"
+              ],
+              "forbidden_reason_codes": [],
+              "generator_version": "synthetic-scenes-v1",
+              "input_sha256": "de1ab8882a3b95516b1602aa4cf3f5dfa3ff9f81d81ea7cd1b04785b9ac6f520",
+              "model": "gaussian",
+              "parameters": {
+                "amplitude": 200.0,
+                "background": 10.0,
+                "background_model": "affine",
+                "bx": 0.05,
+                "by": -0.03,
+                "width": 20.0
+              },
+              "pixel_pitch_um": [
+                0.1,
+                0.1
+              ],
+              "profile_validation": "provisional",
+              "quality_profile": "quality-profile-v1",
+              "reference_sha256": "7f22ef7fbcaf8112893087672f256c6b33af0abbfb3796661ff416bb3325f0b8",
+              "required_reason_codes": [],
+              "scene_id": "background_gradient",
+              "seed": 0,
+              "shape": [
+                256,
+                256
+              ],
+              "standard_profile": "standard-profile-v1",
+              "tolerances": {}
+            },
+            "metric_gates_passed": true,
+            "metric_outcomes": {
+              "centroid_offset": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "concentration_rref": {
+                "reason_codes": [
+                  "rref_missing"
+                ],
+                "reported_value_is_null": true,
+                "status": "unavailable"
+              },
+              "ee50": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "ee80": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "fit_residual": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_angle": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_ellipticity": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_fwhm_major": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_fwhm_minor": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_angle": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_major": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_minor": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "peak_center": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "quality_diagnostics": {
+                "reason_codes": [
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              }
+            },
+            "passed": true,
+            "quality_status_before_profile_cap": "valid",
+            "reasons": [],
+            "reported_status_passed": true,
+            "required_reason_codes_passed": true,
+            "scene_id": "background_gradient",
+            "seed": 0,
+            "status_expectation_passed": true,
+            "summary_status": "caution",
+            "versions_passed": true
+          },
+          {
+            "comparison_policy": "diagnostic",
+            "comparisons": [],
+            "comparisons_passed": true,
+            "flow_status": "computed",
+            "forbidden_reason_codes_passed": true,
+            "manifest": {
+              "analysis_contract": "analysis-contract-v1",
+              "bit_depth": 8,
+              "center_xy": [
+                127.5,
+                127.5
+              ],
+              "comparison_policy": "diagnostic",
+              "expected_quality_status": "caution",
+              "expected_reported_statuses": [
+                "caution",
+                "invalid"
+              ],
+              "forbidden_reason_codes": [],
+              "generator_version": "synthetic-scenes-v1",
+              "input_sha256": "f8bc245fefa7c699e6216d1c7666977470dec1208f7d65959669cdd3a53b7563",
+              "model": "gaussian",
+              "parameters": {
+                "amplitude": 200.0,
+                "background": 10.0,
+                "dead_pixel": [
+                  120,
+                  120
+                ],
+                "hot_pixel": [
+                  135,
+                  127
+                ],
+                "width": 20.0
+              },
+              "pixel_pitch_um": [
+                0.1,
+                0.1
+              ],
+              "profile_validation": "provisional",
+              "quality_profile": "quality-profile-v1",
+              "reference_sha256": "c5e3a61f49fa9a7e47bcd7a1184b94461cd321c3df42cd23ca0705b9df67fd29",
+              "required_reason_codes": [
+                "bad_pixels_present"
+              ],
+              "scene_id": "hot_dead_pixels",
+              "seed": 0,
+              "shape": [
+                256,
+                256
+              ],
+              "standard_profile": "standard-profile-v1",
+              "tolerances": {}
+            },
+            "metric_gates_passed": true,
+            "metric_outcomes": {
+              "centroid_offset": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation",
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "concentration_rref": {
+                "reason_codes": [
+                  "rref_missing"
+                ],
+                "reported_value_is_null": true,
+                "status": "unavailable"
+              },
+              "ee50": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation",
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "ee80": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation",
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "fit_residual": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_angle": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_ellipticity": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_fwhm_major": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_fwhm_minor": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_angle": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_major": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation",
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_minor": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation",
+                  "provisional_profile"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "peak_center": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "quality_diagnostics": {
+                "reason_codes": [
+                  "bad_pixel_in_core",
+                  "bad_pixels_present",
+                  "possible_saturation"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              }
+            },
+            "passed": true,
+            "quality_status_before_profile_cap": "caution",
+            "reasons": [
+              "bad_pixel_in_core",
+              "bad_pixels_present",
+              "possible_saturation"
+            ],
+            "reported_status_passed": true,
+            "required_reason_codes_passed": true,
+            "scene_id": "hot_dead_pixels",
+            "seed": 0,
+            "status_expectation_passed": true,
+            "summary_status": "caution",
+            "versions_passed": true
+          },
+          {
+            "comparison_policy": "diagnostic",
+            "comparisons": [],
+            "comparisons_passed": true,
+            "flow_status": "computed",
+            "forbidden_reason_codes_passed": true,
+            "manifest": {
+              "analysis_contract": "analysis-contract-v1",
+              "bit_depth": 8,
+              "center_xy": [
+                127.5,
+                127.5
+              ],
+              "comparison_policy": "diagnostic",
+              "expected_quality_status": "caution",
+              "expected_reported_statuses": [
+                "caution",
+                "invalid"
+              ],
+              "forbidden_reason_codes": [],
+              "generator_version": "synthetic-scenes-v1",
+              "input_sha256": "5a83edce7c7db209d5696850c544a661696e88a723bca34c9eaf0d1cd233470c",
+              "model": "gaussian",
+              "parameters": {
+                "amplitude": 20.0,
+                "background": 50.0,
+                "noise_sigma": 15.0,
+                "width": 20.0
+              },
+              "pixel_pitch_um": [
+                0.1,
+                0.1
+              ],
+              "profile_validation": "provisional",
+              "quality_profile": "quality-profile-v1",
+              "reference_sha256": "ba359a5adf9116f742b5520edb60cfd660d1c08f8f4e4b22ff88d18f1416918d",
+              "required_reason_codes": [],
+              "scene_id": "low_snr_seeded",
+              "seed": 0,
+              "shape": [
+                256,
+                256
+              ],
+              "standard_profile": "standard-profile-v1",
+              "tolerances": {}
+            },
+            "metric_gates_passed": true,
+            "metric_outcomes": {
+              "centroid_offset": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "provisional_profile",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "concentration_rref": {
+                "reason_codes": [
+                  "rref_missing"
+                ],
+                "reported_value_is_null": true,
+                "status": "unavailable"
+              },
+              "ee50": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "provisional_profile",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "ee80": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "provisional_profile",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "fit_residual": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_angle": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_ellipticity": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_fwhm_major": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "gaussian_fwhm_minor": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_angle": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_major": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "provisional_profile",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "moment_d4sigma_minor": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "provisional_profile",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "peak_center": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "quality_diagnostics": {
+                "reason_codes": [
+                  "low_snr_caution",
+                  "ring_candidate"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              }
+            },
+            "passed": true,
+            "quality_status_before_profile_cap": "caution",
+            "reasons": [
+              "low_snr_caution",
+              "ring_candidate"
+            ],
+            "reported_status_passed": true,
+            "required_reason_codes_passed": true,
+            "scene_id": "low_snr_seeded",
+            "seed": 0,
+            "status_expectation_passed": true,
+            "summary_status": "caution",
+            "versions_passed": true
+          },
+          {
+            "comparison_policy": "diagnostic",
+            "comparisons": [],
+            "comparisons_passed": true,
+            "flow_status": "computed",
+            "forbidden_reason_codes_passed": true,
+            "manifest": {
+              "analysis_contract": "analysis-contract-v1",
+              "bit_depth": 8,
+              "center_xy": [
+                127.5,
+                127.5
+              ],
+              "comparison_policy": "diagnostic",
+              "expected_quality_status": "invalid",
+              "expected_reported_statuses": [
+                "invalid"
+              ],
+              "forbidden_reason_codes": [],
+              "generator_version": "synthetic-scenes-v1",
+              "input_sha256": "fbd3c3e660f3f1ad08b28d57064e30c4f343f7bad9768c34c4adcb00b474a6f2",
+              "model": "gaussian",
+              "parameters": {
+                "amplitude": 400.0,
+                "background": 10.0,
+                "clip": 255.0,
+                "width": 20.0
+              },
+              "pixel_pitch_um": [
+                0.1,
+                0.1
+              ],
+              "profile_validation": "provisional",
+              "quality_profile": "quality-profile-v1",
+              "reference_sha256": "f71f78716a5b73684b7c3f8fce8bf1480bc579cd0963a8ae5bfcd96c50bc68c0",
+              "required_reason_codes": [
+                "saturated_core"
+              ],
+              "scene_id": "saturated_core",
+              "seed": 0,
+              "shape": [
+                256,
+                256
+              ],
+              "standard_profile": "standard-profile-v1",
+              "tolerances": {}
+            },
+            "metric_gates_passed": true,
+            "metric_outcomes": {
+              "centroid_offset": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "concentration_rref": {
+                "reason_codes": [
+                  "rref_missing"
+                ],
+                "reported_value_is_null": true,
+                "status": "unavailable"
+              },
+              "ee50": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "ee80": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "fit_residual": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_angle": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_ellipticity": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_fwhm_major": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_fwhm_minor": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "moment_angle": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "moment_d4sigma_major": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "moment_d4sigma_minor": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "peak_center": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "quality_diagnostics": {
+                "reason_codes": [
+                  "core_support_insufficient",
+                  "possible_saturation",
+                  "ring_candidate",
+                  "saturated_core"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              }
+            },
+            "passed": true,
+            "quality_status_before_profile_cap": "invalid",
+            "reasons": [
+              "core_support_insufficient",
+              "possible_saturation",
+              "ring_candidate",
+              "saturated_core"
+            ],
+            "reported_status_passed": true,
+            "required_reason_codes_passed": true,
+            "scene_id": "saturated_core",
+            "seed": 0,
+            "status_expectation_passed": true,
+            "summary_status": "invalid",
+            "versions_passed": true
+          },
+          {
+            "comparison_policy": "diagnostic",
+            "comparisons": [],
+            "comparisons_passed": true,
+            "flow_status": "computed",
+            "forbidden_reason_codes_passed": true,
+            "manifest": {
+              "analysis_contract": "analysis-contract-v1",
+              "bit_depth": 8,
+              "center_xy": [
+                5.0,
+                127.5
+              ],
+              "comparison_policy": "diagnostic",
+              "expected_quality_status": "caution",
+              "expected_reported_statuses": [
+                "caution",
+                "invalid"
+              ],
+              "forbidden_reason_codes": [],
+              "generator_version": "synthetic-scenes-v1",
+              "input_sha256": "68cd16c705affa7009837ac2cfe1f8487d5565761d1a23035eef4a70951e83c5",
+              "model": "gaussian",
+              "parameters": {
+                "amplitude": 200.0,
+                "background": 10.0,
+                "center_xy": [
+                  5.0,
+                  127.5
+                ],
+                "width": 20.0
+              },
+              "pixel_pitch_um": [
+                0.1,
+                0.1
+              ],
+              "profile_validation": "provisional",
+              "quality_profile": "quality-profile-v1",
+              "reference_sha256": "68cd16c705affa7009837ac2cfe1f8487d5565761d1a23035eef4a70951e83c5",
+              "required_reason_codes": [
+                "window_truncated"
+              ],
+              "scene_id": "cropped_edge",
+              "seed": 0,
+              "shape": [
+                256,
+                256
+              ],
+              "standard_profile": "standard-profile-v1",
+              "tolerances": {}
+            },
+            "metric_gates_passed": true,
+            "metric_outcomes": {
+              "centroid_offset": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "concentration_rref": {
+                "reason_codes": [
+                  "rref_missing"
+                ],
+                "reported_value_is_null": true,
+                "status": "unavailable"
+              },
+              "ee50": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "ee80": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "fit_residual": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_angle": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_ellipticity": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_fwhm_major": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "gaussian_fwhm_minor": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "moment_angle": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "moment_d4sigma_major": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "moment_d4sigma_minor": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              },
+              "peak_center": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": false,
+                "status": "caution"
+              },
+              "quality_diagnostics": {
+                "reason_codes": [
+                  "window_truncated"
+                ],
+                "reported_value_is_null": true,
+                "status": "invalid"
+              }
+            },
+            "passed": true,
+            "quality_status_before_profile_cap": "invalid",
+            "reasons": [
+              "window_truncated"
+            ],
+            "reported_status_passed": true,
+            "required_reason_codes_passed": true,
+            "scene_id": "cropped_edge",
+            "seed": 0,
+            "status_expectation_passed": true,
+            "summary_status": "invalid",
+            "versions_passed": true
+          }
+        ]
+      },
+      "status": "passed"
+    }
+  },
+  "status": "incomplete",
+  "validation_contract": "validation-contract-v1"
+}
