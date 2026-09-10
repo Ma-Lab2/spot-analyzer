@@ -718,6 +718,7 @@ def _gaussian_fit(
             "fit_termination_message": str(result.message),
             "fit_optimality": float(result.optimality),
             "fit_active_mask": [int(value) for value in result.active_mask],
+            "fit_parameters": [float(value) for value in fitted],
             "fit_boundary_hit": bool(
                 np.any(np.isclose(fitted, lower, atol=1e-7))
                 or np.any(np.isclose(fitted, upper, atol=1e-7))
@@ -727,9 +728,15 @@ def _gaussian_fit(
         raise RuntimeError(f"gaussian fit failed: {error}") from error
     sx, sy = float(fitted[4]), float(fitted[5])
     theta = float(fitted[6])
+    major_sigma_index, minor_sigma_index = 4, 5
     if sy > sx:
         sx, sy = sy, sx
         theta += math.pi / 2.0
+        major_sigma_index, minor_sigma_index = 5, 4
+    diagnostics["fit_sigma_axis_indices"] = {
+        "major": major_sigma_index,
+        "minor": minor_sigma_index,
+    }
     metrics = {
         "fwhm_major": math.sqrt(8.0 * math.log(2.0)) * sx,
         "fwhm_minor": math.sqrt(8.0 * math.log(2.0)) * sy,
@@ -819,6 +826,63 @@ def _transform_axis_pair(
     vector = eigenvectors[:, order[0]]
     physical_angle = math.degrees(math.atan2(vector[1], vector[0])) % 180.0
     return float(lengths[0]), float(lengths[1]), physical_angle
+
+
+def _physical_fwhm_pair(
+    sigma_x: float,
+    sigma_y: float,
+    theta: float,
+    x_scale: float,
+    y_scale: float,
+) -> tuple[float, float]:
+    rotation = np.array(
+        [[math.cos(theta), -math.sin(theta)], [math.sin(theta), math.cos(theta)]],
+        dtype=np.float64,
+    )
+    pixel_covariance = rotation @ np.diag([sigma_x**2, sigma_y**2]) @ rotation.T
+    physical_covariance = np.diag([x_scale, y_scale]) @ pixel_covariance @ np.diag([x_scale, y_scale])
+    eigenvalues = np.linalg.eigvalsh(physical_covariance)
+    factor = math.sqrt(8.0 * math.log(2.0))
+    return factor * math.sqrt(float(eigenvalues[1])), factor * math.sqrt(float(eigenvalues[0]))
+
+
+def _propagated_fwhm_uncertainty(
+    parameters: list[float] | tuple[float, ...],
+    covariance: list[list[float]] | tuple[tuple[float, ...], ...],
+    x_scale: float,
+    y_scale: float,
+    major_sigma_index: int,
+    minor_sigma_index: int,
+) -> dict[str, float]:
+    covariance_array = np.asarray(covariance, dtype=np.float64)
+    fitted = np.asarray(parameters, dtype=np.float64)
+    factor = math.sqrt(8.0 * math.log(2.0))
+    pixel_variance_major = factor**2 * covariance_array[major_sigma_index, major_sigma_index]
+    pixel_variance_minor = factor**2 * covariance_array[minor_sigma_index, minor_sigma_index]
+    physical_parameters = fitted[[4, 5, 6]].copy()
+
+    def physical_widths(values: np.ndarray) -> np.ndarray:
+        major, minor = _physical_fwhm_pair(
+            float(values[0]), float(values[1]), float(values[2]), x_scale, y_scale
+        )
+        return np.array([major, minor], dtype=np.float64)
+
+    jacobian = np.zeros((2, 3), dtype=np.float64)
+    for column in range(3):
+        step = max(abs(float(physical_parameters[column])) * 1e-6, 1e-6)
+        plus = physical_parameters.copy()
+        minus = physical_parameters.copy()
+        plus[column] += step
+        minus[column] -= step
+        jacobian[:, column] = (physical_widths(plus) - physical_widths(minus)) / (2.0 * step)
+    physical_covariance = covariance_array[np.ix_([4, 5, 6], [4, 5, 6])]
+    propagated = jacobian @ physical_covariance @ jacobian.T
+    return {
+        "pixel_major": math.sqrt(max(float(pixel_variance_major), 0.0)),
+        "pixel_minor": math.sqrt(max(float(pixel_variance_minor), 0.0)),
+        "physical_major": math.sqrt(max(float(propagated[0, 0]), 0.0)),
+        "physical_minor": math.sqrt(max(float(propagated[1, 1]), 0.0)),
+    }
 
 
 def _attach_physical_values(
@@ -1432,25 +1496,57 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         configuration,
     )
     parameter_uncertainty = fit_diagnostics.get("fit_parameter_uncertainty")
+    fit_parameters = fit_diagnostics.get("fit_parameters")
+    fit_covariance = fit_diagnostics.get("fit_covariance")
+    axis_indices = fit_diagnostics.get("fit_sigma_axis_indices", {})
     fit_uncertainty: dict[str, Any] = {"available": False, "reason": "fit_uncertainty_unavailable"}
-    if isinstance(parameter_uncertainty, (list, tuple)) and len(parameter_uncertainty) >= 6:
-        sigma_factor = math.sqrt(8.0 * math.log(2.0))
-        pixel_major = sigma_factor * max(float(parameter_uncertainty[4]), float(parameter_uncertainty[5]))
-        pixel_minor = sigma_factor * min(float(parameter_uncertainty[4]), float(parameter_uncertainty[5]))
-        fit_uncertainty = {
-            "available": True,
-            "gaussian_fwhm_major": pixel_major,
-            "gaussian_fwhm_minor": pixel_minor,
-            "unit": "px",
-        }
-        if configuration.calibration.is_usable:
-            x_scale = float(configuration.calibration.x_unit_per_pixel)
-            y_scale = float(configuration.calibration.y_unit_per_pixel)
-            fit_uncertainty["physical"] = {
-                "gaussian_fwhm_major": math.hypot(pixel_major * x_scale, pixel_major * y_scale) / math.sqrt(2.0),
-                "gaussian_fwhm_minor": math.hypot(pixel_minor * x_scale, pixel_minor * y_scale) / math.sqrt(2.0),
-                "unit": configuration.calibration.physical_unit,
+    if (
+        isinstance(fit_parameters, (list, tuple))
+        and len(fit_parameters) >= 7
+        and isinstance(fit_covariance, (list, tuple))
+        and len(fit_covariance) >= 7
+        and isinstance(axis_indices, Mapping)
+    ):
+        major_index = int(axis_indices.get("major", 4))
+        minor_index = int(axis_indices.get("minor", 5))
+        covariance_array = np.asarray(fit_covariance, dtype=np.float64)
+        if covariance_array.shape == (7, 7):
+            sigma_factor = math.sqrt(8.0 * math.log(2.0))
+            pixel_major = sigma_factor * math.sqrt(max(float(covariance_array[major_index, major_index]), 0.0))
+            pixel_minor = sigma_factor * math.sqrt(max(float(covariance_array[minor_index, minor_index]), 0.0))
+            fit_uncertainty = {
+                "available": True,
+                "gaussian_fwhm_major": pixel_major,
+                "gaussian_fwhm_minor": pixel_minor,
+                "unit": "px",
             }
+            if configuration.calibration.is_usable:
+                x_scale = float(configuration.calibration.x_unit_per_pixel)
+                y_scale = float(configuration.calibration.y_unit_per_pixel)
+                propagated = _propagated_fwhm_uncertainty(
+                    fit_parameters,
+                    fit_covariance,
+                    x_scale,
+                    y_scale,
+                    major_index,
+                    minor_index,
+                )
+                physical_major, physical_minor, _ = _transform_axis_pair(
+                    math.sqrt(8.0 * math.log(2.0)) * float(fit_parameters[major_index]),
+                    math.sqrt(8.0 * math.log(2.0)) * float(fit_parameters[minor_index]),
+                    math.degrees(float(fit_parameters[6])) + (90.0 if major_index == 5 else 0.0),
+                    x_scale,
+                    y_scale,
+                )
+                fit_uncertainty["physical"] = {
+                    "gaussian_fwhm_major": physical_major,
+                    "gaussian_fwhm_minor": physical_minor,
+                    "gaussian_fwhm_major_uncertainty": propagated["physical_major"],
+                    "gaussian_fwhm_minor_uncertainty": propagated["physical_minor"],
+                    "unit": configuration.calibration.physical_unit,
+                }
+            fit_uncertainty["gaussian_fwhm_major_uncertainty"] = pixel_major
+            fit_uncertainty["gaussian_fwhm_minor_uncertainty"] = pixel_minor
     diagnostics: dict[str, Any] = {
         **background_diagnostics,
         "mask_version": _MASK_VERSION,

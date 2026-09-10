@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import math
+
+import pytest
 
 from spot_analyzer import AnalysisConfiguration, AnalysisRegion, InputImage, analyze
+from spot_analyzer.core import _propagated_fwhm_uncertainty
 from spot_analyzer.synthetic import generate_scene
 from spot_analyzer.validation import load_manifest, run_low_snr_regression, run_manifest_regression
 
@@ -78,6 +82,30 @@ def test_fingerprint_uses_rfc8785_and_records_canonicalizer_provenance() -> None
     assert first_outcome.record.diagnostics["canonicalizer_version"] == "rfc8785-python-0.1.4"
     assert first_outcome.record.diagnostics["fit"]["fit_covariance"] is not None
     assert first_outcome.record.diagnostics["fit_uncertainty"]["available"] is True
+
+
+def test_fwhm_uncertainty_follows_canonical_axes_and_physical_covariance() -> None:
+    parameters = [100.0, 0.0, 10.0, 11.0, 2.0, 4.0, math.radians(30.0)]
+    covariance = [[0.0 for _ in range(7)] for _ in range(7)]
+    covariance[4][4] = 0.8**2
+    covariance[5][5] = 0.2**2
+    covariance[6][6] = math.radians(5.0) ** 2
+    covariance[5][6] = covariance[6][5] = 0.01
+
+    uncertainty = _propagated_fwhm_uncertainty(
+        parameters,
+        covariance,
+        0.1,
+        0.2,
+        major_sigma_index=5,
+        minor_sigma_index=4,
+    )
+
+    factor = math.sqrt(8.0 * math.log(2.0))
+    assert uncertainty["pixel_major"] == pytest.approx(factor * 0.2)
+    assert uncertainty["pixel_minor"] == pytest.approx(factor * 0.8)
+    assert uncertainty["physical_major"] > 0.0
+    assert uncertainty["physical_minor"] > 0.0
 
 
 def test_low_snr_aggregate_records_bias_and_gate_distribution() -> None:

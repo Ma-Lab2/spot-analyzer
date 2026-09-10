@@ -52,7 +52,7 @@ VS Code diagnostics
 4. worker 已实现资产引用、expected hash、完整请求快照、真实子进程 NDJSON 和运行目录派生资产写出；本轮增加了请求前取消、超时配置及过期 deadline 的结构化状态测试，并将未处理异常转换为 stdout NDJSON failure。报告导出现在能将目录创建失败转换为 `export_failed`；强制崩溃仍需实现，当前取消/超时仍是协作式检查；
 5. 当前只验证直接核心与 worker/CLI seam 的一致性；仓库中尚无 WPF 调用层，因此真正的 UI/CLI 端到端一致性仍待 Windows 外壳实现后验证；
 6. 已实现匹配背景帧优先路径：尺寸、通道、位深及曝光/增益/温度/光路/焦距/批次/采集时间/ROI 字段全部匹配时使用背景帧；缺字段、单字段不匹配或请求背景帧缺失时记录 `background_match_unverified` 并保留具体原因，再降级到确认保护区仿射背景。已实现显式高级预处理双分支和 >10% 核心宽度敏感性门控；高级分支不能绕过标准质量无效条件。仍需更广泛的真实采集条件 fixture 证据；
-7. 物理域已覆盖缺失标定门控、方形像元换算、非方形像元主轴协方差变换和物理域 EE 重算；拟合已记录协方差、参数不确定度估计、终止信息和活动边界，并增加 Gaussian FWHM 的像素域/物理域不确定度估计；EE、角度和椭圆率的不确定度传播仍未实现；
+7. 物理域已覆盖缺失标定门控、方形像元换算、非方形像元主轴协方差变换和物理域 EE 重算；拟合已记录协方差、参数不确定度估计、终止信息和活动边界。Gaussian FWHM 不确定度现在按拟合原始参数轴映射，并通过旋转椭圆、各向异性标定和完整协方差传播到物理域；EE、角度和椭圆率的不确定度传播仍未实现；
 8. `analysis_fingerprint` 已切换到 RFC 8785 JCS canonicalization，并在诊断和指纹输入中记录 canonicalizer 版本；仍需在 Python 3.12 交付环境中执行跨运行时 golden-vector 验证；
 9. `pyproject.toml` 已固定 Python 3.12 范围和当前依赖版本，但本轮实际测试解释器仍为 Python 3.10.11；Python 3.12 构建、PyInstaller one-folder worker、.NET 8 self-contained 外壳和无开发环境的干净 Windows portable ZIP 烟测尚未执行。
 
@@ -68,7 +68,7 @@ VS Code diagnostics
 
 - matched-frame 缺失时保留 affine 降级，但记录 `background_frame_unavailable`、`background_match_unverified` 和 `caution` 状态。
 - 标准质量门槛保持固定；`PreprocessingConfiguration` 拒绝改写 core、SNR 和 multiple-peak 的质量阈值，并校验相关参数范围和顺序，避免请求快照与实际状态映射不一致。
-- 本轮验证：`python -m pytest -o addopts='' -q` 通过 **98 tests**；`python -m compileall -q spot_analyzer tests` 和 `git diff --check` 均通过。
+- 本轮验证：`python -m pytest -o addopts='' -q` 通过 **99 tests**；`python -m compileall -q spot_analyzer tests` 和 `git diff --check` 均通过。
 - 高级预处理现在对 Gaussian FWHM、D4σ、EE50/80、C(Rref) 及相关形状指标记录标准/高级值、绝对差、相对差和两侧状态；`<=10%` 为通过门控，`>10%` 为逐指标 `caution`，`>20%` 为逐指标 `invalid`，高级分支始终至少为 `caution`。
 
 当前实现还将 `profile_validation` 锁定为 `provisional`，拒绝由请求配置直接提升为 `validated`。因此 `standard-profile-v1` 和 `quality-profile-v1` 继续保持 `profile_validation: provisional`。即使数值测试通过，对外 `valid` 也按契约封顶为 `caution`；Issue #11 正式审查接受前不升级为 `validated`。
