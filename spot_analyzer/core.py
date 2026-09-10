@@ -22,6 +22,7 @@ from .models import (
     InputImage,
     MeasurementStatus,
     Metric,
+    PreprocessingConfiguration,
 )
 
 
@@ -220,6 +221,7 @@ def _background(
     background_region: AnalysisRegion | None,
     bad_pixel_mask: np.ndarray,
     saturated_mask: np.ndarray,
+    preprocessing: PreprocessingConfiguration,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Fit a robust affine background after explicit protected-region exclusions."""
 
@@ -288,8 +290,8 @@ def _background(
     roi_residual = roi_values - roi_design @ coefficients
     roi_positive = roi_residual[roi_valid]
     roi_peak = float(np.max(roi_positive)) if roi_positive.size else 0.0
-    noise_threshold = 3.0 * initial_scale
-    relative_peak_threshold = 0.10 * max(roi_peak, 0.0)
+    noise_threshold = preprocessing.background_signal_sigma_threshold * initial_scale
+    relative_peak_threshold = preprocessing.background_signal_peak_fraction * max(roi_peak, 0.0)
     signal_threshold = min(noise_threshold, relative_peak_threshold)
     signal_candidates = base_valid & (
         (initial_residual > noise_threshold)
@@ -297,7 +299,7 @@ def _background(
     )
     signal_excluded = binary_dilation(
         signal_candidates.reshape(sample.shape),
-        structure=np.ones((3, 3), dtype=bool),
+        structure=np.ones((2 * preprocessing.background_mask_dilation_pixels + 1,) * 2, dtype=bool),
         iterations=1,
         border_value=0,
     ).ravel() & base_valid
@@ -320,7 +322,7 @@ def _background(
 
     converged = False
     iterations = 0
-    for iterations in range(1, 51):
+    for iterations in range(1, preprocessing.background_max_iterations + 1):
         residual = values - design @ coefficients
         center = float(np.median(residual[valid]))
         scale = 1.4826 * float(np.median(np.abs(residual[valid] - center)))
@@ -329,7 +331,7 @@ def _background(
             break
         weights = np.minimum(
             1.0,
-            1.345 * scale / np.maximum(np.abs(residual), np.finfo(float).eps),
+            preprocessing.background_huber_delta * scale / np.maximum(np.abs(residual), np.finfo(float).eps),
         )
         weighted_design = design[valid] * weights[valid, None]
         weighted_values = values[valid] * weights[valid]
@@ -339,7 +341,7 @@ def _background(
             abs(np.sum((residual[valid]) ** 2) - np.sum((values[valid] - design[valid] @ updated) ** 2))
         )
         coefficients = updated
-        if parameter_delta < 1e-8 and objective_delta < 1e-8:
+        if parameter_delta < preprocessing.convergence_tolerance and objective_delta < preprocessing.convergence_tolerance:
             converged = True
             break
     if not converged:
@@ -849,6 +851,7 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "rref_invalid"},))
 
     data = image.data
+    preprocessing = configuration.preprocessing
     if image.bit_depth is not None and image.bit_depth not in {8, 16}:
         return AnalysisOutcome(FlowStatus.INPUT_INVALID, None, ({"code": "bit_depth_unsupported"},))
     saturated_mask = (
@@ -880,6 +883,7 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
             background_region,
             bad_pixel_mask,
             saturated_mask,
+            configuration.preprocessing,
         )
         background_diagnostics = {**match_diagnostics, **background_diagnostics}
     corrected = data - background
@@ -934,7 +938,7 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     center_peak_values = roi_positive[neighborhood & roi_valid]
     core_peak = float(np.max(center_peak_values)) if center_peak_values.size else 0.0
     core_candidate = (
-        roi_positive >= 0.5 * core_peak
+        roi_positive >= preprocessing.core_threshold_fraction * core_peak
         if core_peak > 0
         else np.zeros_like(roi_positive, dtype=bool)
     )
@@ -967,9 +971,9 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     if np.any(core_bad):
         reasons.add("bad_pixel_in_core")
     if np.any(core_mask):
-        if core_valid_fraction < 0.8:
+        if core_valid_fraction < preprocessing.core_invalid_fraction:
             reasons.add("core_support_insufficient")
-        elif core_valid_fraction < 0.95:
+        elif core_valid_fraction < preprocessing.core_caution_fraction:
             reasons.add("core_support_caution")
     saturated_components, saturated_component_count = label(
         core_saturated,
@@ -996,9 +1000,9 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     )
     if noise > np.finfo(float).eps:
         snr = (peak_for_snr - background_at_center) / noise
-        if snr < 5:
+        if snr < preprocessing.snr_invalid_threshold:
             reasons.add("low_snr")
-        elif snr < 10:
+        elif snr < preprocessing.snr_caution_threshold:
             reasons.add("low_snr_caution")
     else:
         snr = None
@@ -1022,8 +1026,14 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     if configuration.preprocessing.advanced_processing_enabled and advanced_sensitivity > 0.10:
         reasons.add("advanced_sensitivity_exceeded")
     estimated_fwhm_major = advanced_fwhm
-    separation_threshold = max(3.0, 0.5 * estimated_fwhm_major)
-    candidate_threshold = max(0.2 * core_peak, 5.0 * noise)
+    separation_threshold = max(
+        preprocessing.multiple_peak_min_separation_pixels,
+        0.5 * estimated_fwhm_major,
+    )
+    candidate_threshold = max(
+        preprocessing.multiple_peak_relative_threshold * core_peak,
+        preprocessing.multiple_peak_noise_threshold * noise,
+    )
     supported_signal = roi_valid & (roi_positive >= candidate_threshold) if core_peak > 0 else np.zeros_like(roi_valid)
     candidate_components, candidate_component_count = label(
         supported_signal,
@@ -1041,7 +1051,7 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
             continue
         component = candidate_components == component_id
         support_pixels = int(np.count_nonzero(component))
-        if support_pixels < 9:
+        if support_pixels < preprocessing.multiple_peak_min_support_pixels:
             continue
         touches_boundary = bool(
             np.any(component[[0, -1], :]) or np.any(component[:, [0, -1]])

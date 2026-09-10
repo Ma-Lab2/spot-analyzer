@@ -43,3 +43,9 @@
 - `python -m compileall -q spot_analyzer tests` — 通过
 - `git diff --check dd23203..HEAD` — 通过
 - 审查未修改代码。
+
+## Follow-up review
+
+后续切片修复了第 8 项缺陷：缺失 matched frame 现在记录 `background_frame_unavailable` 并将 affine 降级标记为 `caution`。同时，标准 core/SNR/multiple-peak 质量门槛及背景拟合、定位参数均锁定为标准档案值，非法类型、非有限值和错误顺序会在配置阶段拒绝。新增回归测试后，完整套件为 **97 passed**。
+
+本次 follow-up 仍确认 Issue #10 的高级敏感性指标、FWHM 不确定度、报告处理步骤和部分导出异常等其他问题尚未修复。

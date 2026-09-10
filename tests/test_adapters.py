@@ -426,6 +426,27 @@ def test_numpy_bad_pixel_coordinates_are_canonicalizable() -> None:
     assert outcome.record.diagnostics["bad_pixel_coordinates"] == ((100, 100),)
 
 
+def test_profile_snr_thresholds_cannot_be_overridden() -> None:
+    with pytest.raises(ValueError, match="standard preprocessing parameters are fixed"):
+        PreprocessingConfiguration(
+            snr_invalid_threshold=1_000_000.0,
+            snr_caution_threshold=2_000_000.0,
+        )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"background_mask_dilation_pixels": 0.5},
+        {"background_max_iterations": 1.5},
+        {"background_huber_delta": np.nan},
+    ),
+)
+def test_invalid_preprocessing_parameters_are_rejected(kwargs: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        PreprocessingConfiguration(**kwargs)
+
+
 def test_advanced_preprocessing_retains_standard_branch_and_records_sensitivity() -> None:
     scene = generate_scene("gaussian_circular")
     image = InputImage(

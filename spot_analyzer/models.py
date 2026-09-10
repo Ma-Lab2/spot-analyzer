@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import math
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -155,8 +156,78 @@ class PreprocessingConfiguration:
             raise ValueError("preprocessing option is not supported")
         if self.advanced_processing_enabled and self.filtering == "none" and self.dpc == "none" and self.bad_pixel_policy == "mask_only":
             raise ValueError("advanced preprocessing requires an explicit branch option")
+        integral_fields = {
+            "background_mask_dilation_pixels": self.background_mask_dilation_pixels,
+            "background_max_iterations": self.background_max_iterations,
+            "multiple_peak_min_support_pixels": self.multiple_peak_min_support_pixels,
+        }
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, np.integer))
+            for value in integral_fields.values()
+        ):
+            raise ValueError("preprocessing pixel and iteration counts must be integers")
+        finite_fields = {
+            "background_signal_sigma_threshold": self.background_signal_sigma_threshold,
+            "background_signal_peak_fraction": self.background_signal_peak_fraction,
+            "background_huber_delta": self.background_huber_delta,
+            "convergence_tolerance": self.convergence_tolerance,
+            "localization_sigma_pixels": self.localization_sigma_pixels,
+            "localization_truncate_sigma": self.localization_truncate_sigma,
+            "core_threshold_fraction": self.core_threshold_fraction,
+            "core_invalid_fraction": self.core_invalid_fraction,
+            "core_caution_fraction": self.core_caution_fraction,
+            "snr_invalid_threshold": self.snr_invalid_threshold,
+            "snr_caution_threshold": self.snr_caution_threshold,
+            "multiple_peak_relative_threshold": self.multiple_peak_relative_threshold,
+            "multiple_peak_noise_threshold": self.multiple_peak_noise_threshold,
+            "multiple_peak_min_separation_pixels": self.multiple_peak_min_separation_pixels,
+        }
+        if any(not math.isfinite(float(value)) for value in finite_fields.values()):
+            raise ValueError("preprocessing parameters must be finite")
         if self.background_max_iterations <= 0 or self.convergence_tolerance <= 0:
             raise ValueError("background fit limits must be positive")
+        if self.background_signal_sigma_threshold <= 0 or self.background_signal_peak_fraction < 0:
+            raise ValueError("background signal thresholds must be nonnegative")
+        if self.background_mask_dilation_pixels < 0 or self.background_huber_delta <= 0:
+            raise ValueError("background mask and robust-fit parameters are invalid")
+        if not 0 <= self.core_threshold_fraction <= 1:
+            raise ValueError("core threshold fraction must be between zero and one")
+        if not 0 <= self.core_invalid_fraction <= self.core_caution_fraction <= 1:
+            raise ValueError("core validity fractions must be ordered between zero and one")
+        if not 0 <= self.snr_invalid_threshold <= self.snr_caution_threshold:
+            raise ValueError("SNR thresholds must be ordered and nonnegative")
+        if not 0 <= self.multiple_peak_relative_threshold <= 1:
+            raise ValueError("multiple-peak relative threshold must be between zero and one")
+        if self.multiple_peak_noise_threshold < 0 or self.multiple_peak_min_support_pixels <= 0:
+            raise ValueError("multiple-peak thresholds must be nonnegative")
+        if self.multiple_peak_min_separation_pixels < 0:
+            raise ValueError("multiple-peak separation must be nonnegative")
+        fixed_quality_values = {
+            "core_threshold_fraction": 0.5,
+            "core_invalid_fraction": 0.8,
+            "core_caution_fraction": 0.95,
+            "snr_invalid_threshold": 5.0,
+            "snr_caution_threshold": 10.0,
+            "multiple_peak_relative_threshold": 0.20,
+            "multiple_peak_noise_threshold": 5.0,
+            "multiple_peak_min_support_pixels": 9,
+            "multiple_peak_min_separation_pixels": 3.0,
+        }
+        fixed_algorithm_values = {
+            "background_signal_sigma_threshold": 3.0,
+            "background_signal_peak_fraction": 0.10,
+            "background_mask_dilation_pixels": 1,
+            "background_huber_delta": 1.345,
+            "background_max_iterations": 50,
+            "convergence_tolerance": 1e-8,
+            "localization_sigma_pixels": 1.0,
+            "localization_truncate_sigma": 3.0,
+        }
+        if any(getattr(self, name) != expected for name, expected in {
+            **fixed_quality_values,
+            **fixed_algorithm_values,
+        }.items()):
+            raise ValueError("standard preprocessing parameters are fixed in the standard profile")
         if not self.version.strip():
             raise ValueError("preprocessing version must not be empty")
 

@@ -20,7 +20,7 @@
 
 ```text
 python -m pytest -q
-93 passed
+97 passed
 
 python -m compileall -q spot_analyzer tests
 通过，无输出
@@ -63,5 +63,11 @@ VS Code diagnostics
 - Standards review：未发现具体规范违规或与规范相关的测试缺口；`git diff --check` 通过。
 - Spec review：发现实现范围内仍有 6 项高严重度缺陷和 4 项中严重度缺陷，涉及阈值参数未实际生效、高级预处理敏感性指标/门控、匹配背景元数据和无效像素 mask、背景帧指纹、NumPy 标量 canonicalization、FWHM 不确定度轴映射、缺失背景帧降级、报告处理步骤以及部分导出异常处理。详细文件/行号见本轮审查记录；这些问题尚未修复，因此本原型不应视为 Issue #10 验收完成。
 - 审查期间未修改代码；复核命令为 `python -m pytest -o addopts='' -q`（88 passed）、`python -m compileall -q spot_analyzer tests`（通过）和 `git diff --check dd23203..HEAD`（通过）。
+
+## 本轮修复（2026-09-10）
+
+- matched-frame 缺失时保留 affine 降级，但记录 `background_frame_unavailable`、`background_match_unverified` 和 `caution` 状态。
+- 标准质量门槛保持固定；`PreprocessingConfiguration` 拒绝改写 core、SNR 和 multiple-peak 的质量阈值，并校验相关参数范围和顺序，避免请求快照与实际状态映射不一致。
+- 本轮验证：`python -m pytest -o addopts='' -q` 通过 **94 tests**；`python -m compileall -q spot_analyzer tests` 和 `git diff --check` 均通过。
 
 当前实现还将 `profile_validation` 锁定为 `provisional`，拒绝由请求配置直接提升为 `validated`。因此 `standard-profile-v1` 和 `quality-profile-v1` 继续保持 `profile_validation: provisional`。即使数值测试通过，对外 `valid` 也按契约封顶为 `caution`；Issue #11 正式审查接受前不升级为 `validated`。
