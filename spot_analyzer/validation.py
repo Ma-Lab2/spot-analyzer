@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+import hashlib
+import io
 import json
 import math
 from pathlib import Path
 import platform
+import statistics
 import sys
+import tempfile
+import time
 from typing import Any, Iterable, Mapping
 
 import numpy as np
+from PIL import Image
 
 
 VALIDATION_CONTRACT_VERSION = "validation-contract-v1"
@@ -18,6 +24,7 @@ VALIDATION_SECTION_STATUSES = frozenset({"passed", "failed", "incomplete"})
 _PROFILE_VALIDATION = "provisional"
 
 from .core import analyze
+from .input import decode_png
 from .models import AnalysisConfiguration, AnalysisRecord, AnalysisRegion, InputImage
 from .oracle import circular_gaussian_oracle, scene_oracle
 from .synthetic import GENERATOR_VERSION, SceneManifest, SyntheticScene, generate_scene
@@ -410,6 +417,8 @@ def _aggregate_status(sections: Mapping[str, Mapping[str, Any]]) -> str:
 def run_issue10_validation(
     manifests: Mapping[str, int] | None = None,
     seeds: Iterable[int] = range(32),
+    real_manifest_path: str | Path = Path("docs/validation/issue-10-real-fixtures.json"),
+    real_fixture_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Run the Issue #10 synthetic and low-SNR sections in one JSON-ready operation.
 
@@ -431,6 +440,10 @@ def run_issue10_validation(
             "low_snr",
             lambda: run_low_snr_regression(seed_values),
             available=low_snr_available,
+        ),
+        "real_fixtures": _run_section(
+            "real_fixtures",
+            lambda: run_real_fixture_validation(real_manifest_path, root=real_fixture_root),
         ),
     }
     identity = {
@@ -454,6 +467,288 @@ def run_issue10_validation(
         "identity": identity,
         "environment": _validation_environment(),
         "incomplete_items": incomplete_items,
+    }
+
+
+def _real_fixture_configuration(entry: Mapping[str, Any]) -> AnalysisConfiguration:
+    """Build an analysis configuration from a controlled fixture manifest entry."""
+
+    region = AnalysisRegion(**dict(entry["analysis_region"]))
+    background = entry.get("background_region")
+    return AnalysisConfiguration(
+        region=region,
+        background_region=AnalysisRegion(**dict(background)) if background else None,
+    )
+
+
+def _fixture_result_base(entry: Mapping[str, Any], path: Path) -> dict[str, Any]:
+    return {
+        "relative_path": str(entry.get("relative_path", "")),
+        "kind": entry.get("kind", "gray_input"),
+        "path": str(path),
+        "manifest_metadata": {
+            "input_semantics": entry.get("input_semantics", "relative_intensity_code"),
+            "acquisition": entry.get("acquisition", entry.get("acquisition_metadata")),
+            "provenance": entry.get("provenance", entry.get("provenance_metadata")),
+        },
+        "behavioral_evidence_only": True,
+    }
+
+
+def _validate_real_fixture(entry: Mapping[str, Any], path: Path) -> dict[str, Any]:
+    result = _fixture_result_base(entry, path)
+    expected_hash = str(entry.get("sha256", ""))
+    if not path.is_file():
+        result.update({"status": "incomplete", "passed": False, "reason_codes": ["asset_unavailable"]})
+        return result
+    decoded = decode_png(path, confirm_relative_intensity=True, expected_sha256=expected_hash)
+    result["sha256"] = expected_hash
+    result["actual_sha256"] = expected_hash
+    result["flow_status"] = decoded.flow_status.value
+    if decoded.image is None:
+        codes = [str(item["code"]) for item in decoded.diagnostics if "code" in item]
+        actual = next((item.get("actual_sha256") for item in decoded.diagnostics if item.get("actual_sha256")), None)
+        if actual is not None:
+            result["actual_sha256"] = actual
+        result.update({"status": "failed", "passed": False, "reason_codes": codes, "diagnostics": list(decoded.diagnostics)})
+        return result
+    image = decoded.image
+    result.update({
+        "actual_sha256": image.sha256,
+        "input_semantics_confirmed": image.encoding_semantic_confirmed,
+        "channels": image.channels,
+        "channels_identical": image.channels_identical,
+    })
+    kind = str(entry.get("kind", "gray_input"))
+    if kind == "rgb_display_excluded":
+        passed = image.channels == 3 and image.channels_identical
+        result.update({"status": "passed" if passed else "failed", "passed": passed,
+                       "reason_codes": [] if passed else ["rgb_display_not_excluded"]})
+        return result
+    if image.channels != 1:
+        result.update({"status": "failed", "passed": False, "reason_codes": ["non_grayscale_measurement_input"]})
+        return result
+    try:
+        configuration = _real_fixture_configuration(entry)
+        first = analyze(image, configuration)
+        second = analyze(image, configuration)
+    except Exception as exc:
+        result.update({"status": "failed", "passed": False,
+                       "reason_codes": ["fixture_analysis_failed"],
+                       "error": {"type": type(exc).__name__, "message": str(exc)}})
+        return result
+    if first.record is None or second.record is None:
+        result.update({"status": "failed", "passed": False, "reason_codes": ["fixture_analysis_failed"]})
+        return result
+    record = first.record
+    reasons = set(str(code) for code in record.diagnostics.get("reasons", ()))
+    expected_statuses = set(str(status) for status in entry.get("expected_summary_status", entry.get("expected_reported_status", [])))
+    required = set(str(code) for code in entry.get("required_reason_codes", ()))
+    forbidden = set(str(code) for code in entry.get("forbidden_reason_codes", ()))
+    status_passed = not expected_statuses or record.summary_status.value in expected_statuses
+    reason_passed = required.issubset(reasons) and forbidden.isdisjoint(reasons)
+    repeatability_passed = (
+        record.analysis_fingerprint == second.record.analysis_fingerprint
+        and record.summary_status.value == second.record.summary_status.value
+        and tuple(record.diagnostics.get("reasons", ())) == tuple(second.record.diagnostics.get("reasons", ()))
+    )
+    result.update({
+        "status": "passed" if status_passed and reason_passed and repeatability_passed else "failed",
+        "passed": status_passed and reason_passed and repeatability_passed,
+        "summary_status": record.summary_status.value,
+        "analysis_fingerprint": record.analysis_fingerprint,
+        "repeatability_passed": repeatability_passed,
+        "required_reason_codes": sorted(required),
+        "forbidden_reason_codes": sorted(forbidden),
+        "reason_codes": sorted(reasons),
+        "required_reason_codes_passed": required.issubset(reasons),
+        "forbidden_reason_codes_passed": forbidden.isdisjoint(reasons),
+        "status_expectation_passed": status_passed,
+        "input_metadata": dict(record.input_metadata),
+    })
+    return result
+
+
+def run_real_fixture_validation(
+    manifest_path: str | Path = Path("docs/validation/issue-10-real-fixtures.json"),
+    *,
+    root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Validate controlled real PNG assets without claiming physical accuracy."""
+
+    manifest_file = Path(manifest_path)
+    if not manifest_file.is_file():
+        return {"status": "incomplete", "passed": False, "manifest_status": "unavailable",
+                "incomplete_reason": "manifest_unavailable", "fixtures": []}
+    raw = manifest_file.read_bytes()
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return {"status": "failed", "passed": False, "manifest_status": "invalid",
+                "error": {"type": type(exc).__name__, "message": str(exc)}, "fixtures": []}
+    if not isinstance(payload, Mapping) or not isinstance(payload.get("fixtures"), list):
+        return {"status": "failed", "passed": False, "manifest_status": "invalid",
+                "incomplete_reason": "fixtures_required", "fixtures": []}
+    manifest_root = Path(root) if root is not None else Path(str(payload.get("root", "")))
+    manifest_identity = "sha256-" + __import__("hashlib").sha256(raw).hexdigest()
+    if not manifest_root.is_dir():
+        return {"status": "incomplete", "passed": False, "manifest_status": "loaded",
+                "manifest_schema": payload.get("schema"), "manifest_version": payload.get("schema"),
+                "manifest_sha256": manifest_identity, "root": str(manifest_root),
+                "behavioral_evidence_only": True, "absolute_physical_accuracy_claim": False,
+                "incomplete_reason": "fixture_root_unavailable", "fixtures": []}
+    fixtures = []
+    for entry in payload["fixtures"]:
+        if not isinstance(entry, Mapping) or not entry.get("relative_path"):
+            fixtures.append({"status": "failed", "passed": False, "reason_codes": ["manifest_entry_invalid"]})
+            continue
+        relative = Path(str(entry["relative_path"]))
+        path = (manifest_root / relative).resolve()
+        try:
+            path.relative_to(manifest_root.resolve())
+        except ValueError:
+            fixtures.append({"status": "failed", "passed": False, "relative_path": str(relative), "reason_codes": ["asset_path_escape"]})
+            continue
+        fixtures.append(_validate_real_fixture(entry, path))
+    statuses = [item["status"] for item in fixtures]
+    status = "failed" if "failed" in statuses else "incomplete" if "incomplete" in statuses else "passed"
+    return {
+        "status": status,
+        "passed": status == "passed",
+        "manifest_status": "loaded",
+        "manifest_schema": payload.get("schema"),
+        "manifest_version": payload.get("schema"),
+        "manifest_sha256": manifest_identity,
+        "root": str(manifest_root),
+        "behavioral_evidence_only": True,
+        "absolute_physical_accuracy_claim": False,
+        "fixture_count": len(fixtures),
+        "fixtures": fixtures,
+    }
+
+
+def _percentile95(values: list[float]) -> float:
+    return float(np.percentile(np.asarray(values, dtype=np.float64), 95))
+
+
+def _memory_snapshot() -> dict[str, Any]:
+    """Return best-effort process memory metadata without adding a dependency."""
+
+    try:
+        import psutil
+
+        process = psutil.Process()
+        return {"current_mb": process.memory_info().rss / (1024 * 1024), "source": "psutil"}
+    except Exception:
+        return {"current_mb": None, "source": "unavailable"}
+
+
+def _performance_environment() -> dict[str, Any]:
+    environment = _validation_environment()
+    environment["memory"] = _memory_snapshot()
+    environment["formal_python"] = sys.version_info[:2] == (3, 12)
+    environment["formal_dependencies"] = {
+        "numpy": environment["numpy"] == "2.2.6",
+        "scipy": environment["scipy"] == "1.15.3",
+        "pillow": environment["pillow"] == "12.2.0",
+    }
+    environment["formal_environment"] = environment["formal_python"] and all(
+        environment["formal_dependencies"].values()
+    )
+    return environment
+
+
+def _benchmark_summary(times: list[float]) -> dict[str, Any]:
+    return {
+        "runs_seconds": [float(value) for value in times],
+        "p50_seconds": float(statistics.median(times)),
+        "p95_seconds": _percentile95(times),
+        "max_seconds": float(max(times)),
+    }
+
+
+def _benchmark_scene(size: int) -> SyntheticScene:
+    return generate_scene("gaussian_circular", seed=0, shape=(size, size))
+
+
+def _benchmark_configuration(size: int) -> AnalysisConfiguration:
+    margin = size // 4
+    region_size = size // 2
+    return AnalysisConfiguration(
+        AnalysisRegion(margin, margin, region_size, region_size),
+        background_region=AnalysisRegion(size // 8, margin, size // 8, region_size),
+    )
+
+
+def _worker_request(scene: SyntheticScene, configuration: AnalysisConfiguration, path: Path, work: Path) -> dict[str, Any]:
+    payload = io.BytesIO()
+    Image.fromarray(scene.input_array.astype(np.uint8), mode="L").save(payload, format="PNG")
+    path.write_bytes(payload.getvalue())
+    digest = hashlib.sha256(payload.getvalue()).hexdigest()
+    from .worker import SCHEMA
+
+    return {
+        "schema": SCHEMA,
+        "input": {"asset": {"path": str(path), "expected_sha256": digest}, "confirm_relative_intensity": True},
+        "configuration": asdict(configuration),
+        "output_strategy": {"work_directory": str(work), "derived_format": "npy"},
+    }
+
+
+def run_performance_baseline(
+    *,
+    sizes: Iterable[int] = (256, 1024),
+    repetitions: int = 10,
+) -> dict[str, Any]:
+    """Measure core hot runs and worker end-to-end runs for declared workloads."""
+
+    from .worker import run_worker_process
+
+    size_values = tuple(int(size) for size in sizes)
+    if repetitions < 1:
+        raise ValueError("repetitions must be positive")
+    environment = _performance_environment()
+    workloads: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory(prefix="spot-performance-") as temporary:
+        root = Path(temporary)
+        for size in size_values:
+            scene = _benchmark_scene(size)
+            configuration = _benchmark_configuration(size)
+            core_times: list[float] = []
+            for _ in range(repetitions):
+                started = time.perf_counter()
+                outcome = analyze(
+                    InputImage(scene.input_array, bit_depth=scene.manifest.bit_depth, encoding_semantic="relative_intensity_code", encoding_semantic_confirmed=True),
+                    configuration,
+                )
+                elapsed = time.perf_counter() - started
+                if outcome.record is None:
+                    raise RuntimeError(f"core benchmark failed for {size}x{size}")
+                core_times.append(elapsed)
+            worker_times: list[float] = []
+            for index in range(repetitions):
+                request = _worker_request(scene, configuration, root / f"{size}-{index}.png", root / f"assets-{size}-{index}")
+                started = time.perf_counter()
+                messages = run_worker_process(request)
+                elapsed = time.perf_counter() - started
+                if not messages or messages[-1].get("kind") != "completed":
+                    raise RuntimeError(f"worker benchmark failed for {size}x{size}")
+                worker_times.append(elapsed)
+            core = _benchmark_summary(core_times)
+            worker = _benchmark_summary(worker_times)
+            workloads.append({
+                "image_size": {"width": size, "height": size},
+                "repetitions": repetitions,
+                "core": {"mode": "hot_analyze", **core, "target_p95_seconds": 2.0 if size == 1024 else None, "target_passed": size != 1024 or core["p95_seconds"] <= 2.0},
+                "worker": {"mode": "cold_process_png_analysis_derived_write", **worker, "target_p95_seconds": 5.0 if size == 1024 else None, "target_passed": size != 1024 or worker["p95_seconds"] <= 5.0},
+            })
+    observed = all(item["core"]["target_passed"] and item["worker"]["target_passed"] for item in workloads)
+    return {
+        "workloads": workloads,
+        "environment": environment,
+        "formal_status": "passed" if environment["formal_environment"] and observed else "incomplete",
+        "passed": bool(workloads) and environment["formal_environment"] and observed,
+        "incomplete_reason": None if environment["formal_environment"] else "formal performance evidence requires Python 3.12 and locked dependencies",
     }
 
 

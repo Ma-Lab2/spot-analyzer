@@ -8,7 +8,12 @@ import pytest
 from spot_analyzer import AnalysisConfiguration, AnalysisRegion, InputImage, analyze
 from spot_analyzer.core import _propagated_fwhm_uncertainty
 from spot_analyzer.synthetic import generate_scene
-from spot_analyzer.validation import load_manifest, run_low_snr_regression, run_manifest_regression
+from spot_analyzer.validation import (
+    load_manifest,
+    run_low_snr_regression,
+    run_manifest_regression,
+    run_real_fixture_validation,
+)
 
 
 def test_manifest_loader_round_trips_scene_manifest(tmp_path) -> None:
@@ -123,3 +128,50 @@ def test_low_snr_aggregate_records_bias_and_gate_distribution() -> None:
     severe_cases = [case for case in report["cases"] if case["snr"] is None or case["snr"] < 5]
     assert severe_cases
     assert all(case["quantitative_values_gated"] for case in severe_cases)
+
+
+def test_real_fixture_validation_marks_missing_root_incomplete(tmp_path) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"schema": "real-fixture-manifest-v1", "root": str(tmp_path / "missing"), "fixtures": []}), encoding="utf-8")
+
+    report = run_real_fixture_validation(manifest)
+
+    assert report["status"] == "incomplete"
+    assert report["passed"] is False
+    assert report["incomplete_reason"] == "fixture_root_unavailable"
+    assert report["behavioral_evidence_only"] is True
+
+
+def test_real_fixture_validation_rejects_hash_mismatch(tmp_path) -> None:
+    from PIL import Image
+
+    root = tmp_path / "fixtures"
+    root.mkdir()
+    Image.new("L", (8, 8), color=0).save(root / "sample.png")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({
+        "schema": "real-fixture-manifest-v1",
+        "root": str(root),
+        "fixtures": [{
+            "relative_path": "sample.png",
+            "sha256": "0" * 64,
+            "kind": "gray_input",
+            "analysis_region": {"x": 0, "y": 0, "width": 8, "height": 8},
+        }],
+    }), encoding="utf-8")
+
+    report = run_real_fixture_validation(manifest)
+
+    assert report["status"] == "failed"
+    assert report["fixtures"][0]["status"] == "failed"
+    assert "input_hash_mismatch" in report["fixtures"][0]["reason_codes"]
+
+
+def test_real_fixture_validation_records_manifest_identity_and_repeatability() -> None:
+    report = run_real_fixture_validation()
+
+    assert report["manifest_status"] == "loaded"
+    assert report["manifest_sha256"].startswith("sha256-")
+    assert report["behavioral_evidence_only"] is True
+    assert report["absolute_physical_accuracy_claim"] is False
+    assert all("repeatability_passed" in item for item in report["fixtures"] if item["kind"] != "rgb_display_excluded")

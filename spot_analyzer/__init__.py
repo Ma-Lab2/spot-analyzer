@@ -2,7 +2,7 @@
 
 from .core import analyze
 from .input import DecodeOutcome, decode_png
-from .validation import run_issue10_validation, run_validation
+from .validation import run_issue10_validation, run_performance_baseline, run_real_fixture_validation, run_validation
 from .models import (
     AnalysisConfiguration,
     AnalysisModel,
@@ -33,5 +33,7 @@ __all__ = [
     "analyze",
     "decode_png",
     "run_issue10_validation",
+    "run_performance_baseline",
+    "run_real_fixture_validation",
     "run_validation",
 ]
