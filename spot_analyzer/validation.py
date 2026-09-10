@@ -716,8 +716,9 @@ def run_issue10_validation(
     """Run every required Issue #10 validation section in one JSON-ready operation.
 
     Performance validation defaults to the required 256x256 sanity and
-    1024x1024 main-load workloads. Callers may override the workload sizes and
-    repetition count without changing the section status or environment contract.
+    1024x1024 main-load workloads with ten repetitions. Custom workload sizes or
+    repetition counts remain available for development measurements, but are
+    always reported as incomplete rather than formal evidence.
     """
 
     seed_values = tuple(int(seed) for seed in seeds)
@@ -1070,6 +1071,12 @@ def run_performance_baseline(
     size_values = tuple(int(size) for size in sizes)
     if repetitions < 1:
         raise ValueError("repetitions must be positive")
+    formal_workload = size_values == (256, 1024) and repetitions == 10
+    contract_violations: list[str] = []
+    if size_values != (256, 1024):
+        contract_violations.append("formal_workload_requires_sizes_256_and_1024")
+    if repetitions != 10:
+        contract_violations.append("formal_workload_requires_10_repetitions")
     environment = _performance_environment()
     workloads: list[dict[str, Any]] = []
     with tempfile.TemporaryDirectory(prefix="spot-performance-") as temporary:
@@ -1122,16 +1129,36 @@ def run_performance_baseline(
                 "core": {"mode": "hot_analyze", **core, "target_p95_seconds": 2.0 if size == 1024 else None, "target_passed": size != 1024 or core["p95_seconds"] <= 2.0},
                 "worker": {"mode": "cold_process_png_analysis_derived_write", **worker, "target_p95_seconds": 5.0 if size == 1024 else None, "target_passed": size != 1024 or worker["p95_seconds"] <= 5.0},
             })
-    observed = all(item["core"]["target_passed"] and item["worker"]["target_passed"] for item in workloads)
+    observed = bool(workloads) and all(
+        item["core"]["target_passed"] and item["worker"]["target_passed"]
+        for item in workloads
+    )
+    if not formal_workload:
+        formal_status = "incomplete"
+        incomplete_reason = "formal performance workload contract was not used"
+    elif not workloads:
+        formal_status = "incomplete"
+        incomplete_reason = "formal performance workload must not be empty"
+    elif not environment["formal_environment"]:
+        formal_status = "incomplete"
+        incomplete_reason = "formal performance evidence requires Python 3.12 and locked dependencies"
+    else:
+        formal_status = "passed" if observed else "failed"
+        incomplete_reason = None
     return {
         "workloads": workloads,
         "environment": environment,
-        "formal_status": _section_status(
-            passed=observed,
-            available=environment["formal_environment"],
-        ),
-        "passed": bool(workloads) and environment["formal_environment"] and observed,
-        "incomplete_reason": None if environment["formal_environment"] else "formal performance evidence requires Python 3.12 and locked dependencies",
+        "formal_workload": formal_workload,
+        "formal_workload_contract": {
+            "required_sizes": [256, 1024],
+            "required_repetitions": 10,
+            "requested_sizes": list(size_values),
+            "requested_repetitions": repetitions,
+            "violations": contract_violations,
+        },
+        "formal_status": formal_status,
+        "passed": formal_status == "passed",
+        "incomplete_reason": incomplete_reason,
     }
 
 
