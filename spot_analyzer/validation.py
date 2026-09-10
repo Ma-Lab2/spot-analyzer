@@ -9,6 +9,7 @@ import json
 import math
 from pathlib import Path
 import platform
+import re
 import statistics
 import sys
 import tempfile
@@ -490,8 +491,19 @@ def run_report_validation(output_directory: str | Path | None = None) -> dict[st
         "no_internal_trials": False,
         "exports": False,
         "export_identity": False,
+        "report_naming": False,
+        "export_conflict_safety": False,
+        "input_read_only": False,
     }
     export_results: list[dict[str, Any]] = []
+    source_digests = {
+        name: _array_digest(array)
+        for name, array in expected_arrays.items()
+    }
+    source_writeable = {
+        name: bool(np.asarray(array).flags.writeable)
+        for name, array in expected_arrays.items()
+    }
     temporary_context = tempfile.TemporaryDirectory(prefix="spot-report-validation-") if output_directory is None else None
     try:
         destination = Path(output_directory) if output_directory is not None else Path(temporary_context.name)
@@ -604,6 +616,67 @@ def run_report_validation(output_directory: str | Path | None = None) -> dict[st
             for item in export_results
             if item["path"]
         ) and len(export_results) == 2
+
+        # Exercise the public naming contract separately from the two baseline exports.
+        with tempfile.TemporaryDirectory(prefix="report-contract-", dir=destination) as auxiliary_name:
+            auxiliary = Path(auxiliary_name)
+            user_name = "  operator/run: sample  "
+            plain_specification = ReportSpecification("png", user_name, auxiliary)
+            plain_package = prepare_report(record, plain_specification)
+            plain_outcome = write_report(plain_package, plain_specification)
+            timestamp_specification = ReportSpecification(
+                "png", user_name, auxiliary, append_timestamp=True
+            )
+            timestamp_package = prepare_report(record, timestamp_specification)
+            timestamp_outcome = write_report(timestamp_package, timestamp_specification)
+            expected_stem = "operator_run_sample"
+            plain_name_ok = (
+                plain_outcome.path is not None
+                and plain_outcome.path.name == expected_stem + ".png"
+                and "/" not in plain_outcome.path.name
+                and "\\" not in plain_outcome.path.name
+            )
+            timestamp_name_ok = bool(
+                timestamp_outcome.path is not None
+                and re.fullmatch(
+                    rf"{re.escape(expected_stem)}-\d{{8}}T\d{{6}}Z\.png",
+                    timestamp_outcome.path.name,
+                )
+            )
+            checks["report_naming"] = (
+                plain_outcome.flow_status == "exported"
+                and timestamp_outcome.flow_status == "exported"
+                and plain_name_ok
+                and timestamp_name_ok
+            )
+
+            # A repeated name must reserve a fresh target without changing the first file.
+            conflict_specification = ReportSpecification("png", "same-name", auxiliary)
+            first_conflict = write_report(
+                prepare_report(record, conflict_specification), conflict_specification
+            )
+            first_bytes = (
+                first_conflict.path.read_bytes() if first_conflict.path is not None else None
+            )
+            second_conflict = write_report(
+                prepare_report(record, conflict_specification), conflict_specification
+            )
+            conflict_safe = (
+                first_conflict.flow_status == "exported"
+                and second_conflict.flow_status == "exported"
+                and first_conflict.path is not None
+                and second_conflict.path is not None
+                and first_conflict.path != second_conflict.path
+                and first_bytes == first_conflict.path.read_bytes()
+                and not any(path.name.startswith(".report-") for path in auxiliary.iterdir())
+            )
+            checks["export_conflict_safety"] = conflict_safe
+
+        checks["input_read_only"] = (
+            all(not source_writeable[name] for name in expected_arrays)
+            and all(_array_digest(array) == source_digests[name] for name, array in expected_arrays.items())
+            and all(not np.asarray(array).flags.writeable for array in expected_arrays.values())
+        )
     except Exception as exc:
         return {
             "status": "failed",
