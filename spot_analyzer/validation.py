@@ -805,46 +805,71 @@ def _fixture_result_base(entry: Mapping[str, Any], path: Path) -> dict[str, Any]
         },
         "metadata_recorded": isinstance(acquisition, Mapping) and isinstance(provenance, Mapping),
         "behavioral_evidence_only": True,
+        "repeatability_passed": False,
     }
 
 
+_PLACEHOLDER_METADATA_VALUES = frozenset({
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "not available",
+    "not recorded",
+    "tbd",
+    "unknown",
+    "未记录",
+    "未记录（历史 png）",
+})
+
+
+def _is_placeholder_metadata(value: Any) -> bool:
+    """Return whether a metadata value explicitly means that it is unknown."""
+
+    if value is None:
+        return True
+    normalized = " ".join(str(value).strip().casefold().split())
+    return normalized in _PLACEHOLDER_METADATA_VALUES or normalized.startswith("未记录（")
+
+
 def _fixture_metadata_valid(entry: Mapping[str, Any]) -> bool:
-    """Require non-empty provenance and acquisition records in every fixture entry.
+    """Require traceable, non-placeholder provenance and acquisition records."""
 
-    The validator intentionally checks the records' presence and identity fields,
-    rather than prescribing instrument-specific acquisition vocabulary. This keeps
-    the manifest useful for historical images while preventing an untraceable
-    fixture from silently contributing to a passing validation run.
-    """
-
-    acquisition = entry.get("acquisition", entry.get("acquisition_metadata"))
-    provenance = entry.get("provenance", entry.get("provenance_metadata"))
-    if not isinstance(acquisition, Mapping) or not isinstance(provenance, Mapping):
-        return False
-    required_provenance = ("source_asset", "source_snapshot")
-    required_acquisition = ("instrument", "acquired_at", "metadata_version")
-    return (
-        all(str(provenance.get(key, "")).strip() for key in required_provenance)
-        and all(str(acquisition.get(key, "")).strip() for key in required_acquisition)
-    )
+    return not _metadata_diagnostics(entry)
 
 
 def _metadata_diagnostics(entry: Mapping[str, Any]) -> list[str]:
+    """Return stable diagnostics for absent or explicitly unknown metadata."""
+
     acquisition = entry.get("acquisition", entry.get("acquisition_metadata"))
     provenance = entry.get("provenance", entry.get("provenance_metadata"))
     diagnostics: list[str] = []
     if not isinstance(provenance, Mapping):
         diagnostics.append("provenance_missing")
     else:
+        missing = False
+        placeholder = False
         for key in ("source_asset", "source_snapshot"):
-            if not str(provenance.get(key, "")).strip():
-                diagnostics.append(f"provenance_{key}_missing")
+            value = provenance.get(key, "")
+            missing = missing or not str(value).strip()
+            placeholder = placeholder or _is_placeholder_metadata(value)
+        if missing:
+            diagnostics.extend(f"provenance_{key}_missing" for key in ("source_asset", "source_snapshot") if not str(provenance.get(key, "")).strip())
+        if placeholder and not missing:
+            diagnostics.append("provenance_placeholder")
     if not isinstance(acquisition, Mapping):
         diagnostics.append("acquisition_metadata_missing")
     else:
+        missing = False
+        placeholder = False
         for key in ("instrument", "acquired_at", "metadata_version"):
-            if not str(acquisition.get(key, "")).strip():
-                diagnostics.append(f"acquisition_{key}_missing")
+            value = acquisition.get(key, "")
+            missing = missing or not str(value).strip()
+            placeholder = placeholder or _is_placeholder_metadata(value)
+        if missing:
+            diagnostics.extend(f"acquisition_{key}_missing" for key in ("instrument", "acquired_at", "metadata_version") if not str(acquisition.get(key, "")).strip())
+        if placeholder and not missing:
+            diagnostics.append("acquisition_metadata_placeholder")
     return diagnostics
 
 
@@ -960,6 +985,12 @@ def run_real_fixture_validation(
                 "manifest_sha256": manifest_identity, "root": str(manifest_root),
                 "behavioral_evidence_only": True, "absolute_physical_accuracy_claim": False,
                 "incomplete_reason": "fixture_root_unavailable", "fixtures": []}
+    if not payload["fixtures"]:
+        return {"status": "incomplete", "passed": False, "manifest_status": "loaded",
+                "manifest_schema": payload.get("schema"), "manifest_version": payload.get("schema"),
+                "manifest_sha256": manifest_identity, "root": str(manifest_root),
+                "behavioral_evidence_only": True, "absolute_physical_accuracy_claim": False,
+                "fixture_count": 0, "incomplete_reason": "fixture_manifest_empty", "fixtures": []}
     fixtures = []
     for entry in payload["fixtures"]:
         if not isinstance(entry, Mapping) or not entry.get("relative_path"):

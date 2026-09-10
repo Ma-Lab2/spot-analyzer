@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from types import SimpleNamespace
@@ -301,6 +302,87 @@ def test_real_fixture_validation_marks_missing_root_incomplete(tmp_path) -> None
     assert report["passed"] is False
     assert report["incomplete_reason"] == "fixture_root_unavailable"
     assert report["behavioral_evidence_only"] is True
+
+
+def test_real_fixture_validation_marks_empty_manifest_incomplete(tmp_path) -> None:
+    root = tmp_path / "fixtures"
+    root.mkdir()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({
+        "schema": "real-fixture-manifest-v1",
+        "root": str(root),
+        "fixtures": [],
+    }), encoding="utf-8")
+
+    report = run_real_fixture_validation(manifest)
+
+    assert report["status"] == "incomplete"
+    assert report["passed"] is False
+    assert report["fixture_count"] == 0
+    assert report["incomplete_reason"] == "fixture_manifest_empty"
+    assert report["behavioral_evidence_only"] is True
+
+
+def test_real_fixture_validation_rejects_placeholder_metadata(tmp_path) -> None:
+    from PIL import Image
+
+    root = tmp_path / "fixtures"
+    root.mkdir()
+    path = root / "sample.png"
+    Image.new("L", (8, 8), color=0).save(path)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({
+        "schema": "real-fixture-manifest-v1",
+        "root": str(root),
+        "fixtures": [{
+            "relative_path": path.name,
+            "sha256": digest,
+            "kind": "gray_input",
+            "analysis_region": {"x": 0, "y": 0, "width": 8, "height": 8},
+            "provenance": {"source_asset": "未记录（历史 PNG）", "source_snapshot": "snapshot-1"},
+            "acquisition": {"instrument": "camera-1", "acquired_at": "2026-01-01T00:00:00Z", "metadata_version": "fixture-metadata-v1"},
+        }],
+    }), encoding="utf-8")
+
+    report = run_real_fixture_validation(manifest)
+    fixture = report["fixtures"][0]
+
+    assert report["status"] == "incomplete"
+    assert report["passed"] is False
+    assert fixture["status"] == "incomplete"
+    assert fixture["metadata_validation"] == "incomplete"
+    assert fixture["reason_codes"] == ["provenance_placeholder"]
+    assert fixture["behavioral_evidence_only"] is True
+
+
+def test_real_fixture_validation_rejects_placeholder_acquisition_metadata(tmp_path) -> None:
+    from PIL import Image
+
+    root = tmp_path / "fixtures"
+    root.mkdir()
+    path = root / "sample.png"
+    Image.new("L", (8, 8), color=0).save(path)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({
+        "schema": "real-fixture-manifest-v1",
+        "root": str(root),
+        "fixtures": [{
+            "relative_path": path.name,
+            "sha256": digest,
+            "kind": "gray_input",
+            "analysis_region": {"x": 0, "y": 0, "width": 8, "height": 8},
+            "provenance": {"source_asset": "sample.png", "source_snapshot": "snapshot-1"},
+            "acquisition": {"instrument": "unknown", "acquired_at": "2026-01-01T00:00:00Z", "metadata_version": "fixture-metadata-v1"},
+        }],
+    }), encoding="utf-8")
+
+    report = run_real_fixture_validation(manifest)
+    fixture = report["fixtures"][0]
+
+    assert report["status"] == "incomplete"
+    assert fixture["reason_codes"] == ["acquisition_metadata_placeholder"]
 
 
 def test_real_fixture_validation_rejects_hash_mismatch(tmp_path) -> None:
