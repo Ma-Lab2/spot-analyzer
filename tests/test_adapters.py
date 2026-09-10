@@ -140,6 +140,7 @@ def test_matched_background_frame_is_used_when_all_acquisition_metadata_matches(
         "optical_path": "path-a",
         "focal_length": 50.0,
         "acquisition_batch": "batch-1",
+        "acquisition_time": "2026-09-10T00:00:00Z",
         "roi": {"x": 64, "y": 64, "width": 128, "height": 128},
     }
     background = InputImage(
@@ -180,6 +181,7 @@ def test_background_frame_with_one_mismatched_field_falls_back_with_caution() ->
         "optical_path": "path-a",
         "focal_length": 50.0,
         "acquisition_batch": "batch-1",
+        "acquisition_time": "2026-09-10T00:00:00Z",
         "roi": {"x": 64, "y": 64, "width": 128, "height": 128},
     }
     mismatched = dict(metadata, gain=3.0)
@@ -241,8 +243,161 @@ def test_matched_background_requires_complete_metadata() -> None:
     assert outcome.record is not None
     assert outcome.record.diagnostics["background_match_status"] == "unverified"
     assert set(outcome.record.diagnostics["background_match_missing_fields"]) >= {
-        "gain", "temperature", "optical_path", "focal_length", "acquisition_batch", "roi",
+        "gain", "temperature", "optical_path", "focal_length", "acquisition_batch", "acquisition_time", "roi",
     }
+
+
+def test_matched_background_does_not_infer_missing_primary_roi() -> None:
+    scene = generate_scene("gaussian_circular")
+    primary_metadata = {
+        "exposure": 10.0,
+        "gain": 2.0,
+        "temperature": 21.5,
+        "optical_path": "path-a",
+        "focal_length": 50.0,
+        "acquisition_batch": "batch-1",
+        "acquisition_time": "2026-09-10T00:00:00Z",
+    }
+    background_metadata = dict(primary_metadata, roi={"x": 64, "y": 64, "width": 128, "height": 128})
+    background = InputImage(
+        np.full_like(scene.input_array, 12.0),
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata=background_metadata,
+    )
+    image = InputImage(
+        scene.input_array,
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata=primary_metadata,
+        background_frame=background,
+    )
+
+    outcome = analyze(
+        image,
+        AnalysisConfiguration(
+            AnalysisRegion(64, 64, 128, 128),
+            background_region=AnalysisRegion(32, 64, 32, 128),
+            preprocessing=PreprocessingConfiguration(background_source="matched_frame"),
+        ),
+    )
+
+    assert outcome.record is not None
+    assert outcome.record.diagnostics["background_match_status"] == "unverified"
+    assert "roi" in outcome.record.diagnostics["background_match_missing_fields"]
+
+
+def test_matched_background_invalid_pixels_are_excluded_from_measurement_mask() -> None:
+    scene = generate_scene("gaussian_circular")
+    metadata = {
+        "exposure": 10.0,
+        "gain": 2.0,
+        "temperature": 21.5,
+        "optical_path": "path-a",
+        "focal_length": 50.0,
+        "acquisition_batch": "batch-1",
+        "acquisition_time": "2026-09-10T00:00:00Z",
+        "roi": {"x": 64, "y": 64, "width": 128, "height": 128},
+    }
+    background_data = np.full_like(scene.input_array, 12.0)
+    background_data[100, 100] = np.nan
+    background = InputImage(
+        background_data,
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata=metadata,
+    )
+    image = InputImage(
+        scene.input_array,
+        bit_depth=16,
+        encoding_semantic="relative_intensity_code",
+        encoding_semantic_confirmed=True,
+        metadata=metadata,
+        background_frame=background,
+    )
+
+    outcome = analyze(
+        image,
+        AnalysisConfiguration(
+            AnalysisRegion(64, 64, 128, 128),
+            preprocessing=PreprocessingConfiguration(background_source="matched_frame"),
+        ),
+    )
+
+    assert outcome.record is not None
+    assert np.isnan(outcome.record.corrected_intensity[100, 100])
+    assert not outcome.record.measurement_mask[100, 100]
+    assert outcome.record.diagnostics["measurement_invalid_pixels"] >= 1
+
+
+def test_background_pixels_are_part_of_analysis_fingerprint() -> None:
+    scene = generate_scene("gaussian_circular")
+    metadata = {
+        "exposure": 10.0,
+        "gain": 2.0,
+        "temperature": 21.5,
+        "optical_path": "path-a",
+        "focal_length": 50.0,
+        "acquisition_batch": "batch-1",
+        "acquisition_time": "2026-09-10T00:00:00Z",
+        "roi": {"x": 64, "y": 64, "width": 128, "height": 128},
+    }
+
+    def run_with_background(level: float):
+        background = InputImage(
+            np.full_like(scene.input_array, level),
+            bit_depth=16,
+            encoding_semantic="relative_intensity_code",
+            encoding_semantic_confirmed=True,
+            metadata=metadata,
+        )
+        image = InputImage(
+            scene.input_array,
+            bit_depth=16,
+            encoding_semantic="relative_intensity_code",
+            encoding_semantic_confirmed=True,
+            metadata=metadata,
+            background_frame=background,
+        )
+        return analyze(
+            image,
+            AnalysisConfiguration(
+                AnalysisRegion(64, 64, 128, 128),
+                preprocessing=PreprocessingConfiguration(background_source="matched_frame"),
+            ),
+        )
+
+    first = run_with_background(12.0)
+    second = run_with_background(13.0)
+
+    assert first.record is not None
+    assert second.record is not None
+    assert first.record.analysis_fingerprint != second.record.analysis_fingerprint
+
+
+def test_numpy_bad_pixel_coordinates_are_canonicalizable() -> None:
+    scene = generate_scene("gaussian_circular")
+    config = AnalysisConfiguration(
+        AnalysisRegion(64, 64, 128, 128),
+        background_region=AnalysisRegion(32, 64, 32, 128),
+        bad_pixel_coordinates=((np.int64(100), np.int64(100)),),
+    )
+
+    outcome = analyze(
+        InputImage(
+            scene.input_array,
+            bit_depth=16,
+            encoding_semantic="relative_intensity_code",
+            encoding_semantic_confirmed=True,
+        ),
+        config,
+    )
+
+    assert outcome.record is not None
+    assert outcome.record.diagnostics["bad_pixel_coordinates"] == ((100, 100),)
 
 
 def test_advanced_preprocessing_retains_standard_branch_and_records_sensitivity() -> None:

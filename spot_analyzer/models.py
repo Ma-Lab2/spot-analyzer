@@ -216,10 +216,11 @@ class AnalysisConfiguration:
     def __post_init__(self) -> None:
         if self.profile_validation != "provisional":
             raise ValueError("profile validation is locked to provisional until Issue #11 acceptance")
-        coordinates = tuple(tuple(coordinate) for coordinate in self.bad_pixel_coordinates)
-        for coordinate in coordinates:
+        raw_coordinates = tuple(tuple(coordinate) for coordinate in self.bad_pixel_coordinates)
+        for coordinate in raw_coordinates:
             if len(coordinate) != 2 or any(not isinstance(value, (int, np.integer)) for value in coordinate):
                 raise ValueError("bad_pixel_coordinates must contain integer (x, y) pairs")
+        coordinates = tuple(tuple(int(value) for value in coordinate) for coordinate in raw_coordinates)
         if len(set(coordinates)) != len(coordinates):
             raise ValueError("bad_pixel_coordinates must not contain duplicates")
         if not self.bad_pixel_mask_version.strip():

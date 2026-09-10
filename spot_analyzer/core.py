@@ -147,22 +147,22 @@ def _plane_design(
 
 def _matching_background(
     image: InputImage,
-    region: AnalysisRegion,
     background_frame: InputImage | None,
 ) -> tuple[np.ndarray | None, dict[str, Any]]:
     """Use a background frame only when every required acquisition field matches."""
     if background_frame is None:
         return None, {}
-    required = ("exposure", "gain", "temperature", "optical_path", "focal_length", "acquisition_batch", "roi")
-    fields = {
-        "exposure": image.metadata.get("exposure"),
-        "gain": image.metadata.get("gain"),
-        "temperature": image.metadata.get("temperature"),
-        "optical_path": image.metadata.get("optical_path"),
-        "focal_length": image.metadata.get("focal_length"),
-        "acquisition_batch": image.metadata.get("acquisition_batch"),
-        "roi": image.metadata.get("roi", {"x": region.x, "y": region.y, "width": region.width, "height": region.height}),
-    }
+    required = (
+        "exposure",
+        "gain",
+        "temperature",
+        "optical_path",
+        "focal_length",
+        "acquisition_batch",
+        "acquisition_time",
+        "roi",
+    )
+    fields = {key: image.metadata.get(key) for key in required}
     background_fields = {key: background_frame.metadata.get(key) for key in required}
     missing = [key for key in required if fields[key] is None or background_fields[key] is None]
     mismatched = [key for key in required if key not in missing and fields[key] != background_fields[key]]
@@ -639,11 +639,23 @@ def _jsonable(value: Any) -> Any:
         return {str(key): _jsonable(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
         return [_jsonable(item) for item in value]
+    if isinstance(value, np.generic):
+        return _jsonable(value.item())
     return value
 
 
+def _array_sha256(array: np.ndarray) -> str:
+    return hashlib.sha256(np.ascontiguousarray(array).tobytes()).hexdigest()
+
+
 def _analysis_fingerprint(image: InputImage, configuration: AnalysisConfiguration) -> str:
-    input_hash = image.sha256 or hashlib.sha256(np.ascontiguousarray(image.data).tobytes()).hexdigest()
+    input_hash = image.sha256 or _array_sha256(image.data)
+    background_hash = (
+        image.background_frame.sha256
+        or _array_sha256(image.background_frame.data)
+        if image.background_frame is not None
+        else None
+    )
     payload = {
         "input_sha256": input_hash,
         "input_shape": list(image.data.shape),
@@ -657,8 +669,9 @@ def _analysis_fingerprint(image: InputImage, configuration: AnalysisConfiguratio
             "byte_order": image.byte_order,
             "metadata": dict(image.metadata),
             "background_frame": {
-                "sha256": image.background_frame.sha256 if image.background_frame is not None else None,
+                "sha256": background_hash,
                 "shape": list(image.background_frame.data.shape) if image.background_frame is not None else None,
+                "dtype": image.background_frame.dtype if image.background_frame is not None else None,
                 "metadata": dict(image.background_frame.metadata) if image.background_frame is not None else None,
                 "match_unverified": image.background_match_unverified,
             },
@@ -840,8 +853,7 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     measurement_valid = finite_mask & ~bad_pixel_mask & ~saturated_mask
     roi_slice = _region_slice(region)
     roi = data[roi_slice]
-    roi_valid = measurement_valid[roi_slice]
-    matched_background, match_diagnostics = _matching_background(image, region, matched_frame)
+    matched_background, match_diagnostics = _matching_background(image, matched_frame)
     if matched_background is not None:
         background = matched_background
         background_diagnostics = match_diagnostics
@@ -861,6 +873,8 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         )
         background_diagnostics = {**match_diagnostics, **background_diagnostics}
     corrected = data - background
+    measurement_valid &= np.isfinite(corrected)
+    roi_valid = measurement_valid[roi_slice]
     standard_corrected = corrected
     advanced_diagnostics: dict[str, Any] = {"enabled": False, "steps": []}
     if configuration.preprocessing.advanced_processing_enabled:
