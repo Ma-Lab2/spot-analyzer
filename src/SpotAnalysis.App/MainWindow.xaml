@@ -1,0 +1,12 @@
+<Window x:Class="SpotAnalysis.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Spot Analysis" Height="240" Width="520">
+  <StackPanel Margin="20">
+    <TextBlock FontSize="22" Text="Spot Analysis workspace" />
+    <TextBlock Margin="0,12,0,4" Text="Worker status" />
+    <TextBlock x:Name="StatusText" Text="Ready" />
+    <Button Margin="0,16,0,0" Width="180" HorizontalAlignment="Left"
+            Click="RunAnalysis_Click" Content="Run smoke analysis" />
+  </StackPanel>
+</Window>
