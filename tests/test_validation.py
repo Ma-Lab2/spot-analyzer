@@ -152,8 +152,12 @@ def test_performance_baseline_reports_structured_workload_and_formal_status() ->
         assert workload[kind]["p50_seconds"] >= 0
         assert workload[kind]["p95_seconds"] >= 0
         assert workload[kind]["max_seconds"] >= 0
-    assert report["formal_status"] in {"passed", "incomplete"}
-    assert report["environment"]["formal_environment"] is False
+    assert report["formal_status"] == "incomplete"
+    assert report["incomplete_reason"] == "formal performance workload contract was not used"
+    environment = report["environment"]
+    assert environment["formal_environment"] is (
+        environment["formal_python"] and all(environment["formal_dependencies"].values())
+    )
 
 
 def test_nonformal_performance_workload_is_incomplete(monkeypatch) -> None:
