@@ -35,8 +35,10 @@
               Click="ConfirmConfiguration_Click" Content="Confirm configuration" />
       <TextBlock Margin="0,12,0,4" Text="Worker status" />
       <TextBlock x:Name="StatusText" Text="Ready" />
-      <Button Margin="0,16,0,0" Width="180" HorizontalAlignment="Left"
-              Click="RunAnalysis_Click" Content="Run smoke analysis" />
+      <StackPanel Margin="0,16,0,0" Orientation="Horizontal">
+        <Button Width="180" Click="RunAnalysis_Click" Content="Run smoke analysis" />
+        <Button Margin="8,0,0,0" Width="100" Click="CancelAnalysis_Click" Content="Cancel" />
+      </StackPanel>
       <Button Margin="0,8,0,0" Width="180" HorizontalAlignment="Left"
               Click="OpenPng_Click" Content="Open grayscale PNG" />
       <TextBlock x:Name="RecordText" Margin="0,8,0,0" TextWrapping="Wrap" />
