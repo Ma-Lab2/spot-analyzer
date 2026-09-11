@@ -1,7 +1,5 @@
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Windows;
-using System.Windows.Controls;
 using Microsoft.Win32;
 
 namespace SpotAnalysis.App;
@@ -9,34 +7,139 @@ namespace SpotAnalysis.App;
 public partial class MainWindow : Window
 {
     private readonly WorkerClient _workerClient = new();
+    private PngInputInfo? _selectedInput;
     private bool _configurationConfirmed;
+    private bool _hasResult;
     private CancellationTokenSource? _analysisCancellation;
 
     public MainWindow() => InitializeComponent();
 
-    private static int Integer(TextBox field) => int.Parse(field.Text, CultureInfo.InvariantCulture);
-    private static double Number(TextBox field) => double.Parse(field.Text, CultureInfo.InvariantCulture);
+    private sealed record ConfigurationValues(
+        int RegionX,
+        int RegionY,
+        int RegionWidth,
+        int RegionHeight,
+        int? BackgroundX,
+        int? BackgroundY,
+        int? BackgroundWidth,
+        int? BackgroundHeight,
+        string CalibrationStatus,
+        double? CalibrationX,
+        double? CalibrationY,
+        string CalibrationUnits,
+        string CalibrationSource);
 
-    private (object calibration, object roi, object? background) ReadConfiguration()
+    private ConfigurationValues ReadConfiguration()
     {
-        var status = ((ComboBoxItem)CalibrationStatus.SelectedItem).Content.ToString()!;
-        object calibration = status == "missing"
-            ? new { status }
-            : new { status, x_units_per_pixel = Number(CalibrationXText), y_units_per_pixel = Number(CalibrationYText), units = CalibrationUnitsText.Text, source = CalibrationSourceText.Text };
-        object roi = new { x = Integer(RoiXText), y = Integer(RoiYText), width = Integer(RoiWidthText), height = Integer(RoiHeightText) };
-        object? background = string.IsNullOrWhiteSpace(BackgroundWidthText.Text) ? null : new { x = Integer(BackgroundXText), y = Integer(BackgroundYText), width = Integer(BackgroundWidthText), height = Integer(BackgroundHeightText) };
-        return (calibration, roi, background);
+        var status = ((ComboBoxItem)CalibrationStatus.SelectedItem).Content?.ToString() ?? "missing";
+        var region = Rectangle(
+            RoiXText, RoiYText, RoiWidthText, RoiHeightText, "analysis region");
+        if (_selectedInput is not null && (region.x + region.width > _selectedInput.Width || region.y + region.height > _selectedInput.Height))
+            throw new ConfigurationValidationException("invalid_roi", "Analysis region must be inside the selected input image.");
+
+        var backgroundFields = new[] { BackgroundXText, BackgroundYText, BackgroundWidthText, BackgroundHeightText };
+        var backgroundEmpty = backgroundFields.All(field => string.IsNullOrWhiteSpace(field.Text));
+        var backgroundPartial = backgroundFields.Any(field => string.IsNullOrWhiteSpace(field.Text));
+        (int x, int y, int width, int height)? background = null;
+        if (!backgroundEmpty)
+        {
+            if (backgroundPartial)
+                throw new ConfigurationValidationException("invalid_background_region", "Background region must be empty or have all four values.");
+            background = Rectangle(BackgroundXText, BackgroundYText, BackgroundWidthText, BackgroundHeightText, "background region");
+            if (_selectedInput is not null && (background.Value.x + background.Value.width > _selectedInput.Width || background.Value.y + background.Value.height > _selectedInput.Height))
+                throw new ConfigurationValidationException("invalid_background_region", "Background region must be inside the selected input image.");
+        }
+
+        double? calibrationX = null;
+        double? calibrationY = null;
+        if (status != "missing")
+        {
+            calibrationX = PositiveNumber(CalibrationXText, "x calibration");
+            calibrationY = PositiveNumber(CalibrationYText, "y calibration");
+            if (string.IsNullOrWhiteSpace(CalibrationUnitsText.Text))
+                throw new ConfigurationValidationException("invalid_calibration", "Calibration units are required.");
+            if (string.IsNullOrWhiteSpace(CalibrationSourceText.Text))
+                throw new ConfigurationValidationException("invalid_calibration", "Calibration source is required.");
+        }
+
+        return new ConfigurationValues(
+            region.x, region.y, region.width, region.height,
+            background?.x, background?.y, background?.width, background?.height,
+            status, calibrationX, calibrationY,
+            CalibrationUnitsText.Text.Trim(), CalibrationSourceText.Text.Trim());
     }
+
+    private static (int x, int y, int width, int height) Rectangle(
+        System.Windows.Controls.TextBox xField,
+        System.Windows.Controls.TextBox yField,
+        System.Windows.Controls.TextBox widthField,
+        System.Windows.Controls.TextBox heightField,
+        string name)
+    {
+        var x = Integer(xField, $"{name} x");
+        var y = Integer(yField, $"{name} y");
+        var width = Integer(widthField, $"{name} width");
+        var height = Integer(heightField, $"{name} height");
+        if (x < 0 || y < 0 || width <= 0 || height <= 0)
+            throw new ConfigurationValidationException("invalid_roi", $"{name} must have a non-negative origin and positive dimensions.");
+        return (x, y, width, height);
+    }
+
+    private static int Integer(System.Windows.Controls.TextBox field, string name) =>
+        int.TryParse(field.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : throw new ConfigurationValidationException("invalid_configuration", $"{name} must be an integer.");
+
+    private static double PositiveNumber(System.Windows.Controls.TextBox field, string name) =>
+        double.TryParse(field.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && double.IsFinite(value) && value > 0
+            ? value
+            : throw new ConfigurationValidationException("invalid_calibration", $"{name} must be a positive number.");
 
     private void ConfirmConfiguration_Click(object sender, RoutedEventArgs e)
     {
-        try { _ = ReadConfiguration(); _configurationConfirmed = true; StatusText.Text = "Configuration confirmed"; }
-        catch (Exception exception) { _configurationConfirmed = false; StatusText.Text = $"Invalid configuration: {exception.Message}"; }
+        try
+        {
+            _ = ReadConfiguration();
+            _configurationConfirmed = true;
+            StatusText.Text = "Configuration confirmed";
+            MarkResultStale();
+        }
+        catch (ConfigurationValidationException exception)
+        {
+            _configurationConfirmed = false;
+            StatusText.Text = $"Invalid configuration ({exception.Code}): {exception.Message}";
+        }
     }
 
     private async void RunAnalysis_Click(object sender, RoutedEventArgs e)
     {
-        await RunAnalysisAsync(() => _workerClient.RunSyntheticAsync(_analysisCancellation!.Token, TimeSpan.FromSeconds(30)));
+        await RunAnalysisAsync(async () =>
+        {
+            if (_selectedInput is null)
+                throw new ConfigurationValidationException("input_required", "Open an 8-bit or 16-bit grayscale PNG before running analysis.");
+            if (!_configurationConfirmed)
+                throw new ConfigurationValidationException("configuration_unconfirmed", "Confirm calibration and analysis region before running analysis.");
+            var configuration = ReadConfiguration();
+            return await _workerClient.RunPngAsync(
+                _selectedInput.Path,
+                _selectedInput.Sha256,
+                semanticsConfirmed: true,
+                configuration.RegionX,
+                configuration.RegionY,
+                configuration.RegionWidth,
+                configuration.RegionHeight,
+                configuration.BackgroundX,
+                configuration.BackgroundY,
+                configuration.BackgroundWidth,
+                configuration.BackgroundHeight,
+                configuration.CalibrationStatus,
+                configuration.CalibrationX,
+                configuration.CalibrationY,
+                configuration.CalibrationUnits,
+                configuration.CalibrationSource,
+                _analysisCancellation!.Token,
+                TimeSpan.FromSeconds(30));
+        });
     }
 
     private async void CancelAnalysis_Click(object sender, RoutedEventArgs e)
@@ -51,40 +154,96 @@ public partial class MainWindow : Window
         _analysisCancellation?.Dispose();
         _analysisCancellation = new CancellationTokenSource();
         StatusText.Text = "Processing";
-        RecordText.Text = "";
         try
         {
             var outcome = await operation();
-            StatusText.Text = outcome.Status switch
+            switch (outcome.Status)
             {
-                "success" => "Completed",
-                "cancelled" => "Cancelled",
-                "timeout" => "Timed out",
-                _ => $"Failed ({outcome.FailureCode ?? "worker_failure"}): {outcome.ErrorMessage}",
-            };
+                case "success":
+                    StatusText.Text = "Completed";
+                    RecordText.Text = $"Input: {_selectedInput?.Summary ?? outcome.InputSummary}\nRecord: {outcome.RecordId}\nFingerprint: {outcome.AnalysisFingerprint}";
+                    _hasResult = true;
+                    break;
+                case "cancelled":
+                    StatusText.Text = "Cancelled";
+                    RecordText.Text = $"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}";
+                    break;
+                case "timeout":
+                    StatusText.Text = "Timed out";
+                    RecordText.Text = $"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}";
+                    break;
+                default:
+                    StatusText.Text = $"Failed ({outcome.FailureCode ?? "worker_failure"}): {outcome.ErrorMessage}";
+                    RecordText.Text = StatusText.Text;
+                    break;
+            }
+        }
+        catch (ConfigurationValidationException exception)
+        {
+            StatusText.Text = $"Invalid configuration ({exception.Code}): {exception.Message}";
+            RecordText.Text = StatusText.Text;
+        }
+        catch (InputValidationException exception)
+        {
+            StatusText.Text = $"Invalid input ({exception.Code}): {exception.Message}";
+            RecordText.Text = StatusText.Text;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = "Cancelled";
         }
         finally
         {
-            _analysisCancellation.Dispose();
+            _analysisCancellation?.Dispose();
             _analysisCancellation = null;
         }
     }
 
     private async void OpenPng_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Filter = "PNG files (*.png)|*.png", CheckFileExists = true, Multiselect = false };
-        if (dialog.ShowDialog() != true) return;
-        await RunAnalysisAsync(async () =>
+        var dialog = new OpenFileDialog
         {
-            if (!_configurationConfirmed) throw new InvalidOperationException("Confirm calibration and analysis region before running analysis.");
-            await using var stream = File.OpenRead(dialog.FileName);
-            var hash = Convert.ToHexString(await SHA256.HashDataAsync(stream));
-            var configuration = ReadConfiguration();
-            var outcome = await _workerClient.RunPngAsync(dialog.FileName, hash, true, configuration.calibration, configuration.roi, configuration.background, _analysisCancellation!.Token, TimeSpan.FromSeconds(30));
-            RecordText.Text = outcome.Status == "success"
-                ? $"Input: {outcome.InputSummary}\nRecord: {outcome.RecordId}\nFingerprint: {outcome.AnalysisFingerprint}"
-                : "";
-            return outcome;
-        });
+            Filter = "PNG files (*.png)|*.png",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            var input = await PngInput.ReadAsync(dialog.FileName);
+            _selectedInput = input;
+            InputSummaryText.Text = input.Summary;
+            InputPreview.Source = input.Preview;
+            _configurationConfirmed = false;
+            StatusText.Text = "Input loaded; confirm configuration";
+            MarkResultStale();
+        }
+        catch (InputValidationException exception)
+        {
+            _selectedInput = null;
+            InputPreview.Source = null;
+            InputSummaryText.Text = "No input selected";
+            StatusText.Text = $"Invalid input ({exception.Code}): {exception.Message}";
+        }
     }
+
+    private void ConfigurationChanged(object sender, RoutedEventArgs e)
+    {
+        _configurationConfirmed = false;
+        MarkResultStale();
+    }
+
+    private void ConfigurationSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) =>
+        ConfigurationChanged(sender, e);
+
+    private void MarkResultStale()
+    {
+        if (_hasResult)
+            RecordText.Text = "Previous result is stale; run analysis again for the current input and configuration.";
+    }
+}
+
+public sealed class ConfigurationValidationException(string code, string message) : Exception(message)
+{
+    public string Code { get; } = code;
 }

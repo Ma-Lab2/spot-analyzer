@@ -9,38 +9,185 @@ public sealed record WorkerOutcome(
     string? RecordId = null,
     string? AnalysisFingerprint = null,
     string? InputSummary = null,
-    string? FailureCode = null);
+    string? FailureCode = null,
+    JsonElement? Result = null,
+    IReadOnlyList<JsonElement>? Diagnostics = null);
 
 public sealed class WorkerClient
 {
-    private const int ProtocolVersion = 1;
+    private const string RequestSchema = "analysis-request-v1";
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+    };
 
-    public Task<WorkerOutcome> RunSyntheticAsync(CancellationToken cancellationToken, TimeSpan? timeout = null) =>
-        RunAsync(new { kind = "synthetic", width = 16, height = 16 }, cancellationToken, timeout);
+    public Task<WorkerOutcome> RunPngAsync(
+        string path,
+        string sha256,
+        bool semanticsConfirmed,
+        int regionX,
+        int regionY,
+        int regionWidth,
+        int regionHeight,
+        int? backgroundX,
+        int? backgroundY,
+        int? backgroundWidth,
+        int? backgroundHeight,
+        string calibrationStatus,
+        double? calibrationX,
+        double? calibrationY,
+        string calibrationUnits,
+        string calibrationSource,
+        CancellationToken cancellationToken,
+        TimeSpan? timeout = null)
+    {
+        var input = new Dictionary<string, object?>
+        {
+            ["asset"] = new Dictionary<string, object?>
+            {
+                ["path"] = path,
+                ["expected_sha256"] = sha256,
+            },
+            ["confirm_relative_intensity"] = semanticsConfirmed,
+        };
+        var configuration = CreateConfiguration(
+            regionX, regionY, regionWidth, regionHeight,
+            backgroundX, backgroundY, backgroundWidth, backgroundHeight,
+            calibrationStatus, calibrationX, calibrationY, calibrationUnits, calibrationSource);
+        return RunAsync(input, configuration, cancellationToken, timeout);
+    }
 
-    public Task<WorkerOutcome> RunPngAsync(string path, string sha256, bool semanticsConfirmed,
-        object spatialCalibration, object analysisRegion, object? backgroundRegion,
-        CancellationToken cancellationToken, TimeSpan? timeout = null) =>
-        RunAsync(new { kind = "png", path, sha256, intensity_semantics_confirmed = semanticsConfirmed, uri_hint = path,
-            analysis_region = analysisRegion, background_region = backgroundRegion, spatial_calibration = spatialCalibration }, cancellationToken, timeout);
+    private static Dictionary<string, object?> CreateConfiguration(
+        int regionX,
+        int regionY,
+        int regionWidth,
+        int regionHeight,
+        int? backgroundX,
+        int? backgroundY,
+        int? backgroundWidth,
+        int? backgroundHeight,
+        string calibrationStatus,
+        double? calibrationX,
+        double? calibrationY,
+        string calibrationUnits,
+        string calibrationSource)
+    {
+        Dictionary<string, object?>? background = null;
+        if (backgroundX.HasValue && backgroundY.HasValue && backgroundWidth.HasValue && backgroundHeight.HasValue)
+        {
+            background = new Dictionary<string, object?>
+            {
+                ["x"] = backgroundX.Value,
+                ["y"] = backgroundY.Value,
+                ["width"] = backgroundWidth.Value,
+                ["height"] = backgroundHeight.Value,
+            };
+        }
 
-    private async Task<WorkerOutcome> RunAsync(object input, CancellationToken cancellationToken, TimeSpan? timeout)
+        return new Dictionary<string, object?>
+        {
+            ["region"] = new Dictionary<string, object?>
+            {
+                ["x"] = regionX, ["y"] = regionY, ["width"] = regionWidth, ["height"] = regionHeight,
+            },
+            ["background_region"] = background,
+            ["calibration"] = new Dictionary<string, object?>
+            {
+                ["x_unit_per_pixel"] = calibrationX,
+                ["y_unit_per_pixel"] = calibrationY,
+                ["physical_unit"] = calibrationUnits,
+                ["source"] = calibrationSource,
+                ["confirmation"] = calibrationStatus,
+            },
+            ["preprocessing"] = new Dictionary<string, object?>
+            {
+                ["background_source"] = "confirmed_region_affine",
+                ["bad_pixel_policy"] = "mask_only",
+                ["negative_value_policy"] = "preserve_signed",
+                ["filtering"] = "none",
+                ["dpc"] = "none",
+                ["advanced_processing_enabled"] = false,
+                ["background_signal_sigma_threshold"] = 3.0,
+                ["background_signal_peak_fraction"] = 0.10,
+                ["background_mask_dilation_pixels"] = 1,
+                ["background_huber_delta"] = 1.345,
+                ["background_max_iterations"] = 50,
+                ["convergence_tolerance"] = 1e-8,
+                ["localization_sigma_pixels"] = 1.0,
+                ["localization_truncate_sigma"] = 3.0,
+                ["core_threshold_fraction"] = 0.5,
+                ["core_invalid_fraction"] = 0.8,
+                ["core_caution_fraction"] = 0.95,
+                ["snr_invalid_threshold"] = 5.0,
+                ["snr_caution_threshold"] = 10.0,
+                ["multiple_peak_relative_threshold"] = 0.20,
+                ["multiple_peak_noise_threshold"] = 5.0,
+                ["multiple_peak_min_support_pixels"] = 9,
+                ["multiple_peak_min_separation_pixels"] = 3.0,
+                ["advanced_interpolation_sigma_pixels"] = 1.0,
+                ["advanced_interpolation_radius_pixels"] = 2,
+                ["advanced_filter_sigma_pixels"] = 1.0,
+                ["advanced_filter_radius_pixels"] = 3,
+                ["advanced_dpc_sigma_pixels"] = 2.0,
+                ["advanced_dpc_radius_pixels"] = 6,
+                ["version"] = "preprocessing-v1",
+            },
+            ["model"] = new Dictionary<string, object?>
+            {
+                ["name"] = "rotated_elliptical_gaussian",
+                ["sigma_min_pixels"] = 0.5,
+                ["sigma_max_roi_fraction"] = 0.5,
+                ["fallback_sigma_roi_fraction"] = 1.0 / 6.0,
+                ["optimizer"] = "bounded-least-squares-trf",
+                ["optimizer_tolerance"] = 1e-12,
+                ["optimizer_max_evaluations"] = 1000,
+                ["version"] = "gaussian-model-v1",
+            },
+            ["rref_pixels"] = null,
+            ["analysis_contract"] = "analysis-contract-v1",
+            ["standard_profile"] = "standard-profile-v1",
+            ["quality_profile"] = "quality-profile-v1",
+            ["profile_validation"] = "provisional",
+            ["algorithm_version"] = "analysis-core-v1",
+            ["bad_pixel_coordinates"] = Array.Empty<object>(),
+            ["bad_pixel_mask_version"] = "bad-pixel-mask-v1",
+        };
+    }
+
+    private static async Task<WorkerOutcome> RunAsync(
+        Dictionary<string, object?> input,
+        Dictionary<string, object?> configuration,
+        CancellationToken cancellationToken,
+        TimeSpan? timeout)
     {
         using var timeoutSource = timeout.HasValue ? new CancellationTokenSource(timeout.Value) : null;
         using var stopSource = timeoutSource is null
             ? null
             : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
         var stopToken = stopSource?.Token ?? cancellationToken;
-        var workerPath = Path.Combine(AppContext.BaseDirectory, "worker.py");
+        string workerPath;
+        try
+        {
+            workerPath = ResolveWorkerPath();
+        }
+        catch (Exception exception)
+        {
+            return new WorkerOutcome("failure", exception.Message, FailureCode: "worker_start_failed");
+        }
         var startInfo = new ProcessStartInfo
         {
-            FileName = "python", Arguments = $"\"{workerPath}\"", RedirectStandardInput = true,
-            RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
+            FileName = workerPath,
+            WorkingDirectory = AppContext.BaseDirectory,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
         };
         Process process;
         try
         {
-            process = Process.Start(startInfo) ?? throw new InvalidOperationException("Unable to start the analysis worker.");
+            process = Process.Start(startInfo) ?? throw new InvalidOperationException("Unable to start the packaged analysis worker.");
         }
         catch (Exception exception)
         {
@@ -51,37 +198,36 @@ public sealed class WorkerClient
         {
             try
             {
-                var request = new { protocol_version = ProtocolVersion, request_id = Guid.NewGuid().ToString("N"), command = "analyze", input };
-                await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request));
+                var request = new Dictionary<string, object?>
+                {
+                    ["schema"] = RequestSchema,
+                    ["request_id"] = Guid.NewGuid().ToString("N"),
+                    ["input"] = input,
+                    ["configuration"] = configuration,
+                    ["output_strategy"] = new Dictionary<string, object?>
+                    {
+                        ["work_directory"] = Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived"),
+                        ["derived_format"] = "npy",
+                    },
+                    ["lifecycle"] = new Dictionary<string, object?>
+                    {
+                        ["timeout_ms"] = timeout?.TotalMilliseconds,
+                    },
+                };
+                await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request, JsonOptions));
                 await process.StandardInput.FlushAsync(stopToken);
                 process.StandardInput.Close();
-                string? terminalLine = null;
+                var messages = new List<JsonElement>();
                 while (await process.StandardOutput.ReadLineAsync(stopToken) is { } line)
                 {
                     using var document = JsonDocument.Parse(line);
-                    if (document.RootElement.GetProperty("type").GetString() == "terminal") terminalLine = line;
+                    messages.Add(document.RootElement.Clone());
                 }
                 await process.WaitForExitAsync(stopToken);
-                _ = await process.StandardError.ReadToEndAsync(stopToken);
-                if (terminalLine is null)
-                    return new WorkerOutcome("failure", "worker did not return a terminal message", FailureCode: "worker_no_result");
-                using var terminal = JsonDocument.Parse(terminalLine);
-                var root = terminal.RootElement;
-                var status = root.GetProperty("status").GetString() ?? "failure";
-                if (status != "success")
-                {
-                    var error = root.TryGetProperty("error", out var e) && e.TryGetProperty("message", out var detail) ? detail.GetString() : "worker failure";
-                    var code = e.ValueKind == JsonValueKind.Object && e.TryGetProperty("code", out var errorCode) ? errorCode.GetString() : null;
-                    return new WorkerOutcome(status, error, FailureCode: code);
-                }
-                var result = root.GetProperty("result");
-                var recordId = result.TryGetProperty("record_id", out var rid) ? rid.GetString() : null;
-                var fingerprint = result.TryGetProperty("analysis_fingerprint", out var fp) ? fp.GetString() : null;
-                var image = result.TryGetProperty("input", out var imageNode) ? imageNode : default;
-                var summary = image.ValueKind == JsonValueKind.Object && image.TryGetProperty("sha256", out var hash)
-                    ? $"{image.GetProperty("width")}×{image.GetProperty("height")}, {image.GetProperty("bit_depth")}-bit, SHA-256 {hash.GetString()}"
-                    : null;
-                return new WorkerOutcome(status, null, recordId, fingerprint, summary);
+                var stderr = await process.StandardError.ReadToEndAsync(stopToken);
+                if (process.ExitCode != 0)
+                    return new WorkerOutcome("failure", stderr.Trim(), FailureCode: "worker_crashed");
+                return ParseOutcome(messages);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || timeoutSource?.IsCancellationRequested == true)
             {
@@ -101,6 +247,64 @@ public sealed class WorkerClient
                 return new WorkerOutcome("failure", exception.Message, FailureCode: "worker_io_failed");
             }
         }
+    }
+
+    private static string ResolveWorkerPath()
+    {
+        var configured = Environment.GetEnvironmentVariable("SPOT_ANALYSIS_WORKER");
+        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured)) return configured;
+        foreach (var name in new[] { "SpotAnalysis.Worker.exe", "worker.exe" })
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, name);
+            if (File.Exists(path)) return path;
+        }
+        throw new FileNotFoundException("The packaged worker executable was not found beside the client.");
+    }
+
+    private static WorkerOutcome ParseOutcome(IReadOnlyList<JsonElement> messages)
+    {
+        if (messages.Count == 0)
+            return new WorkerOutcome("failure", "worker did not return an analysis event", FailureCode: "worker_no_result");
+        var terminal = messages[^1];
+        if (terminal.TryGetProperty("kind", out var kind) && kind.GetString() == "completed")
+        {
+            var record = terminal.TryGetProperty("record", out var recordNode) ? recordNode : default;
+            var recordId = record.ValueKind == JsonValueKind.Object && record.TryGetProperty("record_id", out var id) ? id.GetString() : null;
+            var fingerprint = record.ValueKind == JsonValueKind.Object && record.TryGetProperty("analysis_fingerprint", out var hash) ? hash.GetString() : null;
+            var summary = record.ValueKind == JsonValueKind.Object && record.TryGetProperty("input", out var image)
+                && image.ValueKind == JsonValueKind.Object
+                ? $"{GetShapeDimension(record, 1)}×{GetShapeDimension(record, 0)}, {GetInt(image, "bit_depth")}-bit"
+                : null;
+            return new WorkerOutcome("success", null, recordId, fingerprint, summary, Result: terminal.Clone());
+        }
+
+        var diagnostics = terminal.TryGetProperty("diagnostics", out var diagnosticsNode) && diagnosticsNode.ValueKind == JsonValueKind.Array
+            ? diagnosticsNode.EnumerateArray().Select(item => item.Clone()).ToArray()
+            : Array.Empty<JsonElement>();
+        var code = diagnostics.FirstOrDefault(item => item.ValueKind == JsonValueKind.Object && item.TryGetProperty("code", out _));
+        var failureCode = code.ValueKind == JsonValueKind.Object && code.TryGetProperty("code", out var codeNode) ? codeNode.GetString() : "worker_failure";
+        var flowStatus = terminal.TryGetProperty("flow_status", out var flow) ? flow.GetString() : null;
+        var status = flowStatus switch
+        {
+            "cancelled" => "cancelled",
+            "timeout" => "timeout",
+            _ => "failure",
+        };
+        var message = diagnostics.FirstOrDefault(item => item.ValueKind == JsonValueKind.Object && item.TryGetProperty("message", out _));
+        var errorMessage = message.ValueKind == JsonValueKind.Object && message.TryGetProperty("message", out var messageNode)
+            ? messageNode.GetString()
+            : "worker analysis failed";
+        return new WorkerOutcome(status, errorMessage, FailureCode: failureCode, Result: terminal.Clone(), Diagnostics: diagnostics);
+    }
+
+    private static int GetInt(JsonElement value, string property) => value.TryGetProperty(property, out var node) && node.TryGetInt32(out var result) ? result : 0;
+
+    private static int GetShapeDimension(JsonElement record, int index)
+    {
+        if (!record.TryGetProperty("input_shape", out var shape) || shape.ValueKind != JsonValueKind.Array)
+            return 0;
+        var dimensions = shape.EnumerateArray().ToArray();
+        return index < dimensions.Length && dimensions[index].TryGetInt32(out var result) ? result : 0;
     }
 
     private static void StopProcess(Process process)

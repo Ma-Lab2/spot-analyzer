@@ -20,9 +20,12 @@ The shipped entry point delegates this schema to `spot_analyzer.worker`, so the
 real analysis core produces `AnalysisRecord` metrics, validity states, quality
 reason codes, diagnostics, and derived asset identities. It emits an
 `analysis-event-v1` `started` event followed by an `analysis-result-v1`
-`completed` or `failed` result. The older `protocol_version: 1` envelope remains
-available for compatibility with the initial WPF smoke tests; it is not the
-canonical real-analysis contract.
+`completed` or `failed` result. The WPF client launches the packaged
+`SpotAnalysis.Worker.exe` beside the application (or the path in
+`SPOT_ANALYSIS_WORKER` during development); it never requires a system
+`python` command. The older `protocol_version: 1` envelope remains available
+for compatibility with the initial worker smoke tests; it is not the canonical
+real-analysis contract.
 
 ## Checks
 
