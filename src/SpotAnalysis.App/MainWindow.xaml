@@ -41,11 +41,15 @@
       </StackPanel>
       <Button Margin="0,12,0,0" Width="190" HorizontalAlignment="Left"
               Click="ConfirmConfiguration_Click" Content="Confirm configuration" />
+      <TextBlock Margin="0,12,0,4" Text="Pending analysis request (read-only snapshot)" />
+      <TextBox x:Name="SummaryText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+               MinHeight="140" VerticalScrollBarVisibility="Auto"
+               Text="No pending request" />
 
       <TextBlock Margin="0,12,0,4" Text="Worker status" />
       <TextBlock x:Name="StatusText" Text="Ready" TextWrapping="Wrap" />
       <StackPanel Margin="0,16,0,0" Orientation="Horizontal">
-        <Button Width="180" Click="RunAnalysis_Click" Content="Run real analysis" />
+        <Button x:Name="RunAnalysisButton" Width="180" Click="RunAnalysis_Click" Content="Run real analysis" IsEnabled="False" />
         <Button Margin="8,0,0,0" Width="100" Click="CancelAnalysis_Click" Content="Cancel" />
       </StackPanel>
       <TextBlock x:Name="RecordText" Margin="0,8,0,0" TextWrapping="Wrap" />

@@ -57,6 +57,12 @@ public sealed class WorkerClient
         return RunAsync(input, configuration, cancellationToken, timeout);
     }
 
+    public Task<WorkerOutcome> RunAsync(
+        AnalysisRequest request,
+        CancellationToken cancellationToken,
+        TimeSpan? timeout = null) =>
+        RunAsync(request.ToWorkerPayload(), cancellationToken, timeout);
+
     private static Dictionary<string, object?> CreateConfiguration(
         int regionX,
         int regionY,
@@ -154,9 +160,27 @@ public sealed class WorkerClient
         };
     }
 
-    private static async Task<WorkerOutcome> RunAsync(
+    private static Task<WorkerOutcome> RunAsync(
         Dictionary<string, object?> input,
         Dictionary<string, object?> configuration,
+        CancellationToken cancellationToken,
+        TimeSpan? timeout) =>
+        RunAsync(
+            new Dictionary<string, object?>
+            {
+                ["input"] = input,
+                ["configuration"] = configuration,
+                ["output_strategy"] = new Dictionary<string, object?>
+                {
+                    ["work_directory"] = Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived"),
+                    ["derived_format"] = "npy",
+                },
+            },
+            cancellationToken,
+            timeout);
+
+    private static async Task<WorkerOutcome> RunAsync(
+        Dictionary<string, object?> payload,
         CancellationToken cancellationToken,
         TimeSpan? timeout)
     {
@@ -202,13 +226,9 @@ public sealed class WorkerClient
                 {
                     ["schema"] = RequestSchema,
                     ["request_id"] = Guid.NewGuid().ToString("N"),
-                    ["input"] = input,
-                    ["configuration"] = configuration,
-                    ["output_strategy"] = new Dictionary<string, object?>
-                    {
-                        ["work_directory"] = Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived"),
-                        ["derived_format"] = "npy",
-                    },
+                    ["input"] = payload["input"],
+                    ["configuration"] = payload["configuration"],
+                    ["output_strategy"] = payload["output_strategy"],
                     ["lifecycle"] = new Dictionary<string, object?>
                     {
                         ["timeout_ms"] = timeout?.TotalMilliseconds,

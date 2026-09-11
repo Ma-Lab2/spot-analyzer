@@ -13,7 +13,10 @@ public partial class MainWindow : Window
     private bool _configurationConfirmed;
     private bool _hasResult;
     private WorkerOutcome? _lastOutcome;
+    private WorkerOutcome? _lastSuccessfulOutcome;
     private CancellationTokenSource? _analysisCancellation;
+    private AnalysisRequest? _pendingRequest;
+    private AnalysisRequest? _inFlightRequest;
     private ConfigurationValues? _lastConfiguration;
     private string _flowStatus = "ready";
     private string? _failureCode;
@@ -43,7 +46,7 @@ public partial class MainWindow : Window
 
     private ConfigurationValues ReadConfiguration()
     {
-        var status = ((ComboBoxItem)CalibrationStatus.SelectedItem).Content?.ToString() ?? "missing";
+        var status = (CalibrationStatus.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "missing";
         var region = Rectangle(
             RoiXText, RoiYText, RoiWidthText, RoiHeightText, "analysis region");
         if (_selectedInput is not null && (region.x + region.width > _selectedInput.Width || region.y + region.height > _selectedInput.Height))
@@ -107,56 +110,75 @@ public partial class MainWindow : Window
             ? value
             : throw new ConfigurationValidationException("invalid_calibration", $"{name} must be a positive number.");
 
+    private AnalysisRequest BuildRequest(ConfigurationValues configuration)
+    {
+        if (_selectedInput is null)
+            throw new ConfigurationValidationException("input_required", "Open an 8-bit or 16-bit grayscale PNG before confirming configuration.");
+        if (configuration.CalibrationStatus != "confirmed")
+            throw new ConfigurationValidationException("calibration_unconfirmed", "Calibration must be confirmed before analysis can start.");
+
+        return AnalysisRequest.Create(
+            _selectedInput.Path,
+            _selectedInput.Sha256,
+            configuration.RegionX,
+            configuration.RegionY,
+            configuration.RegionWidth,
+            configuration.RegionHeight,
+            configuration.BackgroundX,
+            configuration.BackgroundY,
+            configuration.BackgroundWidth,
+            configuration.BackgroundHeight,
+            configuration.CalibrationStatus,
+            configuration.CalibrationX,
+            configuration.CalibrationY,
+            configuration.CalibrationUnits,
+            configuration.CalibrationSource,
+            Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived"));
+    }
+
     private void ConfirmConfiguration_Click(object sender, RoutedEventArgs e)
     {
         try
         {
             _lastConfiguration = ReadConfiguration();
+            _pendingRequest = BuildRequest(_lastConfiguration);
             _configurationConfirmed = true;
+            SummaryText.Text = _pendingRequest.Summary;
             _flowStatus = "configuration_confirmed";
             _failureCode = null;
             _failureDetails = null;
-            DiagnosticLog.Write("configuration_confirmed", BuildConfigurationSnapshot(_lastConfiguration));
-            StatusText.Text = "Configuration confirmed";
+            DiagnosticLog.Write("configuration_confirmed", new { configuration = BuildConfigurationSnapshot(_lastConfiguration), request = _pendingRequest.Summary });
+            StatusText.Text = "Configuration confirmed; ready to run";
             MarkResultStale();
+            UpdateRunAvailability();
         }
         catch (ConfigurationValidationException exception)
         {
             _configurationConfirmed = false;
+            _pendingRequest = null;
+            UpdateRunAvailability();
             StatusText.Text = $"Invalid configuration ({exception.Code}): {exception.Message}";
         }
     }
 
     private async void RunAnalysis_Click(object sender, RoutedEventArgs e)
     {
-        await RunAnalysisAsync(async () =>
+        if (!_configurationConfirmed || _pendingRequest is null)
         {
-            if (_selectedInput is null)
-                throw new ConfigurationValidationException("input_required", "Open an 8-bit or 16-bit grayscale PNG before running analysis.");
-            if (!_configurationConfirmed)
-                throw new ConfigurationValidationException("configuration_unconfirmed", "Confirm calibration and analysis region before running analysis.");
-            var configuration = ReadConfiguration();
-            _lastConfiguration = configuration;
-            return await _workerClient.RunPngAsync(
-                _selectedInput.Path,
-                _selectedInput.Sha256,
-                semanticsConfirmed: true,
-                configuration.RegionX,
-                configuration.RegionY,
-                configuration.RegionWidth,
-                configuration.RegionHeight,
-                configuration.BackgroundX,
-                configuration.BackgroundY,
-                configuration.BackgroundWidth,
-                configuration.BackgroundHeight,
-                configuration.CalibrationStatus,
-                configuration.CalibrationX,
-                configuration.CalibrationY,
-                configuration.CalibrationUnits,
-                configuration.CalibrationSource,
-                _analysisCancellation!.Token,
-                TimeSpan.FromSeconds(30));
-        });
+            StatusText.Text = "Confirm a valid pending configuration before running analysis.";
+            return;
+        }
+
+        var request = _pendingRequest;
+        _inFlightRequest = request;
+        UpdateRunAvailability();
+        await RunAnalysisAsync(() => _workerClient.RunAsync(
+            request,
+            _analysisCancellation!.Token,
+            TimeSpan.FromSeconds(30)));
+        _inFlightRequest = null;
+        RefreshDraftSummary();
+        UpdateRunAvailability();
     }
 
     private async void CancelAnalysis_Click(object sender, RoutedEventArgs e)
@@ -280,12 +302,18 @@ public partial class MainWindow : Window
             DiagnosticLog.Write("input_loaded", new { input.Summary, input.Sha256 });
             StatusText.Text = "Input loaded; confirm configuration";
             MarkResultStale();
+            RefreshDraftSummary();
+            UpdateRunAvailability();
         }
         catch (InputValidationException exception)
         {
             _selectedInput = null;
+            _pendingRequest = null;
+            _configurationConfirmed = false;
             InputPreview.Source = null;
             InputSummaryText.Text = "No input selected";
+            SummaryText.Text = "No input selected; pending request is not valid.";
+            UpdateRunAvailability();
             _flowStatus = "input_invalid";
             _failureCode = exception.Code;
             _failureDetails = exception.Message;
@@ -404,11 +432,63 @@ public partial class MainWindow : Window
                 .Select(item => item.GetString()!).ToArray()
             : Array.Empty<string>();
 
+    private void RefreshDraftSummary()
+    {
+        if (_inFlightRequest is not null)
+            return;
+        try
+        {
+            var draft = ReadConfiguration();
+            _pendingRequest = _selectedInput is null ? null : BuildRequestForDisplay(draft);
+            SummaryText.Text = _pendingRequest?.Summary ?? "No input selected; pending request is not valid.";
+        }
+        catch (ConfigurationValidationException exception)
+        {
+            _pendingRequest = null;
+            SummaryText.Text = $"Pending configuration is invalid ({exception.Code}): {exception.Message}";
+        }
+        UpdateRunAvailability();
+    }
+
+    private AnalysisRequest BuildRequestForDisplay(ConfigurationValues configuration)
+    {
+        if (_selectedInput is null)
+            throw new ConfigurationValidationException("input_required", "Open an input before building a request snapshot.");
+        return AnalysisRequest.Create(
+            _selectedInput.Path,
+            _selectedInput.Sha256,
+            configuration.RegionX,
+            configuration.RegionY,
+            configuration.RegionWidth,
+            configuration.RegionHeight,
+            configuration.BackgroundX,
+            configuration.BackgroundY,
+            configuration.BackgroundWidth,
+            configuration.BackgroundHeight,
+            configuration.CalibrationStatus,
+            configuration.CalibrationX,
+            configuration.CalibrationY,
+            configuration.CalibrationUnits,
+            configuration.CalibrationSource,
+            Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived"));
+    }
+
+    private void UpdateRunAvailability() =>
+        RunAnalysisButton.IsEnabled = _inFlightRequest is null
+            && _configurationConfirmed
+            && _pendingRequest is not null
+            && _pendingRequest.IsValid
+            && _selectedInput is not null;
+
     private void ConfigurationChanged(object sender, RoutedEventArgs e)
     {
         _configurationConfirmed = false;
+        _pendingRequest = null;
         _flowStatus = _hasResult ? "needs_recalculation" : "configuration_changed";
         MarkResultStale();
+        if (_inFlightRequest is null)
+            RefreshDraftSummary();
+        UpdateRunAvailability();
     }
 
     private string FormatRecordSummary(WorkerOutcome outcome)
