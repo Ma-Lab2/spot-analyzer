@@ -362,7 +362,9 @@ def _reserve_target(destination: Path, stem: str, extension: str) -> Path:
 def write_report(package: ReportPackage, specification: ReportSpecification) -> ExportOutcome:
     format_name = _format_name(specification)
     report_name = specification.report_name.strip()
-    if format_name != package.format or report_name != package.report_name:
+    # A single immutable package supplies every file representation. The
+    # requested output format is a rendering choice, not a new measurement.
+    if report_name != package.report_name:
         raise ValueError("report package does not match export specification")
     destination = Path(specification.output_directory)
     try:
