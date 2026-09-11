@@ -53,8 +53,13 @@
         <Button Margin="8,0,0,0" Width="100" Click="CancelAnalysis_Click" Content="Cancel" />
       </StackPanel>
       <TextBlock x:Name="RecordText" Margin="0,8,0,0" TextWrapping="Wrap" />
+      <TextBlock Margin="0,12,0,4" Text="Report name" />
+      <TextBox x:Name="ReportNameText" Width="300" HorizontalAlignment="Left"
+               Text="spot-analysis-report" />
+      <CheckBox x:Name="ReportTimestampCheck" Margin="0,6,0,0"
+                Content="Append UTC timestamp to report name" />
       <Button x:Name="ExportResultButton" Margin="0,12,0,0" Width="190" HorizontalAlignment="Left"
-              Click="ExportResult_Click" Content="Export result report" IsEnabled="False" />
+              Click="ExportResult_Click" Content="Export PDF/PNG report" IsEnabled="False" />
       <TextBlock Margin="0,16,0,4" Text="Measured metrics and validity" />
       <TextBlock x:Name="MetricsText" Text="No result available" TextWrapping="Wrap" />
 

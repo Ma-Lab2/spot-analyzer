@@ -595,7 +595,7 @@ public partial class MainWindow : Window
 
     private static string GetNumber(JsonElement node, string property) => GetString(node, property) ?? "?";
 
-    private async void ExportResult_Click(object sender, RoutedEventArgs e)
+    private void ExportResult_Click(object sender, RoutedEventArgs e)
     {
         if (!_hasResult || _lastOutcome?.Result is not JsonElement result)
         {
@@ -603,40 +603,43 @@ public partial class MainWindow : Window
             return;
         }
 
+        var requestedName = ReportNameText.Text.Trim();
+        if (requestedName.Length == 0)
+        {
+            StatusText.Text = "Report export failed: enter a report name.";
+            return;
+        }
         var dialog = new SaveFileDialog
         {
-            Filter = "JSON report (*.json)|*.json",
-            DefaultExt = ".json",
+            Filter = "PDF report (*.pdf)|*.pdf|PNG report (*.png)|*.png",
+            DefaultExt = ".pdf",
             AddExtension = true,
             OverwritePrompt = false,
-            FileName = $"spot-analysis-{_lastOutcome.RecordId ?? "result"}.json",
+            FileName = requestedName + ".pdf",
         };
         if (dialog.ShowDialog() != true) return;
         try
         {
-            var target = ReserveReportPath(dialog.FileName);
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            var json = JsonSerializer.Serialize(result, options);
-            var temporary = target + ".tmp-" + Guid.NewGuid().ToString("N");
-            await File.WriteAllTextAsync(temporary, json, Encoding.UTF8);
-            File.Move(temporary, target);
-            StatusText.Text = $"Result exported: {target}";
+            var format = Path.GetExtension(dialog.FileName).TrimStart('.').ToLowerInvariant();
+            var outputDirectory = Path.GetDirectoryName(dialog.FileName) ?? AppContext.BaseDirectory;
+            var outcome = ReportExporter.Write(
+                result,
+                new ReportSpecification(
+                    format,
+                    requestedName,
+                    outputDirectory,
+                    ReportTimestampCheck.IsChecked == true));
+            if (outcome.FlowStatus != "exported")
+            {
+                StatusText.Text = $"Export failed ({outcome.ErrorCode ?? "report_write_failed"}): {outcome.ErrorMessage}";
+                return;
+            }
+            StatusText.Text = $"Report exported: {outcome.Path}";
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
             StatusText.Text = $"Export failed (report_write_failed): {exception.Message}";
         }
-    }
-
-    private static string ReserveReportPath(string requestedPath)
-    {
-        var directory = Path.GetDirectoryName(requestedPath) ?? AppContext.BaseDirectory;
-        var stem = Path.GetFileNameWithoutExtension(requestedPath);
-        var extension = Path.GetExtension(requestedPath);
-        var candidate = Path.Combine(directory, stem + extension);
-        for (var index = 2; File.Exists(candidate); index++)
-            candidate = Path.Combine(directory, $"{stem}-{index}{extension}");
-        return candidate;
     }
 
     private void ConfigurationSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) =>
