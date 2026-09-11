@@ -1,6 +1,8 @@
 # Spot Analysis MVP seam
 
-Issue #37 provides a minimal WPF/.NET 8 shell and Python worker seam.
+Issue #37 provides a minimal WPF/.NET 8 shell and Python worker seam. Issue #38
+adds read-only 8/16-bit grayscale PNG adaptation and a deterministic standard
+analysis record.
 
 ## Worker protocol
 
