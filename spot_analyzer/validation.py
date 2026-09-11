@@ -377,6 +377,7 @@ def _validation_environment() -> dict[str, Any]:
         "numpy": np.__version__,
         "scipy": _package_version("scipy"),
         "pillow": _package_version("pillow"),
+        "rfc8785": _package_version("rfc8785"),
         "spot_analyzer": _package_version("spot-analyzer") or "0.1.0",
     }
 
@@ -1297,6 +1298,7 @@ def _performance_environment() -> dict[str, Any]:
         "numpy": environment["numpy"] == "2.2.6",
         "scipy": environment["scipy"] == "1.15.3",
         "pillow": environment["pillow"] == "12.2.0",
+        "rfc8785": environment["rfc8785"] == "0.1.4",
     }
     environment["formal_environment"] = environment["formal_python"] and all(
         environment["formal_dependencies"].values()
@@ -1444,10 +1446,31 @@ def run_performance_baseline(
     }
 
 
+def _acceptance_limitations(result: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Return decision-ready limitations without inventing missing evidence."""
+
+    real_result = result.get("sections", {}).get("real_fixtures", {}).get("result") or {}
+    detailed = [dict(item) for item in real_result.get("bounded_limitations", [])]
+    limitations = list(detailed)
+    for item in result.get("incomplete_items", []):
+        if item == "real_fixtures" and detailed:
+            continue
+        limitations.append({
+            "code": str(item),
+            "classification": "incomplete_section",
+            "consequence": f"Required evidence is incomplete for {item}.",
+            "acceptance": "requires_explicit_human_acceptance_or_rejection",
+        })
+    return limitations
+
+
 def _acceptance_materials(result: Mapping[str, Any]) -> str:
     """Render a concise, auditable human summary from one validation result."""
 
     sections = result.get("sections", {})
+    acceptance = result.get("acceptance", {})
+    environment = result.get("environment", {})
+    real_result = sections.get("real_fixtures", {}).get("result") or {}
     lines = [
         "# Issue #10 Validation Acceptance Record",
         "",
@@ -1456,37 +1479,69 @@ def _acceptance_materials(result: Mapping[str, Any]) -> str:
         f"- Overall status: `{result.get('overall_status', 'incomplete')}`",
         f"- Validation contract: `{result.get('validation_contract', 'unknown')}`",
         f"- Profile validation: `{result.get('identity', {}).get('profile_validation', 'provisional')}`",
-        "- User acceptance: **pending explicit user decision**",
-        "- Production release: **out of scope for Issue #10**",
+        f"- User acceptance: `{acceptance.get('user_acceptance', 'pending')}` (explicit human decision required)",
+        "- Production release: `out_of_scope` for Issue #10",
         "",
-        "## Sections",
+        "## Environment",
         "",
     ]
-    for name, section in sections.items():
+    for name in ("python", "python_implementation", "numpy", "scipy", "pillow", "rfc8785", "spot_analyzer", "platform", "machine", "processor", "logical_cpu_count"):
+        lines.append(f"- `{name}`: `{environment.get(name)}`")
+    lines.extend(["", "## Sections", ""])
+    for name in ("synthetic", "low_snr", "real_fixtures", "report", "identity", "performance"):
+        section = sections.get(name, {})
         lines.append(f"- `{name}`: `{section.get('status', 'incomplete')}`")
-    incomplete = result.get("incomplete_items", [])
+    lines.extend([
+        "",
+        "## Asset identity",
+        "",
+        f"- Real-fixture manifest: `{real_result.get('manifest_sha256', 'unavailable')}`",
+    ])
+    for fixture in real_result.get("fixtures", []):
+        lines.append(f"- `{fixture.get('relative_path', 'unknown')}`: `{fixture.get('sha256', 'unavailable')}`")
     lines.extend([
         "",
         "## Interpretation",
         "",
         "- Implementation complete, calculation success, measurement validity, validation complete, user acceptance, and production release are distinct decisions.",
-        "- Real representative images provide behavioral evidence only when no independent physical ground truth is available.",
-        "- WPF, packaging, and clean-machine release work are not Issue #10 validation failures.",
-        "- Profiles remain `provisional`; this run does not promote either profile to `validated`.",
+        "- Real representative images provide behavioral evidence only; no independent physical ground truth establishes absolute physical accuracy.",
+        "- WPF, PyInstaller, portable ZIP, and clean-machine smoke tests are out of scope and are not Issue #10 validation failures.",
+        "- `standard-profile-v1` and `quality-profile-v1` remain `profile_validation: provisional`.",
         "",
         "## Bounded limitations",
         "",
     ])
-    if incomplete:
-        for item in incomplete:
-            lines.append(f"- Required evidence is incomplete for `{item}`.")
+    limitations = acceptance.get("bounded_limitations", _acceptance_limitations(result))
+    if limitations:
+        for item in limitations:
+            affected = item.get("affected_fixtures", "unspecified")
+            details = []
+            if item.get("unknown_fields"):
+                details.append(f"unknown fields: {', '.join(item['unknown_fields'])}")
+            if item.get("observed"):
+                details.append(f"observed evidence: {item['observed']}")
+            details.append(f"handling: {item.get('acceptance', 'requires_explicit_human_acceptance_or_rejection')}")
+            lines.append(
+                f"- `{item.get('code', 'unknown')}` (affected: `{affected}`): "
+                f"{item.get('consequence', 'Evidence remains incomplete.')} "
+                f"{' '.join(details)}"
+            )
     else:
-        lines.append("- No section was reported incomplete in this run.")
+        lines.append("- No bounded limitation was reported in this run.")
     lines.extend([
+        "",
+        "## Explicit human decision required",
+        "",
+        "Choose exactly one option on parent Issue #10:",
+        "",
+        "1. **Accept current bounded results** — accept the limitations above without treating them as proof of absolute physical accuracy.",
+        "2. **Request specification changes** — identify the required evidence or contract changes before acceptance.",
+        "",
+        "Until that decision is recorded, `user_acceptance` remains `pending`; this candidate does not record acceptance.",
         "",
         "## Recommendation to parent Issue #10",
         "",
-        f"Record the run as `{result.get('overall_status', 'incomplete')}` and review the bounded limitations above. Do not treat this recommendation as user acceptance.",
+        f"Record the candidate run as `{result.get('overall_status', 'incomplete')}` and request the explicit human decision above. Do not treat this recommendation as user acceptance.",
         "",
     ])
     return "\n".join(lines)
@@ -1517,8 +1572,10 @@ def run_complete_validation(
         "measurement_validity": "section-specific; see results",
         "validation_complete": result.get("overall_status") == "passed",
         "user_acceptance": "pending",
+        "human_decision_required": True,
+        "decision_options": ["accept_current_bounded_results", "request_specification_changes"],
         "production_release": "out_of_scope",
-        "bounded_limitations": list(result.get("incomplete_items", [])),
+        "bounded_limitations": _acceptance_limitations(result),
     }
     json_path = Path(output_json) if output_json is not None else None
     markdown_path = Path(output_markdown) if output_markdown is not None else None

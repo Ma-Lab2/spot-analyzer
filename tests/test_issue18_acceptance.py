@@ -7,7 +7,21 @@ def test_complete_validation_persists_machine_and_human_materials(tmp_path, monk
     sections = {
         "synthetic": {"status": "passed"},
         "low_snr": {"status": "passed"},
-        "real_fixtures": {"status": "incomplete"},
+        "real_fixtures": {
+            "status": "incomplete",
+            "result": {
+                "manifest_sha256": "sha256-manifest",
+                "fixtures": [{"relative_path": "fixture.png", "sha256": "fixture-sha256"}],
+                "bounded_limitations": [{
+                    "code": "physical_truth_absent",
+                    "affected_fixtures": "all",
+                    "unknown_fields": ["instrument", "acquired_at"],
+                    "observed": "No gAMA, sRGB, or iCCP metadata was present.",
+                    "consequence": "Absolute physical accuracy is not established.",
+                    "acceptance": "requires_explicit_human_acceptance_or_rejection",
+                }],
+            },
+        },
         "report": {"status": "passed"},
         "identity": {"status": "incomplete"},
         "performance": {"status": "incomplete"},
@@ -22,7 +36,15 @@ def test_complete_validation_persists_machine_and_human_materials(tmp_path, monk
             "sections": sections,
             "identity": {"profile_validation": "provisional"},
             "incomplete_items": ["real_fixtures", "identity", "performance"],
-            "environment": {"python": "3.10.11"},
+            "environment": {
+                "python": "3.12.14",
+                "python_implementation": "CPython",
+                "numpy": "2.2.6",
+                "scipy": "1.15.3",
+                "pillow": "12.2.0",
+                "rfc8785": "0.1.4",
+                "spot_analyzer": "0.1.0",
+            },
         },
     )
 
@@ -37,10 +59,29 @@ def test_complete_validation_persists_machine_and_human_materials(tmp_path, monk
     text = markdown_path.read_text(encoding="utf-8")
     assert saved["acceptance"]["validation_complete"] is False
     assert saved["acceptance"]["user_acceptance"] == "pending"
+    assert saved["acceptance"]["human_decision_required"] is True
+    assert saved["acceptance"]["decision_options"] == [
+        "accept_current_bounded_results",
+        "request_specification_changes",
+    ]
+    limitation_codes = {item["code"] for item in saved["acceptance"]["bounded_limitations"]}
+    assert limitation_codes == {"physical_truth_absent", "identity", "performance"}
     assert saved["artifacts"]["json"] == str(json_path)
     assert result["artifacts"]["markdown"] == str(markdown_path)
-    assert "real_fixtures" in text
+    for name, section in sections.items():
+        assert f"`{name}`: `{section['status']}`" in text
+    for value in ("3.12.14", "2.2.6", "1.15.3", "12.2.0", "0.1.4"):
+        assert value in text
+    assert "sha256-manifest" in text
+    assert "fixture-sha256" in text
+    assert "unknown fields: instrument, acquired_at" in text
+    assert "No gAMA, sRGB, or iCCP metadata was present." in text
+    assert "requires_explicit_human_acceptance_or_rejection" in text
+    assert "Required evidence is incomplete for identity." in text
+    assert "Required evidence is incomplete for performance." in text
     assert "WPF" in text
+    assert "Accept current bounded results" in text
+    assert "Request specification changes" in text
     assert "user acceptance" in text
 
 
