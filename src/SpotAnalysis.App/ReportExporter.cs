@@ -50,7 +50,7 @@ public static class ReportExporter
         try
         {
             Directory.CreateDirectory(directory);
-            var stem = Sanitize(reportName);
+            var stem = SanitizeName(reportName);
             if (specification.AppendTimestamp)
                 stem += "-" + DateTimeOffset.UtcNow.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
             var extension = "." + format;
@@ -161,7 +161,7 @@ public static class ReportExporter
         value.ValueKind == JsonValueKind.Object && value.TryGetProperty(property, out var child)
             && child.ValueKind != JsonValueKind.Null ? child.ToString() : null;
 
-    private static string Sanitize(string name)
+    public static string SanitizeName(string name)
     {
         var builder = new StringBuilder(name.Length);
         foreach (var character in name)

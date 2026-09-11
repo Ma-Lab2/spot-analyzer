@@ -615,7 +615,7 @@ public partial class MainWindow : Window
             DefaultExt = ".pdf",
             AddExtension = true,
             OverwritePrompt = false,
-            FileName = requestedName + ".pdf",
+            FileName = ReportExporter.SanitizeName(requestedName) + ".pdf",
         };
         if (dialog.ShowDialog() != true) return;
         try
