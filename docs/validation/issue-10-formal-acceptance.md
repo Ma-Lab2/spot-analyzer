@@ -10,6 +10,7 @@
 - User decision original text: `接受`
 - Recorded interpretation: `accept_current_bounded_results`
 - Acceptance candidate commit: `d8f27a14e8a80e8c229f22c24c4e6f088616151c`
+- Issue #10 decision record: `https://github.com/Ma-Lab2/spot-analyzer/issues/10#issuecomment-5628729455`
 - Validation complete: `false` (the `real_fixtures` section remains `incomplete`)
 - Issue #10 completion condition: `met_by_explicit_acceptance_of_all_bounded_limitations`
 - Production release: `out_of_scope` for Issue #10
@@ -66,7 +67,7 @@
 
 On `2026-09-11`, the user stated exactly: `接受`.
 
-For Issue #35, this is recorded as selecting **Accept current bounded results** (`accept_current_bounded_results`) for the Issue #34 acceptance candidate merged as `d8f27a14e8a80e8c229f22c24c4e6f088616151c`.
+Issue #35 is the decision-recording task; the accepted evidence is the Issue #34 acceptance candidate merged as `d8f27a14e8a80e8c229f22c24c4e6f088616151c`. The decision is recorded as selecting **Accept current bounded results** (`accept_current_bounded_results`) and is synchronized to [GitHub Issue #10](https://github.com/Ma-Lab2/spot-analyzer/issues/10#issuecomment-5628729455).
 
 The decision accepts all five bounded limitations listed above. It does not convert the real-fixture evidence into proof of absolute physical accuracy, does not change `overall_status: incomplete` or the `real_fixtures: incomplete` section, and does not promote `standard-profile-v1` or `quality-profile-v1` beyond `profile_validation: provisional`.
 

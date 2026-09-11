@@ -66,6 +66,7 @@
     "decision": {
       "acceptance_candidate_commit": "d8f27a14e8a80e8c229f22c24c4e6f088616151c",
       "date": "2026-09-11",
+      "github_issue_10_comment": "https://github.com/Ma-Lab2/spot-analyzer/issues/10#issuecomment-5628729455",
       "original_text": "接受",
       "recorded_interpretation": "accept_current_bounded_results"
     },
