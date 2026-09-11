@@ -1595,5 +1595,83 @@ def run_complete_validation(
     return result
 
 
+ISSUE47_BOUNDED_LIMITATIONS: tuple[dict[str, Any], ...] = (
+    {
+        "code": "independent_physical_ground_truth_absent",
+        "consequence": "Real PNG evidence is behavioral only and cannot establish absolute physical size accuracy.",
+    },
+    {
+        "code": "historical_acquisition_metadata_unrecoverable",
+        "consequence": "Fixture identity and behavior are testable, but unavailable acquisition conditions are not inferred.",
+    },
+    {
+        "code": "rgb_acquisition_timezone_unknown",
+        "consequence": "Unknown local timestamp offsets are retained as unknown rather than invented.",
+    },
+    {
+        "code": "png_color_management_matrix_absent",
+        "consequence": "The fixture set does not establish behavior across gAMA, sRGB, and iCCP combinations.",
+    },
+    {
+        "code": "acquisition_condition_matrix_absent",
+        "consequence": "No controlled matrix varies exposure, gain, temperature, optics, and batch while holding physical truth constant.",
+    },
+)
+
+
+def run_ui_worker_parity_validation() -> dict[str, Any]:
+    """Report the UI/worker parity seam without pretending an unbuilt WPF app ran."""
+    return {
+        "status": "incomplete",
+        "passed": False,
+        "comparison_fields": [
+            "configuration", "input_metadata", "metrics", "flow_status",
+            "metric_validity", "reason_codes", "diagnostics", "mask_statistics",
+            "derived_asset_identity", "analysis_fingerprint",
+        ],
+        "incomplete_reason": "WPF UI runtime/build evidence is unavailable in this environment",
+    }
+
+
+def run_issue47_validation(
+    manifests: Mapping[str, int] | None = None,
+    seeds: Iterable[int] = range(32),
+    real_manifest_path: str | Path = Path("docs/validation/issue-10-real-fixtures.json"),
+    real_fixture_root: str | Path | None = None,
+    golden_vector_path: str | Path = Path("docs/validation/issue-10-fingerprint-golden-vectors.json"),
+    performance_repetitions: int = 10,
+) -> dict[str, Any]:
+    """Run the Issue 47 handoff contract with explicit, auditable sections."""
+    base = run_issue10_validation(
+        manifests=manifests,
+        seeds=seeds,
+        real_manifest_path=real_manifest_path,
+        real_fixture_root=real_fixture_root,
+        golden_vector_path=golden_vector_path,
+        performance_sizes=(256, 1024),
+        performance_repetitions=performance_repetitions,
+    )
+    sections = dict(base["sections"])
+    sections["ui_worker_parity"] = _run_section("ui_worker_parity", run_ui_worker_parity_validation)
+    # Recompute aggregate status, since a required unavailable seam must be incomplete.
+    incomplete_items = [name for name, section in sections.items() if section["status"] == "incomplete"]
+    result = dict(base)
+    result.update({
+        "issue": 47,
+        "sections": sections,
+        "overall_status": _aggregate_status(sections),
+        "status": _aggregate_status(sections),
+        "incomplete_items": incomplete_items,
+        "required_sections": ["synthetic", "low_snr", "real_fixtures", "identity", "report", "ui_worker_parity", "performance"],
+        "bounded_limitations": [dict(item) for item in ISSUE47_BOUNDED_LIMITATIONS],
+        "handoff": {
+            "profile_validation": "provisional",
+            "release_status": "out_of_scope",
+            "evidence_kind": "MVP formal development handoff",
+        },
+    })
+    return result
+
+
 # Short public spelling for callers that do not need to name the parent issue.
 run_validation = run_issue10_validation
