@@ -14,8 +14,17 @@ public partial class MainWindow : Window
     private bool _hasResult;
     private WorkerOutcome? _lastOutcome;
     private CancellationTokenSource? _analysisCancellation;
+    private ConfigurationValues? _lastConfiguration;
+    private string _flowStatus = "ready";
+    private string? _failureCode;
+    private string? _failureDetails;
 
-    public MainWindow() => InitializeComponent();
+    public MainWindow()
+    {
+        InitializeComponent();
+        DiagnosticsText.Text = DiagnosticPackage.BuildAboutText();
+        DiagnosticLog.Write("client_started", new { output_capability = DiagnosticPackage.OutputCapability });
+    }
 
     private sealed record ConfigurationValues(
         int RegionX,
@@ -102,8 +111,12 @@ public partial class MainWindow : Window
     {
         try
         {
-            _ = ReadConfiguration();
+            _lastConfiguration = ReadConfiguration();
             _configurationConfirmed = true;
+            _flowStatus = "configuration_confirmed";
+            _failureCode = null;
+            _failureDetails = null;
+            DiagnosticLog.Write("configuration_confirmed", BuildConfigurationSnapshot(_lastConfiguration));
             StatusText.Text = "Configuration confirmed";
             MarkResultStale();
         }
@@ -123,6 +136,7 @@ public partial class MainWindow : Window
             if (!_configurationConfirmed)
                 throw new ConfigurationValidationException("configuration_unconfirmed", "Confirm calibration and analysis region before running analysis.");
             var configuration = ReadConfiguration();
+            _lastConfiguration = configuration;
             return await _workerClient.RunPngAsync(
                 _selectedInput.Path,
                 _selectedInput.Sha256,
@@ -148,6 +162,8 @@ public partial class MainWindow : Window
     private async void CancelAnalysis_Click(object sender, RoutedEventArgs e)
     {
         _analysisCancellation?.Cancel();
+        _flowStatus = "cancelling";
+        DiagnosticLog.Write("analysis_cancellation_requested", new { flow_status = _flowStatus });
         StatusText.Text = "Cancelling";
         await Task.CompletedTask;
     }
@@ -156,10 +172,33 @@ public partial class MainWindow : Window
     {
         _analysisCancellation?.Dispose();
         _analysisCancellation = new CancellationTokenSource();
+        _lastOutcome = null;
+        _flowStatus = "processing";
+        _failureCode = null;
+        _failureDetails = null;
+        DiagnosticLog.Write("analysis_started", new { flow_status = _flowStatus, input = _selectedInput?.Summary });
         StatusText.Text = "Processing";
         try
         {
             var outcome = await operation();
+            _lastOutcome = outcome;
+            _failureCode = outcome.FailureCode;
+            _failureDetails = outcome.ErrorMessage;
+            _flowStatus = outcome.Status switch
+            {
+                "success" => "completed",
+                "cancelled" => "cancelled",
+                "timeout" => "timeout",
+                _ => "failed",
+            };
+            DiagnosticLog.Write("analysis_finished", new
+            {
+                flow_status = _flowStatus,
+                outcome.FailureCode,
+                outcome.ErrorMessage,
+                outcome.RecordId,
+                outcome.AnalysisFingerprint,
+            });
             switch (outcome.Status)
             {
                 case "success":
@@ -188,16 +227,28 @@ public partial class MainWindow : Window
         }
         catch (ConfigurationValidationException exception)
         {
+            _flowStatus = "configuration_invalid";
+            _failureCode = exception.Code;
+            _failureDetails = exception.Message;
+            DiagnosticLog.Write("analysis_rejected", new { flow_status = _flowStatus, code = exception.Code, message = exception.Message });
             StatusText.Text = $"Invalid configuration ({exception.Code}): {exception.Message}";
             RecordText.Text = StatusText.Text;
         }
         catch (InputValidationException exception)
         {
+            _flowStatus = "input_invalid";
+            _failureCode = exception.Code;
+            _failureDetails = exception.Message;
+            DiagnosticLog.Write("analysis_rejected", new { flow_status = _flowStatus, code = exception.Code, message = exception.Message });
             StatusText.Text = $"Invalid input ({exception.Code}): {exception.Message}";
             RecordText.Text = StatusText.Text;
         }
         catch (OperationCanceledException)
         {
+            _flowStatus = "cancelled";
+            _failureCode = "analysis_cancelled";
+            _failureDetails = "analysis cancelled";
+            DiagnosticLog.Write("analysis_cancelled", new { flow_status = _flowStatus });
             StatusText.Text = "Cancelled";
         }
         finally
@@ -223,6 +274,10 @@ public partial class MainWindow : Window
             InputSummaryText.Text = input.Summary;
             InputPreview.Source = input.Preview;
             _configurationConfirmed = false;
+            _flowStatus = "input_loaded";
+            _failureCode = null;
+            _failureDetails = null;
+            DiagnosticLog.Write("input_loaded", new { input.Summary, input.Sha256 });
             StatusText.Text = "Input loaded; confirm configuration";
             MarkResultStale();
         }
@@ -231,13 +286,128 @@ public partial class MainWindow : Window
             _selectedInput = null;
             InputPreview.Source = null;
             InputSummaryText.Text = "No input selected";
+            _flowStatus = "input_invalid";
+            _failureCode = exception.Code;
+            _failureDetails = exception.Message;
+            DiagnosticLog.Write("input_rejected", new { flow_status = _flowStatus, code = exception.Code, message = exception.Message });
             StatusText.Text = $"Invalid input ({exception.Code}): {exception.Message}";
         }
     }
 
+    private void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        var includeImage = IncludeOriginalImageCheck.IsChecked == true;
+        var dialog = new SaveFileDialog
+        {
+            Filter = includeImage
+                ? "Diagnostic ZIP package (*.zip)|*.zip"
+                : "Diagnostic JSON package (*.json)|*.json",
+            DefaultExt = includeImage ? ".zip" : ".json",
+            AddExtension = true,
+            FileName = $"spot-analysis-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}",
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            DiagnosticPackage.Write(dialog.FileName, BuildDiagnosticSnapshot(), includeImage);
+            DiagnosticLog.Write("diagnostic_exported", new
+            {
+                path = dialog.FileName,
+                include_original_image = includeImage,
+                flow_status = _flowStatus,
+            });
+            StatusText.Text = $"Diagnostics exported: {dialog.FileName}";
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLog.Write("diagnostic_export_failed", new { code = "diagnostic_export_failed", message = exception.Message });
+            StatusText.Text = $"Diagnostic export failed: {exception.Message}";
+        }
+    }
+
+    private DiagnosticSnapshot BuildDiagnosticSnapshot()
+    {
+        var outcome = _lastOutcome;
+        JsonElement? record = null;
+        if (outcome?.Result is JsonElement result && result.TryGetProperty("record", out var recordNode))
+            record = recordNode;
+        var diagnostics = ReadArray(record, "diagnostics");
+        if (diagnostics.Count == 0 && outcome?.Diagnostics is not null)
+            diagnostics = outcome.Diagnostics;
+        var reasons = ReadStringArray(record, "quality_reason_codes");
+        if (reasons.Count == 0)
+            reasons = ReadStringArray(record, "reason_codes");
+        var validity = ReadString(record, "measurement_validity") ?? ReadString(record, "summary_status");
+        return new DiagnosticSnapshot(
+            _flowStatus,
+            _failureCode,
+            _failureDetails,
+            outcome?.RecordId ?? ReadString(record, "record_id"),
+            outcome?.AnalysisFingerprint ?? ReadString(record, "analysis_fingerprint"),
+            _selectedInput?.Summary ?? outcome?.InputSummary,
+            _selectedInput?.Sha256,
+            _selectedInput?.Path,
+            BuildConfigurationSnapshot(_lastConfiguration),
+            record,
+            diagnostics,
+            validity,
+            reasons);
+    }
+
+    private static object BuildConfigurationSnapshot(ConfigurationValues? configuration) => configuration is null
+        ? new Dictionary<string, object?> { ["status"] = "not_confirmed" }
+        : new Dictionary<string, object?>
+        {
+            ["analysis_region"] = new
+            {
+                x = configuration.RegionX,
+                y = configuration.RegionY,
+                width = configuration.RegionWidth,
+                height = configuration.RegionHeight,
+            },
+            ["background_region"] = configuration.BackgroundX.HasValue
+                ? new
+                {
+                    x = configuration.BackgroundX,
+                    y = configuration.BackgroundY,
+                    width = configuration.BackgroundWidth,
+                    height = configuration.BackgroundHeight,
+                }
+                : null,
+            ["spatial_calibration"] = new
+            {
+                x_unit_per_pixel = configuration.CalibrationX,
+                y_unit_per_pixel = configuration.CalibrationY,
+                physical_unit = configuration.CalibrationUnits,
+                source = configuration.CalibrationSource,
+                confirmation = configuration.CalibrationStatus,
+            },
+        };
+
+    private static string? ReadString(JsonElement? node, string property) =>
+        node is { } value && value.ValueKind == JsonValueKind.Object &&
+        value.TryGetProperty(property, out var child) && child.ValueKind == JsonValueKind.String
+            ? child.GetString()
+            : null;
+
+    private static IReadOnlyList<JsonElement> ReadArray(JsonElement? node, string property) =>
+        node is { } value && value.ValueKind == JsonValueKind.Object &&
+        value.TryGetProperty(property, out var child) && child.ValueKind == JsonValueKind.Array
+            ? child.EnumerateArray().Select(item => item.Clone()).ToArray()
+            : Array.Empty<JsonElement>();
+
+    private static IReadOnlyList<string> ReadStringArray(JsonElement? node, string property) =>
+        node is { } value && value.ValueKind == JsonValueKind.Object &&
+        value.TryGetProperty(property, out var child) && child.ValueKind == JsonValueKind.Array
+            ? child.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString()!).ToArray()
+            : Array.Empty<string>();
+
     private void ConfigurationChanged(object sender, RoutedEventArgs e)
     {
         _configurationConfirmed = false;
+        _flowStatus = _hasResult ? "needs_recalculation" : "configuration_changed";
         MarkResultStale();
     }
 
@@ -363,6 +533,7 @@ public partial class MainWindow : Window
     private void MarkResultStale()
     {
         if (!_hasResult) return;
+        _flowStatus = "needs_recalculation";
         _hasResult = false;
         _lastOutcome = null;
         ExportResultButton.IsEnabled = false;

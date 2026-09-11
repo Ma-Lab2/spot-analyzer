@@ -53,6 +53,14 @@
               Click="ExportResult_Click" Content="Export result report" IsEnabled="False" />
       <TextBlock Margin="0,16,0,4" Text="Measured metrics and validity" />
       <TextBlock x:Name="MetricsText" Text="No result available" TextWrapping="Wrap" />
+
+      <TextBlock Margin="0,18,0,4" Text="Diagnostics and about" />
+      <TextBlock x:Name="DiagnosticsText" TextWrapping="Wrap" />
+      <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+        <Button Width="180" Click="ExportDiagnostics_Click" Content="Export diagnostics" />
+        <CheckBox x:Name="IncludeOriginalImageCheck" Margin="10,4,0,0"
+                  Content="Attach original image explicitly" />
+      </StackPanel>
     </StackPanel>
   </ScrollViewer>
 </Window>

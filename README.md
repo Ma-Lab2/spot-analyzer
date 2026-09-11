@@ -34,6 +34,21 @@ uses the complete worker result (including record ID, analysis fingerprint,
 configuration, diagnostics, and metrics), reserves a collision-free filename, and
 never writes to the input image.
 
+## Alpha diagnostics
+
+The WPF client writes newline-delimited JSON logs under
+`%LOCALAPPDATA%\\SpotAnalysis\\logs\\app.log`, so the extracted application
+folder does not need to be writable. The Diagnostics and about section shows the
+client, worker, analysis-core, profile, and output identities. **Export
+diagnostics** writes a JSON package containing the input summary and SHA-256,
+configuration, workflow status, metric validity, reason codes, record identity,
+fingerprint, diagnostics, and failure details. The original image is excluded
+unless **Attach original image explicitly** is selected; that explicit option
+creates a ZIP containing the JSON package and image.
+
+The package records that `standard-profile-v1` and `quality-profile-v1` remain
+provisional and does not establish physical-accuracy validation.
+
 ## Checks
 
 ```text
