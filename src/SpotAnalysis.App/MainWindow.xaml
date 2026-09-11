@@ -1,15 +1,45 @@
 <Window x:Class="SpotAnalysis.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Spot Analysis" Height="240" Width="520">
-  <StackPanel Margin="20">
-    <TextBlock FontSize="22" Text="Spot Analysis workspace" />
-    <TextBlock Margin="0,12,0,4" Text="Worker status" />
-    <TextBlock x:Name="StatusText" Text="Ready" />
-    <Button Margin="0,16,0,0" Width="180" HorizontalAlignment="Left"
-            Click="RunAnalysis_Click" Content="Run smoke analysis" />
-    <Button Margin="0,8,0,0" Width="180" HorizontalAlignment="Left"
-            Click="OpenPng_Click" Content="Open grayscale PNG" />
-    <TextBlock x:Name="RecordText" Margin="0,8,0,0" TextWrapping="Wrap" />
-  </StackPanel>
+        Title="Spot Analysis" Height="520" Width="620">
+  <ScrollViewer>
+    <StackPanel Margin="20">
+      <TextBlock FontSize="22" Text="Spot Analysis workspace" />
+      <TextBlock Margin="0,12,0,4" Text="Spatial calibration (units per pixel)" />
+      <StackPanel Orientation="Horizontal">
+        <TextBox x:Name="CalibrationXText" Width="70" Text="1" Margin="0,0,6,0" />
+        <TextBox x:Name="CalibrationYText" Width="70" Text="1" Margin="0,0,6,0" />
+        <TextBox x:Name="CalibrationUnitsText" Width="70" Text="mm" Margin="0,0,6,0" />
+        <TextBox x:Name="CalibrationSourceText" Width="150" Text="user" />
+      </StackPanel>
+      <ComboBox x:Name="CalibrationStatus" Width="130" HorizontalAlignment="Left" Margin="0,6,0,0">
+        <ComboBoxItem Content="missing" IsSelected="True" />
+        <ComboBoxItem Content="provisional" />
+        <ComboBoxItem Content="confirmed" />
+      </ComboBox>
+      <TextBlock Margin="0,12,0,4" Text="Analysis region x, y, width, height (input pixels)" />
+      <StackPanel Orientation="Horizontal">
+        <TextBox x:Name="RoiXText" Width="55" Text="0" Margin="0,0,6,0" />
+        <TextBox x:Name="RoiYText" Width="55" Text="0" Margin="0,0,6,0" />
+        <TextBox x:Name="RoiWidthText" Width="65" Text="1" Margin="0,0,6,0" />
+        <TextBox x:Name="RoiHeightText" Width="65" Text="1" />
+      </StackPanel>
+      <TextBlock Margin="0,12,0,4" Text="Background region (optional): x, y, width, height" />
+      <StackPanel Orientation="Horizontal">
+        <TextBox x:Name="BackgroundXText" Width="55" Margin="0,0,6,0" />
+        <TextBox x:Name="BackgroundYText" Width="55" Margin="0,0,6,0" />
+        <TextBox x:Name="BackgroundWidthText" Width="65" Margin="0,0,6,0" />
+        <TextBox x:Name="BackgroundHeightText" Width="65" />
+      </StackPanel>
+      <Button Margin="0,12,0,0" Width="190" HorizontalAlignment="Left"
+              Click="ConfirmConfiguration_Click" Content="Confirm configuration" />
+      <TextBlock Margin="0,12,0,4" Text="Worker status" />
+      <TextBlock x:Name="StatusText" Text="Ready" />
+      <Button Margin="0,16,0,0" Width="180" HorizontalAlignment="Left"
+              Click="RunAnalysis_Click" Content="Run smoke analysis" />
+      <Button Margin="0,8,0,0" Width="180" HorizontalAlignment="Left"
+              Click="OpenPng_Click" Content="Open grayscale PNG" />
+      <TextBlock x:Name="RecordText" Margin="0,8,0,0" TextWrapping="Wrap" />
+    </StackPanel>
+  </ScrollViewer>
 </Window>

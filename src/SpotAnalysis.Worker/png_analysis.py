@@ -17,6 +17,54 @@ class InputError(ValueError):
         self.code = code
 
 
+def _number(value: Any, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise InputError("invalid_configuration", f"{name} must be a number")
+    result = float(value)
+    if result <= 0:
+        raise InputError("invalid_configuration", f"{name} must be positive")
+    return result
+
+
+def _rectangle(value: Any, width: int, height: int, name: str) -> dict[str, int]:
+    if not isinstance(value, dict):
+        raise InputError("invalid_roi", f"{name} must be a rectangle")
+    fields = ("x", "y", "width", "height")
+    if any(isinstance(value.get(field), bool) or not isinstance(value.get(field), int) for field in fields):
+        raise InputError("invalid_roi", f"{name} coordinates and dimensions must be integers")
+    rectangle = {field: value[field] for field in fields}
+    if rectangle["x"] < 0 or rectangle["y"] < 0 or rectangle["width"] <= 0 or rectangle["height"] <= 0:
+        raise InputError("invalid_roi", f"{name} must have positive dimensions and non-negative origin")
+    if rectangle["x"] + rectangle["width"] > width or rectangle["y"] + rectangle["height"] > height:
+        raise InputError("invalid_roi", f"{name} must be inside the input image")
+    return rectangle
+
+
+def resolve_analysis_configuration(input_data: dict[str, Any], width: int, height: int) -> dict[str, Any]:
+    """Validate and freeze calibration/ROI choices for an analysis record."""
+    calibration = input_data.get("spatial_calibration")
+    if calibration is None:
+        calibration_snapshot: dict[str, Any] = {"status": "missing", "x_units_per_pixel": None, "y_units_per_pixel": None, "units": None, "source": None}
+    elif not isinstance(calibration, dict):
+        raise InputError("invalid_configuration", "spatial_calibration must be an object")
+    else:
+        status = calibration.get("status", "provisional")
+        if status == "missing":
+            calibration_snapshot = {"status": "missing", "x_units_per_pixel": None, "y_units_per_pixel": None, "units": None, "source": None}
+        else:
+            if status not in ("confirmed", "provisional"):
+                raise InputError("invalid_configuration", "calibration status must be confirmed, provisional, or missing")
+            units = calibration.get("units")
+            source = calibration.get("source")
+            if not isinstance(units, str) or not units.strip() or not isinstance(source, str) or not source.strip():
+                raise InputError("invalid_configuration", "calibration units and source are required")
+            calibration_snapshot = {"status": status, "x_units_per_pixel": _number(calibration.get("x_units_per_pixel"), "x_units_per_pixel"), "y_units_per_pixel": _number(calibration.get("y_units_per_pixel"), "y_units_per_pixel"), "units": units, "source": source}
+    roi = _rectangle(input_data.get("analysis_region"), width, height, "analysis_region")
+    background = input_data.get("background_region")
+    background_snapshot = None if background is None else _rectangle(background, width, height, "background_region")
+    return {"version": 1, "spatial_calibration": calibration_snapshot, "analysis_region": roi, "background_region": background_snapshot}
+
+
 def _unfilter(raw: bytes, row_bytes: int, height: int, bpp: int) -> bytes:
     rows: list[bytes] = []
     offset = 0
@@ -124,10 +172,18 @@ def analyze_png(request: dict[str, Any]) -> dict[str, Any]:
                      intensity_semantics_confirmed=input_data.get("intensity_semantics_confirmed", False),
                      uri_hint=input_data.get("uri_hint"))
     samples = image.pop("samples")
+    configuration = resolve_analysis_configuration(input_data, image["width"], image["height"])
     total = sum(samples)
     maximum = max(samples) if samples else 0
-    record_id = hashlib.sha256((image["sha256"] + json.dumps({"model": "standard-v1", "version": 1}, sort_keys=True)).encode()).hexdigest()[:24]
-    fingerprint = hashlib.sha256(json.dumps({k: v for k, v in image.items() if k != "path"}, sort_keys=True).encode()).hexdigest()
-    return {"record_id": record_id, "analysis_fingerprint": fingerprint, "workflow_status": "completed",
-            "input": image, "result": {"mean_intensity": total / len(samples), "max_intensity": maximum, "pixel_count": len(samples)},
-            "measurement_validity": "provisional"}
+    identity = {"input": {k: v for k, v in image.items() if k != "path"}, "analysis_configuration": configuration, "model": {"name": "standard-v1", "version": 1}}
+    record_id = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:24]
+    fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+    previous = input_data.get("previous_analysis_fingerprint")
+    workflow_status = "needs_recalculation" if previous is not None and previous != fingerprint else "completed"
+    calibration_status = configuration["spatial_calibration"]["status"]
+    validity = "warning" if calibration_status == "provisional" else "valid"
+    reasons = (["spatial_calibration_missing"] if calibration_status == "missing" else ["spatial_calibration_provisional"] if calibration_status == "provisional" else [])
+    return {"record_id": record_id, "analysis_fingerprint": fingerprint, "workflow_status": workflow_status,
+            "input": image, "analysis_configuration": configuration,
+            "result": {"mean_intensity": total / len(samples), "max_intensity": maximum, "pixel_count": len(samples)},
+            "measurement_validity": validity, "quality_reason_codes": reasons}

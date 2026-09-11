@@ -12,8 +12,10 @@ public sealed class WorkerClient
     public Task<WorkerOutcome> RunSyntheticAsync(CancellationToken cancellationToken) =>
         RunAsync(new { kind = "synthetic", width = 16, height = 16 }, cancellationToken);
 
-    public Task<WorkerOutcome> RunPngAsync(string path, string sha256, bool semanticsConfirmed, CancellationToken cancellationToken) =>
-        RunAsync(new { kind = "png", path, sha256, intensity_semantics_confirmed = semanticsConfirmed, uri_hint = path }, cancellationToken);
+    public Task<WorkerOutcome> RunPngAsync(string path, string sha256, bool semanticsConfirmed,
+        object spatialCalibration, object analysisRegion, object? backgroundRegion, CancellationToken cancellationToken) =>
+        RunAsync(new { kind = "png", path, sha256, intensity_semantics_confirmed = semanticsConfirmed, uri_hint = path,
+            analysis_region = analysisRegion, background_region = backgroundRegion, spatial_calibration = spatialCalibration }, cancellationToken);
 
     private async Task<WorkerOutcome> RunAsync(object input, CancellationToken cancellationToken)
     {
