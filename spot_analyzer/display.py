@@ -1,0 +1,104 @@
+"""Read-only display projections for an :class:`AnalysisRecord`.
+
+Display settings change presentation only; this module never mutates or
+recomputes measurement arrays and never contributes to an analysis fingerprint.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Mapping
+
+import numpy as np
+
+
+LAYER_NAMES = (
+    "input_image",
+    "corrected_intensity",
+    "positive_signal",
+    "fitted_intensity",
+    "fit_residual",
+    "measurement_mask",
+    "core_mask",
+)
+
+
+@dataclass(frozen=True)
+class DisplayUnavailable:
+    reason_code: str
+    message: str
+
+
+@dataclass(frozen=True)
+class DisplayLayer:
+    name: str
+    record_id: str
+    data: np.ndarray | DisplayUnavailable
+
+
+@dataclass(frozen=True)
+class DisplayCurves:
+    record_id: str
+    actual_profile: Any
+    fitted_profile: Any
+    energy_radius: Any
+    energy_fraction: Any
+    energy_radius_unit: str | None
+
+
+@dataclass(frozen=True)
+class DisplayProjection:
+    record_id: str
+    analysis_fingerprint: str
+    layers: tuple[DisplayLayer, ...]
+    curves: DisplayCurves
+    center_pixel: Mapping[str, Any] | DisplayUnavailable
+    roi: Mapping[str, Any] | DisplayUnavailable
+    axis_units: tuple[str, str]
+
+
+def _unavailable(code: str, message: str) -> DisplayUnavailable:
+    return DisplayUnavailable(code, message)
+
+
+def _array(record: Any, name: str) -> np.ndarray | DisplayUnavailable:
+    value = getattr(record, name, None)
+    if value is None:
+        return _unavailable("layer_unavailable", f"{name} is unavailable")
+    return np.array(value, copy=True)
+
+
+def project(record: Any) -> DisplayProjection:
+    """Create a read-only projection tied to one analysis record.
+
+    The returned arrays are copies, so display transforms cannot alter the
+    record's measurement source. Missing diagnostics are explicit N/A values.
+    """
+    record_id = record.record_id
+    layers = tuple(DisplayLayer(name, record_id, _array(record, name)) for name in LAYER_NAMES)
+    diagnostics = record.diagnostics
+    curves_data = diagnostics.get("report_curves", {}) if isinstance(diagnostics, Mapping) else {}
+    if not isinstance(curves_data, Mapping):
+        curves_data = {}
+    curves = DisplayCurves(
+        record_id,
+        curves_data.get("profile", _unavailable("curve_unavailable", "actual profile unavailable")),
+        curves_data.get("fitted_profile", _unavailable("curve_unavailable", "fitted profile unavailable")),
+        curves_data.get("energy_radius", _unavailable("curve_unavailable", "energy curve unavailable")),
+        curves_data.get("energy_fraction", _unavailable("curve_unavailable", "energy curve unavailable")),
+        curves_data.get("energy_radius_unit"),
+    )
+    center = curves_data.get("center_pixel", _unavailable("center_unavailable", "analysis center unavailable"))
+    configuration = record.configuration
+    roi = getattr(configuration, "analysis_region", None)
+    roi = roi if roi is not None else _unavailable("roi_unavailable", "analysis region unavailable")
+    calibration = getattr(configuration, "spatial_calibration", None)
+    units = getattr(calibration, "units", None) or "px"
+    return DisplayProjection(
+        record_id,
+        record.analysis_fingerprint,
+        layers,
+        curves,
+        center,
+        roi,
+        (units, units),
+    )
