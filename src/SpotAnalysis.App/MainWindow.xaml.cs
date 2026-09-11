@@ -375,12 +375,10 @@ public partial class MainWindow : Window
         JsonElement? record = null;
         if (recordOutcome?.Result is JsonElement result && result.TryGetProperty("record", out var recordNode))
             record = recordNode;
-        var diagnostics = ReadArray(record, "diagnostics");
+        var diagnostics = ReadRecordDiagnostics(record);
         if (outcome?.Diagnostics is not null && outcome.Status is not "success")
             diagnostics = outcome.Diagnostics;
-        var reasons = ReadStringArray(record, "quality_reason_codes");
-        if (reasons.Count == 0)
-            reasons = ReadStringArray(record, "reason_codes");
+        var reasons = ReadQualityReasonCodes(record);
         var validity = ReadString(record, "measurement_validity") ?? ReadString(record, "summary_status");
         return new DiagnosticSnapshot(
             _flowStatus,
@@ -446,6 +444,49 @@ public partial class MainWindow : Window
             ? child.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
                 .Select(item => item.GetString()!).ToArray()
             : Array.Empty<string>();
+
+    private static IReadOnlyList<JsonElement> ReadRecordDiagnostics(JsonElement? record) =>
+        record is { } value && value.ValueKind == JsonValueKind.Object
+        && value.TryGetProperty("diagnostics", out var child)
+            ? child.ValueKind switch
+            {
+                JsonValueKind.Array => child.EnumerateArray().Select(item => item.Clone()).ToArray(),
+                JsonValueKind.Object => new[] { child.Clone() },
+                _ => Array.Empty<JsonElement>(),
+            }
+            : Array.Empty<JsonElement>();
+
+    private static IReadOnlyList<string> ReadQualityReasonCodes(JsonElement? record)
+    {
+        var reasons = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var reason in ReadStringArray(record, "quality_reason_codes"))
+            reasons.Add(reason);
+        foreach (var reason in ReadStringArray(record, "reason_codes"))
+            reasons.Add(reason);
+
+        if (record is { } value && value.TryGetProperty("metrics", out var metrics) && metrics.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var metric in metrics.EnumerateObject())
+                AddMetricReasonCodes(metric.Value, reasons);
+        }
+
+        return reasons.ToArray();
+    }
+
+    private static void AddMetricReasonCodes(JsonElement metric, HashSet<string> reasons)
+    {
+        if (metric.ValueKind != JsonValueKind.Object)
+            return;
+
+        foreach (var reason in ReadStringArray(metric, "reason_codes"))
+            reasons.Add(reason);
+
+        if (metric.TryGetProperty("domains", out var domains) && domains.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var domain in domains.EnumerateObject())
+                AddMetricReasonCodes(domain.Value, reasons);
+        }
+    }
 
     private void RefreshDraftSummary()
     {

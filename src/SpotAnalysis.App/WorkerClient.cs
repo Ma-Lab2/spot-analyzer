@@ -285,6 +285,7 @@ public sealed class WorkerClient
     {
         if (messages.Count == 0)
             return new WorkerOutcome("failure", "worker did not return an analysis event", FailureCode: "worker_no_result");
+
         var terminal = messages[^1];
         if (terminal.TryGetProperty("kind", out var kind) && kind.GetString() == "completed")
         {
@@ -298,11 +299,8 @@ public sealed class WorkerClient
             return new WorkerOutcome("success", null, recordId, fingerprint, summary, Result: terminal.Clone());
         }
 
-        var diagnostics = terminal.TryGetProperty("diagnostics", out var diagnosticsNode) && diagnosticsNode.ValueKind == JsonValueKind.Array
-            ? diagnosticsNode.EnumerateArray().Select(item => item.Clone()).ToArray()
-            : Array.Empty<JsonElement>();
-        var code = diagnostics.FirstOrDefault(item => item.ValueKind == JsonValueKind.Object && item.TryGetProperty("code", out _));
-        var failureCode = code.ValueKind == JsonValueKind.Object && code.TryGetProperty("code", out var codeNode) ? codeNode.GetString() : "worker_failure";
+        var diagnostics = ReadFailureDiagnostics(terminal);
+        var failureCode = ReadFailureCode(terminal, diagnostics);
         var flowStatus = terminal.TryGetProperty("flow_status", out var flow) ? flow.GetString() : null;
         var status = flowStatus switch
         {
@@ -310,12 +308,55 @@ public sealed class WorkerClient
             "timeout" => "timeout",
             _ => "failure",
         };
-        var message = diagnostics.FirstOrDefault(item => item.ValueKind == JsonValueKind.Object && item.TryGetProperty("message", out _));
-        var errorMessage = message.ValueKind == JsonValueKind.Object && message.TryGetProperty("message", out var messageNode)
-            ? messageNode.GetString()
-            : "worker analysis failed";
+        var errorMessage = ReadFailureMessage(diagnostics)
+            ?? ReadFailureCodeFromTerminal(terminal)
+            ?? "worker analysis failed";
         return new WorkerOutcome(status, errorMessage, FailureCode: failureCode, Result: terminal.Clone(), Diagnostics: diagnostics);
     }
+
+    private static IReadOnlyList<JsonElement> ReadFailureDiagnostics(JsonElement terminal)
+    {
+        if (!terminal.TryGetProperty("diagnostics", out var diagnosticsNode) || diagnosticsNode.ValueKind == JsonValueKind.Null)
+            return Array.Empty<JsonElement>();
+
+        return diagnosticsNode.ValueKind switch
+        {
+            JsonValueKind.Array => diagnosticsNode.EnumerateArray().Select(item => item.Clone()).ToArray(),
+            JsonValueKind.Object => new[] { diagnosticsNode.Clone() },
+            _ => Array.Empty<JsonElement>(),
+        };
+    }
+
+    private static string ReadFailureCode(JsonElement terminal, IReadOnlyList<JsonElement> diagnostics)
+    {
+        foreach (var diagnostic in diagnostics)
+        {
+            if (ReadString(diagnostic, "code") is { } code && !string.IsNullOrWhiteSpace(code))
+                return code;
+        }
+
+        return ReadFailureCodeFromTerminal(terminal) ?? "worker_failure";
+    }
+
+    private static string? ReadFailureCodeFromTerminal(JsonElement terminal) => terminal.TryGetProperty("code", out var code)
+        && code.ValueKind == JsonValueKind.String ? code.GetString() : null;
+
+    private static string? ReadFailureMessage(IReadOnlyList<JsonElement> diagnostics)
+    {
+        foreach (var diagnostic in diagnostics)
+        {
+            if (ReadString(diagnostic, "message") is { } message && !string.IsNullOrWhiteSpace(message))
+                return message;
+        }
+
+        return null;
+    }
+
+    private static string? ReadString(JsonElement node, string property) => node.ValueKind == JsonValueKind.Object
+        && node.TryGetProperty(property, out var value)
+        && value.ValueKind == JsonValueKind.String
+        ? value.GetString()
+        : null;
 
     private static int GetInt(JsonElement value, string property) => value.TryGetProperty(property, out var node) && node.TryGetInt32(out var result) ? result : 0;
 

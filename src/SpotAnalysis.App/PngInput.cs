@@ -52,10 +52,17 @@ public static class PngInput
         var preview = new BitmapImage();
         using (var stream = new MemoryStream(data, writable: false))
         {
-            preview.BeginInit();
-            preview.CacheOption = BitmapCacheOption.OnLoad;
-            preview.StreamSource = stream;
-            preview.EndInit();
+            try
+            {
+                preview.BeginInit();
+                preview.CacheOption = BitmapCacheOption.OnLoad;
+                preview.StreamSource = stream;
+                preview.EndInit();
+            }
+            catch (Exception exception) when (exception is NotSupportedException or InvalidOperationException or System.IO.FileFormatException or System.Runtime.InteropServices.COMException)
+            {
+                throw new InputValidationException("unsupported_png", "The PNG image could not be decoded. Please use a valid 8-bit/16-bit grayscale PNG.");
+            }
         }
         preview.Freeze();
         return new PngInputInfo(
