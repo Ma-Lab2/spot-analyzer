@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot "..\artifacts"),
-    [string]$Version = "0.1.0-alpha.1",
+    [string]$Version = "",
     [switch]$SkipRestore
 )
 
@@ -9,6 +9,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$identityPath = Join-Path $repoRoot "packaging\build-identity.json"
+$identity = Get-Content $identityPath -Raw | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace($Version)) { $Version = $identity.package_version }
+if ($Version -ne $identity.package_version -or $identity.client_version -ne $Version) {
+    throw "Build version mismatch: -Version must match build-identity.json package_version and client_version."
+}
 $outputRoot = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
     [System.IO.Path]::GetFullPath($OutputDirectory)
 } else {
@@ -61,9 +67,12 @@ if ($SkipRestore) { $publishArguments += "--no-restore" }
 Invoke-Checked "dotnet" $publishArguments
 Copy-Item -Path (Join-Path $publishPath "*") -Destination $stage -Recurse -Force
 
-$pyInstallerCheck = & python -m PyInstaller --version
+$pyInstallerCheck = (& python -m PyInstaller --version).Trim()
 if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller is required. Install it with: python -m pip install pyinstaller"
+}
+if ($pyInstallerCheck -ne $identity.pyinstaller_version) {
+    throw "PyInstaller version mismatch: installed $pyInstallerCheck, identity requires $($identity.pyinstaller_version)."
 }
 $specPath = Join-Path $repoRoot "packaging\worker.spec"
 Invoke-Checked "python" @(
@@ -87,6 +96,7 @@ Copy-Item (Join-Path $repoRoot "packaging\QUICKSTART.md") (Join-Path $stage "QUI
 Copy-Item (Join-Path $repoRoot "packaging\THIRD-PARTY-NOTICES.txt") (Join-Path $stage "THIRD-PARTY-NOTICES.txt") -Force
 Copy-Item (Join-Path $repoRoot "README.md") (Join-Path $stage "README.md") -Force
 Copy-Item (Join-Path $repoRoot "profiles\profile-identities.json") (Join-Path $stage "profiles\profile-identities.json") -Force
+Copy-Item $identityPath (Join-Path $stage "build-identity.json") -Force
 
 $manifestPath = Join-Path $stage "manifest.json"
 Invoke-Checked "python" @(

@@ -11,7 +11,7 @@ analysis = Analysis(
     [str(WORKER / "worker.py")],
     pathex=[str(WORKER), str(ROOT)],
     binaries=[],
-    datas=[],
+    datas=[(str(ROOT / "packaging" / "build-identity.json"), ".")],
     hiddenimports=collect_submodules("spot_analyzer"),
     hookspath=[],
     hooksconfig={},

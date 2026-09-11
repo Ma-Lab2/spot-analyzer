@@ -1,0 +1,17 @@
+{
+  "schema": "spot-analysis-build-identity-v1",
+  "package_version": "0.1.0-alpha.1",
+  "client_version": "0.1.0-alpha.1",
+  "worker_version": "worker-contract-v1",
+  "worker_packaging": "PyInstaller onedir",
+  "pyinstaller_version": "6.14.2",
+  "worker_dependencies": {
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
+    "Pillow": "12.2.0",
+    "rfc8785": "0.1.4"
+  },
+  "analysis_core_version": "analysis-core-v1",
+  "standard_profile_version": "standard-profile-v1",
+  "quality_profile_version": "quality-profile-v1"
+}

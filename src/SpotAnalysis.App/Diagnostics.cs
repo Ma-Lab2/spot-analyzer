@@ -55,14 +55,61 @@ public static class DiagnosticLog
     }
 }
 
+public static class BuildIdentity
+{
+    private static readonly JsonDocument Document = Load();
+    private static readonly string[] RequiredDependencies = ["numpy", "scipy", "Pillow", "rfc8785"];
+
+    static BuildIdentity()
+    {
+        if (PackageVersion != ClientVersion)
+            throw new InvalidOperationException("Build identity package and client versions do not match.");
+    }
+
+    public static string PackageVersion => RequiredString("package_version");
+    public static string ClientVersion => RequiredString("client_version");
+    public static string WorkerVersion => RequiredString("worker_version");
+    public static string WorkerPackaging => RequiredString("worker_packaging");
+    public static string PyInstallerVersion => RequiredString("pyinstaller_version");
+    public static string AnalysisCoreVersion => RequiredString("analysis_core_version");
+    public static string StandardProfileVersion => RequiredString("standard_profile_version");
+    public static string QualityProfileVersion => RequiredString("quality_profile_version");
+    public static IReadOnlyDictionary<string, string> WorkerDependencies =>
+        RequiredDependencies.ToDictionary(name => name, name => RequiredDependency(name));
+
+    private static JsonDocument Load()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "build-identity.json");
+        if (!File.Exists(path))
+            throw new InvalidOperationException($"Build identity is missing: {path}");
+        return JsonDocument.Parse(File.ReadAllText(path));
+    }
+
+    private static string RequiredString(string name) =>
+        Document.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(value.GetString())
+            ? value.GetString()!
+            : throw new InvalidOperationException($"Build identity field '{name}' is missing.");
+
+    private static string RequiredDependency(string name)
+    {
+        if (!Document.RootElement.TryGetProperty("worker_dependencies", out var dependencies)
+            || dependencies.ValueKind != JsonValueKind.Object
+            || !dependencies.TryGetProperty(name, out var value)
+            || value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
+            throw new InvalidOperationException($"Build identity worker dependency '{name}' is missing.");
+        return value.GetString()!;
+    }
+}
+
 public static class DiagnosticPackage
 {
     public const string Schema = "spot-analysis-diagnostic-v1";
-    public const string ClientVersion = "0.1.0-alpha.1";
-    public const string WorkerVersion = "worker-contract-v1";
-    public const string AnalysisCoreVersion = "analysis-core-v1";
-    public const string StandardProfileVersion = "standard-profile-v1";
-    public const string QualityProfileVersion = "quality-profile-v1";
+    public static string ClientVersion => BuildIdentity.ClientVersion;
+    public static string WorkerVersion => BuildIdentity.WorkerVersion;
+    public static string AnalysisCoreVersion => BuildIdentity.AnalysisCoreVersion;
+    public static string StandardProfileVersion => BuildIdentity.StandardProfileVersion;
+    public static string QualityProfileVersion => BuildIdentity.QualityProfileVersion;
 
     internal static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -76,8 +123,9 @@ public static class DiagnosticPackage
     {
         var worker = Environment.GetEnvironmentVariable("SPOT_ANALYSIS_WORKER");
         var workerLocation = string.IsNullOrWhiteSpace(worker) ? "beside client (packaged)" : worker;
-        return $"Client {ClientVersion}\nWorker {WorkerVersion}: {workerLocation}\n" +
-               $"Analysis core {AnalysisCoreVersion}\nProfiles: {StandardProfileVersion}, {QualityProfileVersion} (provisional)\n" +
+        var dependencies = string.Join(", ", BuildIdentity.WorkerDependencies.Select(item => $"{item.Key} {item.Value}"));
+        return $"Client {ClientVersion} (package {BuildIdentity.PackageVersion})\nWorker {WorkerVersion}, PyInstaller {BuildIdentity.PyInstallerVersion}: {workerLocation}\n" +
+               $"Worker dependencies: {dependencies}\nAnalysis core {AnalysisCoreVersion}\nProfiles: {StandardProfileVersion}, {QualityProfileVersion} (provisional)\n" +
                $"Logs: {DiagnosticLog.DirectoryPath}\nOutput: {OutputCapability}";
     }
 
@@ -114,6 +162,9 @@ public static class DiagnosticPackage
             ["worker"] = new Dictionary<string, object?>
             {
                 ["version"] = WorkerVersion,
+                ["packaging"] = BuildIdentity.WorkerPackaging,
+                ["pyinstaller_version"] = BuildIdentity.PyInstallerVersion,
+                ["dependencies"] = BuildIdentity.WorkerDependencies,
                 ["executable"] = Environment.GetEnvironmentVariable("SPOT_ANALYSIS_WORKER") ?? "packaged beside client",
             },
             ["analysis"] = new Dictionary<string, object?>
