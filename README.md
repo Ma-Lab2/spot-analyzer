@@ -8,16 +8,21 @@ analysis record.
 
 The worker is `src/SpotAnalysis.Worker/worker.py`. It reads one JSON request per
 stdin line and writes only NDJSON protocol messages to stdout. Diagnostics belong
-on stderr. Protocol version `1` requests use a synthetic input:
+on stderr. The canonical request is the versioned `analysis-request-v1` contract,
+which carries an asset identity, complete analysis configuration, and output
+strategy:
 
 ```json
-{"protocol_version":1,"request_id":"smoke-1","command":"analyze","input":{"kind":"synthetic","width":16,"height":16}}
+{"schema":"analysis-request-v1","input":{"asset":{"path":"spot.png","expected_sha256":"..."},"confirm_relative_intensity":true},"configuration":{},"output_strategy":{"work_directory":"run-assets","derived_format":"npy"}}
 ```
 
-A valid request emits `started` with `status: processing`, followed by a
-`terminal` message with `status: success`. Invalid input emits a structured
-`terminal` failure. The worker intentionally does not implement measurement
-metrics, report export, HTTP/RPC, or packaging.
+The shipped entry point delegates this schema to `spot_analyzer.worker`, so the
+real analysis core produces `AnalysisRecord` metrics, validity states, quality
+reason codes, diagnostics, and derived asset identities. It emits an
+`analysis-event-v1` `started` event followed by an `analysis-result-v1`
+`completed` or `failed` result. The older `protocol_version: 1` envelope remains
+available for compatibility with the initial WPF smoke tests; it is not the
+canonical real-analysis contract.
 
 ## Checks
 
