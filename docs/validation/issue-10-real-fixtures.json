@@ -2,12 +2,86 @@
   "schema": "real-fixture-manifest-v1",
   "metadata_contract": "fixture-metadata-v1",
   "root": "D:/Files/CLAPA2/Spot",
+  "audit": {
+    "issue": 32,
+    "audited_on": "2026-09-11",
+    "sources_checked": [
+      "source PNG bytes and embedded PNG metadata",
+      "repository history for this manifest",
+      "external fixture directory context"
+    ],
+    "filesystem_timestamps_are_acquisition_evidence": false
+  },
+  "evidence_scope": {
+    "supported_claims": [
+      "png_decode_behavior",
+      "source_asset_identity",
+      "source_snapshot_record",
+      "sha256_identity",
+      "analysis_repeatability",
+      "summary_status",
+      "reason_codes",
+      "input_metadata_capture"
+    ],
+    "excluded_claims": [
+      "absolute_physical_accuracy",
+      "independent_physical_ground_truth",
+      "complete_png_color_management_coverage",
+      "complete_acquisition_condition_coverage"
+    ]
+  },
+  "bounded_limitations": [
+    {
+      "code": "independent_physical_ground_truth_absent",
+      "classification": "bounded_limitation",
+      "affected_fixtures": "all",
+      "consequence": "Evidence is behavioral_evidence_only and cannot establish absolute size accuracy.",
+      "acceptance": "requires_explicit_human_acceptance_or_rejection"
+    },
+    {
+      "code": "historical_acquisition_metadata_unrecoverable",
+      "classification": "bounded_limitation",
+      "affected_fixtures": [
+        "20251016/1.png",
+        "20251016/2.png",
+        "20251016/3.png",
+        "20260607/1-7.png",
+        "20260607/2-7右下.png"
+      ],
+      "unknown_fields": ["instrument", "acquired_at", "metadata_version"],
+      "consequence": "These fixtures support decode, identity, repeatability, status, and reason-code evidence, but not acquisition-condition conclusions.",
+      "acceptance": "requires_explicit_human_acceptance_or_rejection"
+    },
+    {
+      "code": "rgb_acquisition_timezone_unknown",
+      "classification": "bounded_limitation",
+      "affected_fixtures": ["20260901/1.PNG"],
+      "unknown_fields": ["acquired_at_timezone"],
+      "consequence": "The embedded local creation time is retained without inventing a UTC offset; this RGB display asset is excluded from grayscale measurement regression.",
+      "acceptance": "requires_explicit_human_acceptance_or_rejection"
+    },
+    {
+      "code": "png_color_management_matrix_absent",
+      "classification": "bounded_limitation",
+      "affected_fixtures": "all",
+      "observed": "No representative fixture contains gAMA, sRGB, or iCCP metadata.",
+      "consequence": "The fixtures verify metadata absence handling, not behavior across PNG color-management combinations.",
+      "acceptance": "requires_explicit_human_acceptance_or_rejection"
+    },
+    {
+      "code": "acquisition_condition_matrix_absent",
+      "classification": "bounded_limitation",
+      "affected_fixtures": "all",
+      "consequence": "No controlled real-fixture matrix varies exposure, gain, temperature, optical path, focal length, or acquisition batch while holding physical truth constant.",
+      "acceptance": "requires_explicit_human_acceptance_or_rejection"
+    }
+  ],
   "fixtures": [
     {
       "relative_path": "20251016/1.png",
       "sha256": "096d4ae25dacf44f68b7957ec2c667fa72c9bfbca39e50326fcdfeb59ef71fef",
-      "provenance": {"source_asset": "Spot/20251016/1.png", "source_snapshot": "spot-inputs-2026-09-10"},
-      "acquisition": {"instrument": "未记录（历史 PNG）", "acquired_at": "未记录（历史 PNG）", "metadata_version": "fixture-metadata-v1"},
+      "provenance": {"source_asset": "Spot/20251016/1.png", "source_snapshot": {"id": "spot-inputs-2026-09-10", "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902", "identity_basis": "relative_path_and_sha256"}},
+      "acquisition": {"instrument": null, "acquired_at": null, "metadata_version": null, "evidence_status": "unrecoverable_from_checked_sources"},
       "kind": "gray_input",
       "analysis_region": {"x": 1208, "y": 629, "width": 512, "height": 512, "confirmed": true},
       "background_region": {"x": 0, "y": 1700, "width": 128, "height": 256, "confirmed": true},
@@ -18,8 +92,8 @@
     {
       "relative_path": "20251016/2.png",
       "sha256": "5f3f10771c9990018d8437ac6a91e18b96fd4677ffdf1916b6a98b03e1cd83da",
-      "provenance": {"source_asset": "Spot/20251016/2.png", "source_snapshot": "spot-inputs-2026-09-10"},
-      "acquisition": {"instrument": "未记录（历史 PNG）", "acquired_at": "未记录（历史 PNG）", "metadata_version": "fixture-metadata-v1"},
+      "provenance": {"source_asset": "Spot/20251016/2.png", "source_snapshot": {"id": "spot-inputs-2026-09-10", "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902", "identity_basis": "relative_path_and_sha256"}},
+      "acquisition": {"instrument": null, "acquired_at": null, "metadata_version": null, "evidence_status": "unrecoverable_from_checked_sources"},
       "kind": "blank_gray_input",
       "analysis_region": {"x": 0, "y": 0, "width": 512, "height": 512, "confirmed": true},
       "background_region": {"x": 0, "y": 1700, "width": 128, "height": 256, "confirmed": true},
@@ -30,8 +104,8 @@
     {
       "relative_path": "20251016/3.png",
       "sha256": "6b5623cdd5edece19e48e7765f42a1b96c0af9f7c7dd206e7a062d7514ba1722",
-      "provenance": {"source_asset": "Spot/20251016/3.png", "source_snapshot": "spot-inputs-2026-09-10"},
-      "acquisition": {"instrument": "未记录（历史 PNG）", "acquired_at": "未记录（历史 PNG）", "metadata_version": "fixture-metadata-v1"},
+      "provenance": {"source_asset": "Spot/20251016/3.png", "source_snapshot": {"id": "spot-inputs-2026-09-10", "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902", "identity_basis": "relative_path_and_sha256"}},
+      "acquisition": {"instrument": null, "acquired_at": null, "metadata_version": null, "evidence_status": "unrecoverable_from_checked_sources"},
       "kind": "gray_input",
       "analysis_region": {"x": 1255, "y": 670, "width": 512, "height": 512, "confirmed": true},
       "background_region": {"x": 0, "y": 1700, "width": 128, "height": 256, "confirmed": true},
@@ -42,8 +116,8 @@
     {
       "relative_path": "20260607/1-7.png",
       "sha256": "56f2aacf76f7b0f78e6b5108fef0bed8490657246b2d1bf8c345a7807f7dc268",
-      "provenance": {"source_asset": "Spot/20260607/1-7.png", "source_snapshot": "spot-inputs-2026-09-10"},
-      "acquisition": {"instrument": "未记录（历史 PNG）", "acquired_at": "未记录（历史 PNG）", "metadata_version": "fixture-metadata-v1"},
+      "provenance": {"source_asset": "Spot/20260607/1-7.png", "source_snapshot": {"id": "spot-inputs-2026-09-10", "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902", "identity_basis": "relative_path_and_sha256"}},
+      "acquisition": {"instrument": null, "acquired_at": null, "metadata_version": null, "evidence_status": "unrecoverable_from_checked_sources"},
       "kind": "gray_input",
       "analysis_region": {"x": 1081, "y": 1564, "width": 512, "height": 512, "confirmed": true},
       "background_region": {"x": 0, "y": 1700, "width": 128, "height": 256, "confirmed": true},
@@ -54,8 +128,8 @@
     {
       "relative_path": "20260607/2-7右下.png",
       "sha256": "39e5f52f8287ce8bb0e447ae35573922749c87c95766b39eab7dea3416ef15c1",
-      "provenance": {"source_asset": "Spot/20260607/2-7右下.png", "source_snapshot": "spot-inputs-2026-09-10"},
-      "acquisition": {"instrument": "未记录（历史 PNG）", "acquired_at": "未记录（历史 PNG）", "metadata_version": "fixture-metadata-v1"},
+      "provenance": {"source_asset": "Spot/20260607/2-7右下.png", "source_snapshot": {"id": "spot-inputs-2026-09-10", "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902", "identity_basis": "relative_path_and_sha256"}},
+      "acquisition": {"instrument": null, "acquired_at": null, "metadata_version": null, "evidence_status": "unrecoverable_from_checked_sources"},
       "kind": "gray_input",
       "analysis_region": {"x": 24, "y": 970, "width": 512, "height": 512, "confirmed": true},
       "background_region": {"x": 0, "y": 1700, "width": 128, "height": 256, "confirmed": true},
@@ -66,8 +140,15 @@
     {
       "relative_path": "20260901/1.PNG",
       "sha256": "5d7f073dde5fe2d1b04617f6907250ddcb4c0a93cf6db7b3109a198abdbf5db4",
-      "provenance": {"source_asset": "Spot/20260901/1.PNG", "source_snapshot": "spot-inputs-2026-09-10"},
-      "acquisition": {"instrument": "未记录（历史 PNG）", "acquired_at": "未记录（历史 PNG）", "metadata_version": "fixture-metadata-v1"},
+      "provenance": {"source_asset": "Spot/20260901/1.PNG", "source_snapshot": {"id": "spot-inputs-2026-09-10", "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902", "identity_basis": "relative_path_and_sha256"}},
+      "acquisition": {
+        "instrument": "Aptina AR0880AI (PICAM:0880:00:APTINA)",
+        "acquired_at": "2026-09-01T15:12:31",
+        "acquired_at_timezone": null,
+        "metadata_version": "DTLC V1.00",
+        "evidence_status": "recovered_from_embedded_png_text",
+        "evidence_fields": {"instrument": ["Description", "Frame Description"], "acquired_at": ["Creation Time"], "metadata_version": ["Software"]}
+      },
       "kind": "rgb_display_excluded",
       "required_reason_codes": ["rgb_display_excluded"],
       "forbidden_reason_codes": []

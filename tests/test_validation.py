@@ -5,6 +5,7 @@ import json
 import math
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from spot_analyzer import AnalysisConfiguration, AnalysisRegion, InputImage, analyze
@@ -369,7 +370,9 @@ def test_real_fixture_validation_rejects_placeholder_metadata(tmp_path) -> None:
     root = tmp_path / "fixtures"
     root.mkdir()
     path = root / "sample.png"
-    Image.new("L", (8, 8), color=0).save(path)
+    y, x = np.mgrid[:256, :256]
+    pixels = (10 + 200 * np.exp(-((x - 127.5) ** 2 + (y - 127.5) ** 2) / (2 * 12 ** 2))).astype(np.uint8)
+    Image.fromarray(pixels).save(path)
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     manifest = tmp_path / "manifest.json"
     manifest.write_text(json.dumps({
@@ -379,7 +382,8 @@ def test_real_fixture_validation_rejects_placeholder_metadata(tmp_path) -> None:
             "relative_path": path.name,
             "sha256": digest,
             "kind": "gray_input",
-            "analysis_region": {"x": 0, "y": 0, "width": 8, "height": 8},
+            "analysis_region": {"x": 32, "y": 32, "width": 192, "height": 192, "confirmed": True},
+            "background_region": {"x": 0, "y": 0, "width": 32, "height": 32, "confirmed": True},
             "provenance": {"source_asset": "未记录（历史 PNG）", "source_snapshot": "snapshot-1"},
             "acquisition": {"instrument": "camera-1", "acquired_at": "2026-01-01T00:00:00Z", "metadata_version": "fixture-metadata-v1"},
         }],
@@ -392,7 +396,9 @@ def test_real_fixture_validation_rejects_placeholder_metadata(tmp_path) -> None:
     assert report["passed"] is False
     assert fixture["status"] == "incomplete"
     assert fixture["metadata_validation"] == "incomplete"
-    assert fixture["reason_codes"] == ["provenance_placeholder"]
+    assert fixture["metadata_issues"] == ["provenance_source_asset_unknown"]
+    assert "provenance_source_asset_unknown" in fixture["reason_codes"]
+    assert fixture["behavioral_validation"] == "passed"
     assert fixture["behavioral_evidence_only"] is True
 
 
@@ -402,7 +408,9 @@ def test_real_fixture_validation_rejects_placeholder_acquisition_metadata(tmp_pa
     root = tmp_path / "fixtures"
     root.mkdir()
     path = root / "sample.png"
-    Image.new("L", (8, 8), color=0).save(path)
+    y, x = np.mgrid[:256, :256]
+    pixels = (10 + 200 * np.exp(-((x - 127.5) ** 2 + (y - 127.5) ** 2) / (2 * 12 ** 2))).astype(np.uint8)
+    Image.fromarray(pixels).save(path)
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     manifest = tmp_path / "manifest.json"
     manifest.write_text(json.dumps({
@@ -412,7 +420,8 @@ def test_real_fixture_validation_rejects_placeholder_acquisition_metadata(tmp_pa
             "relative_path": path.name,
             "sha256": digest,
             "kind": "gray_input",
-            "analysis_region": {"x": 0, "y": 0, "width": 8, "height": 8},
+            "analysis_region": {"x": 32, "y": 32, "width": 192, "height": 192, "confirmed": True},
+            "background_region": {"x": 0, "y": 0, "width": 32, "height": 32, "confirmed": True},
             "provenance": {"source_asset": "sample.png", "source_snapshot": "snapshot-1"},
             "acquisition": {"instrument": "unknown", "acquired_at": "2026-01-01T00:00:00Z", "metadata_version": "fixture-metadata-v1"},
         }],
@@ -422,7 +431,9 @@ def test_real_fixture_validation_rejects_placeholder_acquisition_metadata(tmp_pa
     fixture = report["fixtures"][0]
 
     assert report["status"] == "incomplete"
-    assert fixture["reason_codes"] == ["acquisition_metadata_placeholder"]
+    assert fixture["metadata_issues"] == ["acquisition_instrument_unknown"]
+    assert "acquisition_instrument_unknown" in fixture["reason_codes"]
+    assert fixture["behavioral_validation"] == "passed"
 
 
 def test_real_fixture_validation_rejects_hash_mismatch(tmp_path) -> None:
@@ -457,4 +468,21 @@ def test_real_fixture_validation_records_manifest_identity_and_repeatability() -
     assert report["manifest_sha256"].startswith("sha256-")
     assert report["behavioral_evidence_only"] is True
     assert report["absolute_physical_accuracy_claim"] is False
-    assert all("repeatability_passed" in item for item in report["fixtures"] if item["kind"] != "rgb_display_excluded")
+    assert "absolute_physical_accuracy" in report["evidence_scope"]["excluded_claims"]
+    limitation_codes = {item["code"] for item in report["bounded_limitations"]}
+    assert limitation_codes == {
+        "independent_physical_ground_truth_absent",
+        "historical_acquisition_metadata_unrecoverable",
+        "rgb_acquisition_timezone_unknown",
+        "png_color_management_matrix_absent",
+        "acquisition_condition_matrix_absent",
+    }
+    grayscale = [item for item in report["fixtures"] if item["kind"] != "rgb_display_excluded"]
+    assert all(item["behavioral_validation"] == "passed" for item in grayscale)
+    assert all(item["repeatability_passed"] is True for item in grayscale)
+    assert all(item["metadata_validation"] == "incomplete" for item in grayscale)
+    assert all(item["color_management"]["metadata_present"] is False for item in report["fixtures"])
+    rgb = next(item for item in report["fixtures"] if item["kind"] == "rgb_display_excluded")
+    assert rgb["metadata_validation"] == "passed"
+    assert rgb["manifest_metadata"]["acquisition"]["metadata_version"] == "DTLC V1.00"
+    assert report["status"] == "incomplete"

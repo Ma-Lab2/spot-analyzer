@@ -976,6 +976,7 @@ def _fixture_result_base(entry: Mapping[str, Any], path: Path) -> dict[str, Any]
 
     acquisition = entry.get("acquisition", entry.get("acquisition_metadata"))
     provenance = entry.get("provenance", entry.get("provenance_metadata"))
+    metadata_issues = _metadata_diagnostics(entry)
     return {
         "relative_path": str(entry.get("relative_path", "")),
         "kind": entry.get("kind", "gray_input"),
@@ -986,6 +987,8 @@ def _fixture_result_base(entry: Mapping[str, Any], path: Path) -> dict[str, Any]
             "provenance": provenance,
         },
         "metadata_recorded": isinstance(acquisition, Mapping) and isinstance(provenance, Mapping),
+        "metadata_validation": "incomplete" if metadata_issues else "passed",
+        "metadata_issues": metadata_issues,
         "behavioral_evidence_only": True,
         "repeatability_passed": False,
     }
@@ -1029,29 +1032,30 @@ def _metadata_diagnostics(entry: Mapping[str, Any]) -> list[str]:
     if not isinstance(provenance, Mapping):
         diagnostics.append("provenance_missing")
     else:
-        missing = False
-        placeholder = False
-        for key in ("source_asset", "source_snapshot"):
-            value = provenance.get(key, "")
-            missing = missing or not str(value).strip()
-            placeholder = placeholder or _is_placeholder_metadata(value)
-        if missing:
-            diagnostics.extend(f"provenance_{key}_missing" for key in ("source_asset", "source_snapshot") if not str(provenance.get(key, "")).strip())
-        if placeholder and not missing:
-            diagnostics.append("provenance_placeholder")
+        source_asset = provenance.get("source_asset")
+        if "source_asset" not in provenance or not str(source_asset or "").strip():
+            diagnostics.append("provenance_source_asset_missing")
+        elif _is_placeholder_metadata(source_asset):
+            diagnostics.append("provenance_source_asset_unknown")
+        source_snapshot = provenance.get("source_snapshot")
+        if isinstance(source_snapshot, Mapping):
+            for key in ("id", "recorded_in_commit", "identity_basis"):
+                if key not in source_snapshot or not str(source_snapshot.get(key) or "").strip():
+                    diagnostics.append(f"provenance_source_snapshot_{key}_missing")
+                elif _is_placeholder_metadata(source_snapshot.get(key)):
+                    diagnostics.append(f"provenance_source_snapshot_{key}_unknown")
+        elif "source_snapshot" not in provenance or not str(source_snapshot or "").strip():
+            diagnostics.append("provenance_source_snapshot_missing")
+        elif _is_placeholder_metadata(source_snapshot):
+            diagnostics.append("provenance_source_snapshot_unknown")
     if not isinstance(acquisition, Mapping):
         diagnostics.append("acquisition_metadata_missing")
     else:
-        missing = False
-        placeholder = False
         for key in ("instrument", "acquired_at", "metadata_version"):
-            value = acquisition.get(key, "")
-            missing = missing or not str(value).strip()
-            placeholder = placeholder or _is_placeholder_metadata(value)
-        if missing:
-            diagnostics.extend(f"acquisition_{key}_missing" for key in ("instrument", "acquired_at", "metadata_version") if not str(acquisition.get(key, "")).strip())
-        if placeholder and not missing:
-            diagnostics.append("acquisition_metadata_placeholder")
+            if key not in acquisition or (acquisition.get(key) is not None and not str(acquisition.get(key)).strip()):
+                diagnostics.append(f"acquisition_{key}_missing")
+            elif _is_placeholder_metadata(acquisition.get(key)):
+                diagnostics.append(f"acquisition_{key}_unknown")
     return diagnostics
 
 
@@ -1074,26 +1078,34 @@ def _validate_real_fixture(entry: Mapping[str, Any], path: Path) -> dict[str, An
         result.update({"status": "failed", "passed": False, "reason_codes": codes, "diagnostics": list(decoded.diagnostics)})
         return result
     image = decoded.image
+    color_management = {
+        "gamma": image.metadata.get("gamma"),
+        "srgb": image.metadata.get("srgb"),
+        "icc_profile_present": bool(image.metadata.get("icc_profile_present")),
+    }
+    color_management["metadata_present"] = any(
+        value is not None and value is not False for value in color_management.values()
+    )
     result.update({
         "actual_sha256": image.sha256,
         "input_semantics_confirmed": image.encoding_semantic_confirmed,
         "channels": image.channels,
         "channels_identical": image.channels_identical,
+        "color_management": color_management,
     })
-    if metadata_diagnostics:
-        result.update({
-            "status": "incomplete",
-            "passed": False,
-            "reason_codes": metadata_diagnostics,
-            "metadata_validation": "incomplete",
-        })
-        return result
-    result["metadata_validation"] = "passed"
     kind = str(entry.get("kind", "gray_input"))
     if kind == "rgb_display_excluded":
-        passed = image.channels == 3 and image.channels_identical
-        result.update({"status": "passed" if passed else "failed", "passed": passed,
-                       "reason_codes": [] if passed else ["rgb_display_not_excluded"]})
+        behavioral_passed = image.channels == 3 and image.channels_identical
+        status = "failed" if not behavioral_passed else "incomplete" if metadata_diagnostics else "passed"
+        reason_codes = list(metadata_diagnostics)
+        if not behavioral_passed:
+            reason_codes.append("rgb_display_not_excluded")
+        result.update({
+            "status": status,
+            "passed": status == "passed",
+            "behavioral_validation": "passed" if behavioral_passed else "failed",
+            "reason_codes": reason_codes,
+        })
         return result
     if image.channels != 1:
         result.update({"status": "failed", "passed": False, "reason_codes": ["non_grayscale_measurement_input"]})
@@ -1125,16 +1137,20 @@ def _validate_real_fixture(entry: Mapping[str, Any], path: Path) -> dict[str, An
         record.analysis_fingerprint == second.record.analysis_fingerprint
         and not repeatability_differences
     )
+    behavioral_passed = status_passed and reason_passed and repeatability_passed
+    status = "failed" if not behavioral_passed else "incomplete" if metadata_diagnostics else "passed"
     result.update({
-        "status": "passed" if status_passed and reason_passed and repeatability_passed else "failed",
-        "passed": status_passed and reason_passed and repeatability_passed,
+        "status": status,
+        "passed": status == "passed",
+        "behavioral_validation": "passed" if behavioral_passed else "failed",
         "summary_status": record.summary_status.value,
         "analysis_fingerprint": record.analysis_fingerprint,
         "repeatability_passed": repeatability_passed,
         "repeatability_differences": repeatability_differences,
         "required_reason_codes": sorted(required),
         "forbidden_reason_codes": sorted(forbidden),
-        "reason_codes": sorted(reasons),
+        "analysis_reason_codes": sorted(reasons),
+        "reason_codes": sorted(reasons.union(metadata_diagnostics)),
         "required_reason_codes_passed": required.issubset(reasons),
         "forbidden_reason_codes_passed": forbidden.isdisjoint(reasons),
         "status_expectation_passed": status_passed,
@@ -1165,17 +1181,21 @@ def run_real_fixture_validation(
                 "incomplete_reason": "fixtures_required", "fixtures": []}
     manifest_root = Path(root) if root is not None else Path(str(payload.get("root", "")))
     manifest_identity = "sha256-" + __import__("hashlib").sha256(raw).hexdigest()
+    evidence_scope = payload.get("evidence_scope", {})
+    bounded_limitations = payload.get("bounded_limitations", [])
     if not manifest_root.is_dir():
         return {"status": "incomplete", "passed": False, "manifest_status": "loaded",
                 "manifest_schema": payload.get("schema"), "manifest_version": payload.get("schema"),
                 "manifest_sha256": manifest_identity, "root": str(manifest_root),
                 "behavioral_evidence_only": True, "absolute_physical_accuracy_claim": False,
+                "evidence_scope": evidence_scope, "bounded_limitations": bounded_limitations,
                 "incomplete_reason": "fixture_root_unavailable", "fixtures": []}
     if not payload["fixtures"]:
         return {"status": "incomplete", "passed": False, "manifest_status": "loaded",
                 "manifest_schema": payload.get("schema"), "manifest_version": payload.get("schema"),
                 "manifest_sha256": manifest_identity, "root": str(manifest_root),
                 "behavioral_evidence_only": True, "absolute_physical_accuracy_claim": False,
+                "evidence_scope": evidence_scope, "bounded_limitations": bounded_limitations,
                 "fixture_count": 0, "incomplete_reason": "fixture_manifest_empty", "fixtures": []}
     fixtures = []
     for entry in payload["fixtures"]:
@@ -1202,6 +1222,8 @@ def run_real_fixture_validation(
         "root": str(manifest_root),
         "behavioral_evidence_only": True,
         "absolute_physical_accuracy_claim": False,
+        "evidence_scope": evidence_scope,
+        "bounded_limitations": bounded_limitations,
         "fixture_count": len(fixtures),
         "fixtures": fixtures,
     }

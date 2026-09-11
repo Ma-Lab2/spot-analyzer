@@ -17,6 +17,29 @@ def _fixture_entries() -> list[dict[str, object]]:
     return json.loads(MANIFEST.read_text(encoding="utf-8"))["fixtures"]
 
 
+def test_real_fixture_manifest_records_traceable_identity_and_honest_unknowns() -> None:
+    payload = json.loads(MANIFEST.read_text(encoding="utf-8"))
+
+    assert payload["audit"]["filesystem_timestamps_are_acquisition_evidence"] is False
+    assert payload["evidence_scope"]["supported_claims"]
+    assert payload["bounded_limitations"]
+    for entry in payload["fixtures"]:
+        assert len(entry["sha256"]) == 64
+        assert entry["provenance"]["source_asset"]
+        snapshot = entry["provenance"]["source_snapshot"]
+        assert snapshot["recorded_in_commit"] == "51e1750fb90f4937386127643f6e9b5bab7cd902"
+        assert snapshot["identity_basis"] == "relative_path_and_sha256"
+        acquisition = entry["acquisition"]
+        if entry["kind"] == "rgb_display_excluded":
+            assert acquisition["evidence_status"] == "recovered_from_embedded_png_text"
+            assert acquisition["acquired_at_timezone"] is None
+        else:
+            assert acquisition["instrument"] is None
+            assert acquisition["acquired_at"] is None
+            assert acquisition["metadata_version"] is None
+            assert acquisition["evidence_status"] == "unrecoverable_from_checked_sources"
+
+
 def test_documented_real_fixture_hashes_when_external_directory_is_available() -> None:
     payload = json.loads(MANIFEST.read_text(encoding="utf-8"))
     root = Path(payload["root"])
