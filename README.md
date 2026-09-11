@@ -49,6 +49,14 @@ creates a ZIP containing the JSON package and image.
 The package records that `standard-profile-v1` and `quality-profile-v1` remain
 provisional and does not establish physical-accuracy validation.
 
+## Portable Alpha package
+
+`packaging/build-alpha.ps1` creates the reproducible Windows 11 x64 one-folder
+portable ZIP. It publishes the WPF client self-contained, freezes the worker
+with PyInstaller, adds the versioned profiles, bundled example, quick-start,
+notices, and SHA-256 manifest, and rejects source/test/cache files in the final
+stage. See `packaging/BUILD.md` for the build environment and commands.
+
 ## Checks
 
 ```text

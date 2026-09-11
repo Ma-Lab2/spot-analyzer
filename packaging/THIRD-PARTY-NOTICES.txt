@@ -1,0 +1,16 @@
+Spot Analysis Alpha 0.1.0-alpha.1
+
+This package bundles the Spot Analysis WPF client and a frozen Python worker.
+The worker's Python dependencies are listed in manifest.json and are installed
+into the build environment from pyproject.toml's pinned requirements.
+
+Primary dependencies:
+- NumPy (BSD 3-Clause License)
+- SciPy (BSD 3-Clause License)
+- Pillow (HPND License)
+- rfc8785 (MIT License)
+- PyInstaller (GPL-2.0-or-later with bootloader exception)
+
+The complete dependency versions and file identities are recorded in
+manifest.json. Consult each dependency's distribution metadata and upstream
+license text for the exact notices applicable to a redistributed build.
