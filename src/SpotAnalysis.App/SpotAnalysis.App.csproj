@@ -10,5 +10,6 @@
   <ItemGroup>
     <None Include="..\SpotAnalysis.Worker\worker.py" Link="worker.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\SpotAnalysis.Worker\png_analysis.py" Link="png_analysis.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\spot_analyzer\**\*.py" Link="spot_analyzer\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

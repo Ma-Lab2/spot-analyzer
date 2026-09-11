@@ -2,11 +2,25 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import sys
 import time
 from typing import Any
 
+# The packaged worker is launched by path from the WPF shell, so its repository
+# root is not otherwise on sys.path during development.  Keep the protocol
+# adapter here, but let the versioned contract delegate to the real core worker.
+_WORKER_DIRECTORY = Path(__file__).resolve().parent
+_ROOT_CANDIDATES = (_WORKER_DIRECTORY, Path(__file__).resolve().parents[2])
+_ROOT = next(
+    (candidate for candidate in _ROOT_CANDIDATES if (candidate / "spot_analyzer").is_dir()),
+    _ROOT_CANDIDATES[-1],
+)
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 from png_analysis import InputError, analyze_png
+from spot_analyzer.worker import handle_request as handle_real_request
 
 PROTOCOL_VERSION = 1
 
@@ -29,9 +43,36 @@ def fail(request_id: str | None, code: str, message: str) -> None:
     )
 
 
+def _real_worker_failure(message: str) -> list[dict[str, Any]]:
+    return [
+        {"schema": "analysis-event-v1", "kind": "started", "flow_status": "processing"},
+        {
+            "schema": "analysis-result-v1",
+            "kind": "failed",
+            "flow_status": "analysis_failed",
+            "summary_status": None,
+            "record": None,
+            "metrics": None,
+            "diagnostics": [{"code": "worker_unhandled_error", "message": message}],
+        },
+    ]
+
+
 def handle(request: object) -> None:
     if not isinstance(request, dict):
         fail(None, "invalid_request", "request must be a JSON object")
+        return
+
+    # analysis-request-v1 is the shared CLI/WPF contract.  This adapter must
+    # not decode arrays, estimate metrics, or reproduce quality gates: the
+    # package worker owns input adaptation, core analysis, and result shaping.
+    if request.get("schema") == "analysis-request-v1":
+        try:
+            messages = handle_real_request(request)
+        except Exception as exc:  # Keep real-worker failures structured.
+            messages = _real_worker_failure(str(exc))
+        for message in messages:
+            send(message)
         return
 
     request_id = request.get("request_id")

@@ -576,6 +576,64 @@ def test_worker_asset_request_validates_hash_and_matches_direct_core(tmp_path) -
         assert hashlib.sha256(asset_path.read_bytes()).hexdigest() == asset["sha256"]
 
 
+@pytest.mark.parametrize("bit_depth", [8, 16])
+def test_packaged_worker_path_returns_real_core_record_and_preserves_parity(tmp_path, bit_depth) -> None:
+    scene = generate_scene("gaussian_circular")
+    source = scene.input_array.astype(np.uint8 if bit_depth == 8 else np.uint16)
+    payload = png_bytes(source, mode="L" if bit_depth == 8 else "I;16")
+    path = tmp_path / "packaged-input.png"
+    path.write_bytes(payload)
+    digest = hashlib.sha256(payload).hexdigest()
+    decoded = decode_png(path, confirm_relative_intensity=True, expected_sha256=digest)
+    assert decoded.image is not None
+    configuration = worker_configuration()
+    direct = analyze(decoded.image, AnalysisConfiguration(**{
+        "region": AnalysisRegion(**configuration["region"]),
+        "background_region": AnalysisRegion(**configuration["background_region"]),
+        "calibration": SpatialCalibration(**configuration["calibration"]),
+        "preprocessing": PreprocessingConfiguration(**configuration["preprocessing"]),
+        "model": worker_module.AnalysisModel(**configuration["model"]),
+        **{key: configuration[key] for key in (
+            "rref_pixels", "analysis_contract", "standard_profile", "quality_profile",
+            "profile_validation", "algorithm_version", "bad_pixel_coordinates",
+            "bad_pixel_mask_version",
+        )},
+    }))
+    request = {
+        "schema": "analysis-request-v1",
+        "input": {
+            "asset": {"path": str(path), "expected_sha256": digest},
+            "confirm_relative_intensity": True,
+        },
+        "configuration": configuration,
+        "output_strategy": {
+            "work_directory": str(tmp_path / "packaged-assets"),
+            "derived_format": "npy",
+        },
+    }
+
+    root = Path(__file__).parents[1]
+    completed = subprocess.run(
+        [sys.executable, str(root / "src" / "SpotAnalysis.Worker" / "worker.py")],
+        input=json.dumps(request) + "\n",
+        text=True,
+        capture_output=True,
+        check=False,
+        cwd=root,
+        timeout=60,
+    )
+
+    assert completed.returncode == 0
+    assert completed.stderr == ""
+    messages = [json.loads(line) for line in completed.stdout.splitlines()]
+    assert [message["kind"] for message in messages] == ["started", "completed"]
+    record = messages[-1]["record"]
+    assert record["analysis_fingerprint"] == direct.record.analysis_fingerprint
+    assert record["metrics"] == direct.record.reportable_metrics()
+    assert record["diagnostics"] == json_value(direct.record.diagnostics)
+    assert record["derived_assets"]
+
+
 def test_worker_reports_cancellation_before_starting_analysis() -> None:
     messages = handle_request({"schema": "analysis-request-v1", "lifecycle": {"cancel_requested": True}})
 
