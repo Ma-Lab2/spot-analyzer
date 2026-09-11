@@ -12,6 +12,7 @@ public partial class MainWindow : Window
     private PngInputInfo? _selectedInput;
     private bool _configurationConfirmed;
     private bool _hasResult;
+    private bool _resultStale;
     private WorkerOutcome? _lastOutcome;
     private WorkerOutcome? _lastSuccessfulOutcome;
     private CancellationTokenSource? _analysisCancellation;
@@ -194,12 +195,15 @@ public partial class MainWindow : Window
     {
         _analysisCancellation?.Dispose();
         _analysisCancellation = new CancellationTokenSource();
-        _lastOutcome = null;
+        // A new run never invalidates the last successful record. It is retained
+        // as a stale/previous record until a new run completes successfully.
+        _resultStale = _lastSuccessfulOutcome is not null;
         _flowStatus = "processing";
         _failureCode = null;
         _failureDetails = null;
         DiagnosticLog.Write("analysis_started", new { flow_status = _flowStatus, input = _selectedInput?.Summary });
         StatusText.Text = "Processing";
+        ShowRetainedResult("Processing current run; previous result is retained as stale.");
         try
         {
             var outcome = await operation();
@@ -225,25 +229,30 @@ public partial class MainWindow : Window
             {
                 case "success":
                     StatusText.Text = "Completed";
-                    _lastOutcome = outcome;
+                    _lastSuccessfulOutcome = outcome;
                     _hasResult = true;
+                    _resultStale = false;
                     RecordText.Text = FormatRecordSummary(outcome);
                     MetricsText.Text = FormatMetrics(outcome);
                     ExportResultButton.IsEnabled = true;
                     break;
                 case "cancelled":
                     StatusText.Text = "Cancelled";
-                    RecordText.Text = $"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}";
+                    _resultStale = _lastSuccessfulOutcome is not null;
+                    _hasResult = _lastSuccessfulOutcome is not null;
+                    ShowRetainedResult($"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}");
                     break;
                 case "timeout":
                     StatusText.Text = "Timed out";
-                    RecordText.Text = $"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}";
+                    _resultStale = _lastSuccessfulOutcome is not null;
+                    _hasResult = _lastSuccessfulOutcome is not null;
+                    ShowRetainedResult($"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}");
                     break;
                 default:
                     StatusText.Text = $"Failed ({outcome.FailureCode ?? "worker_failure"}): {outcome.ErrorMessage}";
-                    RecordText.Text = StatusText.Text;
-                    MetricsText.Text = FormatDiagnostics(outcome);
-                    ExportResultButton.IsEnabled = false;
+                    _resultStale = _lastSuccessfulOutcome is not null;
+                    _hasResult = _lastSuccessfulOutcome is not null;
+                    ShowRetainedResult(StatusText.Text);
                     break;
             }
         }
@@ -254,7 +263,7 @@ public partial class MainWindow : Window
             _failureDetails = exception.Message;
             DiagnosticLog.Write("analysis_rejected", new { flow_status = _flowStatus, code = exception.Code, message = exception.Message });
             StatusText.Text = $"Invalid configuration ({exception.Code}): {exception.Message}";
-            RecordText.Text = StatusText.Text;
+            ShowRetainedResult(StatusText.Text);
         }
         catch (InputValidationException exception)
         {
@@ -263,7 +272,7 @@ public partial class MainWindow : Window
             _failureDetails = exception.Message;
             DiagnosticLog.Write("analysis_rejected", new { flow_status = _flowStatus, code = exception.Code, message = exception.Message });
             StatusText.Text = $"Invalid input ({exception.Code}): {exception.Message}";
-            RecordText.Text = StatusText.Text;
+            ShowRetainedResult(StatusText.Text);
         }
         catch (OperationCanceledException)
         {
@@ -272,6 +281,9 @@ public partial class MainWindow : Window
             _failureDetails = "analysis cancelled";
             DiagnosticLog.Write("analysis_cancelled", new { flow_status = _flowStatus });
             StatusText.Text = "Cancelled";
+            _resultStale = _lastSuccessfulOutcome is not null;
+            _hasResult = _lastSuccessfulOutcome is not null;
+            ShowRetainedResult("Cancelled: analysis did not produce a new record.");
         }
         finally
         {
@@ -356,12 +368,15 @@ public partial class MainWindow : Window
 
     private DiagnosticSnapshot BuildDiagnosticSnapshot()
     {
+        // Keep the prior successful record in diagnostics even when the current
+        // attempt was cancelled, timed out, or failed.
         var outcome = _lastOutcome;
+        var recordOutcome = _lastSuccessfulOutcome ?? outcome;
         JsonElement? record = null;
-        if (outcome?.Result is JsonElement result && result.TryGetProperty("record", out var recordNode))
+        if (recordOutcome?.Result is JsonElement result && result.TryGetProperty("record", out var recordNode))
             record = recordNode;
         var diagnostics = ReadArray(record, "diagnostics");
-        if (diagnostics.Count == 0 && outcome?.Diagnostics is not null)
+        if (outcome?.Diagnostics is not null && outcome.Status is not "success")
             diagnostics = outcome.Diagnostics;
         var reasons = ReadStringArray(record, "quality_reason_codes");
         if (reasons.Count == 0)
@@ -371,9 +386,9 @@ public partial class MainWindow : Window
             _flowStatus,
             _failureCode,
             _failureDetails,
-            outcome?.RecordId ?? ReadString(record, "record_id"),
-            outcome?.AnalysisFingerprint ?? ReadString(record, "analysis_fingerprint"),
-            _selectedInput?.Summary ?? outcome?.InputSummary,
+            recordOutcome?.RecordId ?? ReadString(record, "record_id"),
+            recordOutcome?.AnalysisFingerprint ?? ReadString(record, "analysis_fingerprint"),
+            _selectedInput?.Summary ?? recordOutcome?.InputSummary,
             _selectedInput?.Sha256,
             _selectedInput?.Path,
             BuildConfigurationSnapshot(_lastConfiguration),
@@ -489,6 +504,23 @@ public partial class MainWindow : Window
         if (_inFlightRequest is null)
             RefreshDraftSummary();
         UpdateRunAvailability();
+    }
+
+    private void ShowRetainedResult(string currentRunStatus)
+    {
+        if (_lastSuccessfulOutcome is null)
+        {
+            RecordText.Text = currentRunStatus;
+            if (_lastOutcome?.Status is not "success")
+                MetricsText.Text = _lastOutcome is null ? "No result available" : FormatDiagnostics(_lastOutcome);
+            ExportResultButton.IsEnabled = false;
+            return;
+        }
+
+        var recordLabel = _resultStale ? "Previous result (stale)" : "Previous result";
+        RecordText.Text = $"Current run: {currentRunStatus}\n{recordLabel}:\n{FormatRecordSummary(_lastSuccessfulOutcome)}";
+        MetricsText.Text = $"Previous result (stale; no new record was produced.)\n{FormatMetrics(_lastSuccessfulOutcome)}";
+        ExportResultButton.IsEnabled = true;
     }
 
     private string FormatRecordSummary(WorkerOutcome outcome)
@@ -612,13 +644,11 @@ public partial class MainWindow : Window
 
     private void MarkResultStale()
     {
-        if (!_hasResult) return;
+        if (_lastSuccessfulOutcome is null) return;
         _flowStatus = "needs_recalculation";
-        _hasResult = false;
-        _lastOutcome = null;
-        ExportResultButton.IsEnabled = false;
-        MetricsText.Text = "Previous result is stale; run analysis again for the current input and configuration.";
-        RecordText.Text = MetricsText.Text;
+        _resultStale = true;
+        _hasResult = true;
+        ShowRetainedResult("Configuration or input changed; run analysis again for a current record.");
     }
 }
 
