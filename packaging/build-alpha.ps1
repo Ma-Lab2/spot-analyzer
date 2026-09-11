@@ -41,11 +41,48 @@ function Require-Command {
     }
 }
 
+function Invoke-PythonCheck {
+    param([string]$Code, [string]$FailureMessage)
+    $result = (& python -c $Code 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw $FailureMessage
+    }
+    return $result
+}
+
 if (-not (Test-Path (Join-Path $repoRoot "src\SpotAnalysis.App\SpotAnalysis.App.csproj"))) {
     throw "The repository root is not valid: $repoRoot"
 }
 Require-Command "dotnet" "Install the .NET 8 SDK."
 Require-Command "python" "Install Python 3.12 and the locked project dependencies."
+
+$sdkVersions = (& dotnet --list-sdks 2>&1 | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $sdkVersions -notmatch "(?m)^8\.") {
+    throw "A .NET 8 SDK is required. Install it before building the portable package."
+}
+$pythonVersion = Invoke-PythonCheck "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" "Python 3.12 is required."
+if ($pythonVersion -ne "3.12") {
+    throw "Python 3.12 is required; found $pythonVersion. Activate the supported Python environment."
+}
+$pythonArchitecture = Invoke-PythonCheck "import struct; print(struct.calcsize('P') * 8)" "Could not determine Python architecture."
+if ($pythonArchitecture -ne "64") {
+    throw "A 64-bit Python interpreter is required; found ${pythonArchitecture}-bit."
+}
+$pyInstallerCheck = Invoke-PythonCheck "import PyInstaller; print(PyInstaller.__version__)" "PyInstaller 6.14.2 is required. Install the locked build dependency."
+if ($pyInstallerCheck -ne $identity.pyinstaller_version) {
+    throw "PyInstaller version mismatch: installed $pyInstallerCheck, identity requires $($identity.pyinstaller_version)."
+}
+$dependencyCheck = Invoke-PythonCheck @"
+import importlib.metadata as metadata
+import json
+from pathlib import Path
+identity = json.loads(Path(r'$identityPath').read_text(encoding='utf-8'))
+for name, expected in identity['worker_dependencies'].items():
+    actual = metadata.version(name)
+    if actual != expected:
+        raise SystemExit(f'{name} version mismatch: installed {actual}, identity requires {expected}')
+print('locked worker dependencies verified')
+"@ "Locked worker dependency versions do not match build identity."
 
 $null = New-Item -ItemType Directory -Force -Path $outputRoot
 foreach ($path in @($stage, $publishPath, $workerDistPath, $workerBuildPath)) {
@@ -67,17 +104,10 @@ if ($SkipRestore) { $publishArguments += "--no-restore" }
 Invoke-Checked "dotnet" $publishArguments
 Copy-Item -Path (Join-Path $publishPath "*") -Destination $stage -Recurse -Force
 
-$pyInstallerCheck = (& python -m PyInstaller --version).Trim()
-if ($LASTEXITCODE -ne 0) {
-    throw "PyInstaller is required. Install it with: python -m pip install pyinstaller"
-}
-if ($pyInstallerCheck -ne $identity.pyinstaller_version) {
-    throw "PyInstaller version mismatch: installed $pyInstallerCheck, identity requires $($identity.pyinstaller_version)."
-}
 $specPath = Join-Path $repoRoot "packaging\worker.spec"
 Invoke-Checked "python" @(
-    "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--distpath", $workerDistPath,
-    "--workpath", $workerBuildPath, "--specpath", (Join-Path $repoRoot "packaging"), $specPath
+    "-m", "PyInstaller", "--noconfirm", "--clean", "--distpath", $workerDistPath,
+    "--workpath", $workerBuildPath, $specPath
 )
 $workerRoot = Join-Path $workerDistPath "SpotAnalysis.Worker"
 if (-not (Test-Path (Join-Path $workerRoot "SpotAnalysis.Worker.exe"))) {
@@ -93,6 +123,7 @@ Get-ChildItem $stage -Recurse -Directory | Where-Object { $_.Name -in @("spot_an
 $null = New-Item -ItemType Directory -Force -Path (Join-Path $stage "examples"), (Join-Path $stage "profiles")
 Copy-Item (Join-Path $repoRoot "examples\alpha-example.png") (Join-Path $stage "examples\alpha-example.png") -Force
 Copy-Item (Join-Path $repoRoot "packaging\QUICKSTART.md") (Join-Path $stage "QUICKSTART.md") -Force
+Copy-Item (Join-Path $repoRoot "packaging\ALPHA-TRIAL-ACCEPTANCE.md") (Join-Path $stage "ALPHA-TRIAL-ACCEPTANCE.md") -Force
 Copy-Item (Join-Path $repoRoot "packaging\THIRD-PARTY-NOTICES.txt") (Join-Path $stage "THIRD-PARTY-NOTICES.txt") -Force
 Copy-Item (Join-Path $repoRoot "README.md") (Join-Path $stage "README.md") -Force
 Copy-Item (Join-Path $repoRoot "profiles\profile-identities.json") (Join-Path $stage "profiles\profile-identities.json") -Force

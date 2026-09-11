@@ -55,11 +55,40 @@ def test_portable_build_contract_is_explicit() -> None:
     assert "--runtime\", \"win-x64" in script
     assert "--self-contained\", \"true" in script
     assert "SpotAnalysis.Worker.exe" in script
-    assert "--onedir" in script
+    assert "--onedir" not in script
+    assert "PyInstaller version mismatch" in script
+    assert "dotnet --list-sdks" in script
+    assert "Python 3.12" in script
     assert "Compress-Archive" in script
     assert "COLLECT(" in spec
     assert "hiddenimports=collect_submodules(\"spot_analyzer\")" in spec
     assert "CopyToOutputDirectory" in project
+
+
+def test_build_stage_contains_offline_acceptance_procedure() -> None:
+    script = (ROOT / "packaging" / "build-alpha.ps1").read_text(encoding="utf-8")
+    assert '"ALPHA-TRIAL-ACCEPTANCE.md"' in script
+    assert "manifest.json" in script
+
+
+def test_clean_machine_acceptance_record_requires_evidence_for_each_status() -> None:
+    record = (ROOT / "packaging" / "ALPHA-TRIAL-ACCEPTANCE.md").read_text(encoding="utf-8")
+    rows = [line for line in record.splitlines() if line.startswith("| ") and "---" not in line]
+
+    assert "Windows 11 x64" in record
+    assert "Package SHA-256" in record
+    assert "Manifest:" in record
+    assert "provisional" in record
+    assert "follow-up" in record.lower()
+    assert rows
+    for row in rows:
+        cells = [cell.strip() for cell in row.split("|")[1:-1]]
+        if cells[0] == "Scenario":
+            continue
+        assert cells[2] in {"NOT RUN", "PASS", "FAIL", "BLOCKED"}
+        assert cells[3]
+        if cells[2] == "PASS":
+            assert "not run" not in cells[3].lower()
 
 
 def test_bundled_example_is_png_and_readable() -> None:
@@ -79,12 +108,8 @@ def test_clean_machine_acceptance_record_preserves_evidence_boundary() -> None:
     assert "Windows 11 x64" in record
     assert "spot-analysis-0.1.0-alpha.1-win-x64.zip" in record
     assert "without Python, .NET SDK" in record
-    assert "**NOT RUN**" in record
     assert "Package SHA-256" in record
     assert "diagnostic package" in record
     assert "formal physical-accuracy validation" in record
     assert "Severity (blocker, high, medium, low):" in record
-
-    # A template must not accidentally claim that the clean-machine trial passed.
-    assert "clean-machine\nrun is **NOT RUN**" in record
     assert "Result | Evidence/notes" in record

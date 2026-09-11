@@ -16,6 +16,17 @@ run is **NOT RUN** in the repository development environment used to prepare thi
 package. Do not change a row to PASS without recording the target-machine evidence.
 A successful trial would demonstrate portable workflow behavior, not formal physical-accuracy validation or production readiness.
 
+## Current execution status
+
+The clean-machine trial is **NOT RUN**. The repository development environment is not
+eligible evidence: it has no .NET 8 SDK, its default Python is 3.10 rather than the
+required 3.12 build environment, and no separate Windows 11 x64 standard-user target
+has been made available. The package therefore has no delivered ZIP or manifest hash
+to record yet. Follow-up: provision the declared build environment, produce and
+preserve the ZIP, then complete every matrix row on an eligible clean target before
+closing the acceptance issue. Any failed or untested row remains a limitation and
+must receive a linked follow-up ticket rather than being changed to PASS.
+
 ## Target-machine preconditions
 
 Record the observed state before extracting the package:
@@ -55,22 +66,22 @@ Each row starts as **NOT RUN**. Record the observed result, evidence path, and n
 
 | Scenario | Expected evidence | Result | Evidence/notes |
 | --- | --- | --- | --- |
-| Start client | `SpotAnalysis.App.exe` starts without Python, .NET SDK, compiler, network service, or elevation | NOT RUN | |
-| Identify build | About/diagnostics shows client, worker, analysis-core, profiles, and output identities | NOT RUN | |
-| Bundled example | `examples/alpha-example.png` opens and can be analyzed | NOT RUN | |
-| Supported input | At least one real 8-bit or 16-bit grayscale PNG opens with dimensions, depth, and SHA-256 | NOT RUN | |
-| Invalid input | Unsupported or malformed input is rejected with a readable structured error | NOT RUN | |
-| Configuration | Confirmed calibration and in-bounds analysis region are accepted; invalid values are rejected before analysis | NOT RUN | |
-| Real analysis | Processing and completed states are distinct; returned record ID and analysis fingerprint are shown | NOT RUN | |
-| Failure states | Failure, cancellation, and timeout remain distinguishable and actionable | NOT RUN | |
-| Measurement validity | Metrics show value or N/A, unit, validity state, and quality reason codes | NOT RUN | |
-| Result export | A user-selected independent output contains one record identity and does not overwrite an existing report | NOT RUN | |
-| Input immutability | Input file hash and timestamp are unchanged after analysis and export | NOT RUN | |
-| Second image | A second supported image can be processed without restarting; the old result becomes stale after input/configuration changes | NOT RUN | |
-| Diagnostics | JSON diagnostic package contains configuration, input identity, statuses, validity, reason codes, record/fingerprint, and failure details when present | NOT RUN | |
-| Image privacy | Original image is absent from default diagnostics and present only after explicit attachment | NOT RUN | |
-| Local logs | `%LOCALAPPDATA%\SpotAnalysis\logs\app.log` is created without writing to the extracted application directory | NOT RUN | |
-| Package exclusions | No source/tests/cache/Git metadata/HTML prototype is present in the delivered ZIP | NOT RUN | |
+| Start client | `SpotAnalysis.App.exe` starts without Python, .NET SDK, compiler, network service, or elevation | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Identify build | About/diagnostics shows client, worker, analysis-core, profiles, and output identities | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Bundled example | `examples/alpha-example.png` opens and can be analyzed | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Supported input | At least one real 8-bit or 16-bit grayscale PNG opens with dimensions, depth, and SHA-256 | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Invalid input | Unsupported or malformed input is rejected with a readable structured error | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Configuration | Confirmed calibration and in-bounds analysis region are accepted; invalid values are rejected before analysis | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Real analysis | Processing and completed states are distinct; returned record ID and analysis fingerprint are shown | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Failure states | Failure, cancellation, and timeout remain distinguishable and actionable | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Measurement validity | Metrics show value or N/A, unit, validity state, and quality reason codes | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Result export | A user-selected independent output contains one record identity and does not overwrite an existing report | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Input immutability | Input file hash and timestamp are unchanged after analysis and export | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Second image | A second supported image can be processed without restarting; the old result becomes stale after input/configuration changes | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Diagnostics | JSON diagnostic package contains configuration, input identity, statuses, validity, reason codes, record/fingerprint, and failure details when present | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Image privacy | Original image is absent from default diagnostics and present only after explicit attachment | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Local logs | `%LOCALAPPDATA%\SpotAnalysis\logs\app.log` is created without writing to the extracted application directory | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
+| Package exclusions | No source/tests/cache/Git metadata/HTML prototype is present in the delivered ZIP | NOT RUN | Not run: no eligible clean target or delivered package is available; follow-up required. |
 
 ## Manual first-analysis procedure
 
