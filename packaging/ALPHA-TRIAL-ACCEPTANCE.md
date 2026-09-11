@@ -51,6 +51,7 @@ Before starting the client, preserve the ZIP and record:
 ```powershell
 Get-FileHash .\spot-analysis-0.1.0-alpha.1-win-x64.zip -Algorithm SHA256
 Expand-Archive .\spot-analysis-0.1.0-alpha.1-win-x64.zip -DestinationPath .\alpha-trial
+Get-FileHash .\alpha-trial\manifest.json -Algorithm SHA256
 Get-Content .\alpha-trial\manifest.json
 ```
 
