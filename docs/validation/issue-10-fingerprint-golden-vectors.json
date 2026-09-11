@@ -1,0 +1,36 @@
+{
+  "version": "fingerprint-golden-v1",
+  "vectors": [
+    {
+      "payload": {
+        "alpha": 1,
+        "beta": [
+          true,
+          "x",
+          null
+        ]
+      },
+      "canonical_hex": "7b22616c706861223a312c2262657461223a5b747275652c2278222c6e756c6c5d7d",
+      "digest": "sha256-976b8850048c6723df8bef69bc0b2adfde87f732cd4232e7ff78dba0310deca6"
+    },
+    {
+      "payload": {
+        "numpy_int": 7,
+        "nested": {
+          "z": 1.5
+        }
+      },
+      "canonical_hex": "7b226e6573746564223a7b227a223a312e357d2c226e756d70795f696e74223a377d",
+      "digest": "sha256-a4764d9695e5e2020eb8b8eb9fafa04eb39c94a0aa20e94d7db809e8b24d1f94"
+    },
+    {
+      "payload": {
+        "nonfinite": {
+          "__nonfinite_float__": "0x1.0p+0"
+        }
+      },
+      "canonical_hex": "7b226e6f6e66696e697465223a7b225f5f6e6f6e66696e6974655f666c6f61745f5f223a223078312e30702b30227d7d",
+      "digest": "sha256-9c2a55761217bc1cd55ac07705f389ae4a8d71527f339a2561bd388c0347aea3"
+    }
+  ]
+}
