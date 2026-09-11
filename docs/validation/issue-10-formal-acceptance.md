@@ -5,7 +5,13 @@
 - Overall status: `incomplete`
 - Validation contract: `validation-contract-v1`
 - Profile validation: `provisional`
-- User acceptance: `pending` (explicit human decision required)
+- User acceptance: `accepted_current_bounded_results`
+- User decision date: `2026-09-11`
+- User decision original text: `接受`
+- Recorded interpretation: `accept_current_bounded_results`
+- Acceptance candidate commit: `d8f27a14e8a80e8c229f22c24c4e6f088616151c`
+- Validation complete: `false` (the `real_fixtures` section remains `incomplete`)
+- Issue #10 completion condition: `met_by_explicit_acceptance_of_all_bounded_limitations`
 - Production release: `out_of_scope` for Issue #10
 
 ## Environment
@@ -56,15 +62,14 @@
 - `png_color_management_matrix_absent` (affected: `all`): The fixtures verify metadata absence handling, not behavior across PNG color-management combinations. observed evidence: No representative fixture contains gAMA, sRGB, or iCCP metadata. handling: requires_explicit_human_acceptance_or_rejection
 - `acquisition_condition_matrix_absent` (affected: `all`): No controlled real-fixture matrix varies exposure, gain, temperature, optical path, focal length, or acquisition batch while holding physical truth constant. handling: requires_explicit_human_acceptance_or_rejection
 
-## Explicit human decision required
+## Explicit human decision
 
-Choose exactly one option on parent Issue #10:
+On `2026-09-11`, the user stated exactly: `接受`.
 
-1. **Accept current bounded results** — accept the limitations above without treating them as proof of absolute physical accuracy.
-2. **Request specification changes** — identify the required evidence or contract changes before acceptance.
+For Issue #35, this is recorded as selecting **Accept current bounded results** (`accept_current_bounded_results`) for the Issue #34 acceptance candidate merged as `d8f27a14e8a80e8c229f22c24c4e6f088616151c`.
 
-Until that decision is recorded, `user_acceptance` remains `pending`; this candidate does not record acceptance.
+The decision accepts all five bounded limitations listed above. It does not convert the real-fixture evidence into proof of absolute physical accuracy, does not change `overall_status: incomplete` or the `real_fixtures: incomplete` section, and does not promote `standard-profile-v1` or `quality-profile-v1` beyond `profile_validation: provisional`.
 
-## Recommendation to parent Issue #10
+## Completion semantics
 
-Record the candidate run as `incomplete` and request the explicit human decision above. Do not treat this recommendation as user acceptance.
+The explicit bounded-results acceptance satisfies the Issue #10/#30 human acceptance gate despite the preserved bounded `real_fixtures` limitation. Production release remains out of scope: this decision does not accept, validate, or release WPF, PyInstaller, portable ZIP, packaging, or clean-machine deployment work.

@@ -1,13 +1,84 @@
 {
   "acceptance": {
     "bounded_limitations": [
-      "real_fixtures"
+      {
+        "acceptance": "requires_explicit_human_acceptance_or_rejection",
+        "affected_fixtures": "all",
+        "classification": "bounded_limitation",
+        "code": "independent_physical_ground_truth_absent",
+        "consequence": "Evidence is behavioral_evidence_only and cannot establish absolute size accuracy."
+      },
+      {
+        "acceptance": "requires_explicit_human_acceptance_or_rejection",
+        "affected_fixtures": [
+          "20251016/1.png",
+          "20251016/2.png",
+          "20251016/3.png",
+          "20260607/1-7.png",
+          "20260607/2-7\u53f3\u4e0b.png"
+        ],
+        "classification": "bounded_limitation",
+        "code": "historical_acquisition_metadata_unrecoverable",
+        "consequence": "These fixtures support decode, identity, repeatability, status, and reason-code evidence, but not acquisition-condition conclusions.",
+        "unknown_fields": [
+          "instrument",
+          "acquired_at",
+          "metadata_version"
+        ]
+      },
+      {
+        "acceptance": "requires_explicit_human_acceptance_or_rejection",
+        "affected_fixtures": [
+          "20260901/1.PNG"
+        ],
+        "classification": "bounded_limitation",
+        "code": "rgb_acquisition_timezone_unknown",
+        "consequence": "The embedded local creation time is retained without inventing a UTC offset; this RGB display asset is excluded from grayscale measurement regression.",
+        "unknown_fields": [
+          "acquired_at_timezone"
+        ]
+      },
+      {
+        "acceptance": "requires_explicit_human_acceptance_or_rejection",
+        "affected_fixtures": "all",
+        "classification": "bounded_limitation",
+        "code": "png_color_management_matrix_absent",
+        "consequence": "The fixtures verify metadata absence handling, not behavior across PNG color-management combinations.",
+        "observed": "No representative fixture contains gAMA, sRGB, or iCCP metadata."
+      },
+      {
+        "acceptance": "requires_explicit_human_acceptance_or_rejection",
+        "affected_fixtures": "all",
+        "classification": "bounded_limitation",
+        "code": "acquisition_condition_matrix_absent",
+        "consequence": "No controlled real-fixture matrix varies exposure, gain, temperature, optical path, focal length, or acquisition batch while holding physical truth constant."
+      }
     ],
+    "accepted_bounded_limitation_codes": [
+      "independent_physical_ground_truth_absent",
+      "historical_acquisition_metadata_unrecoverable",
+      "rgb_acquisition_timezone_unknown",
+      "png_color_management_matrix_absent",
+      "acquisition_condition_matrix_absent"
+    ],
+    "bounded_results_accepted": true,
     "calculation_success": true,
+    "decision": {
+      "acceptance_candidate_commit": "d8f27a14e8a80e8c229f22c24c4e6f088616151c",
+      "date": "2026-09-11",
+      "original_text": "接受",
+      "recorded_interpretation": "accept_current_bounded_results"
+    },
+    "decision_options": [
+      "accept_current_bounded_results",
+      "request_specification_changes"
+    ],
+    "human_decision_required": false,
     "implementation_complete": true,
+    "issue_10_completion_condition_met": true,
     "measurement_validity": "section-specific; see results",
     "production_release": "out_of_scope",
-    "user_acceptance": "pending",
+    "user_acceptance": "accepted_current_bounded_results",
     "validation_complete": false
   },
   "artifacts": {
@@ -24,6 +95,7 @@
     "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
     "python": "3.12.14",
     "python_implementation": "CPython",
+    "rfc8785": "0.1.4",
     "scipy": "1.15.3",
     "spot_analyzer": "0.1.0"
   },
@@ -574,6 +646,7 @@
           "formal_dependencies": {
             "numpy": true,
             "pillow": true,
+            "rfc8785": true,
             "scipy": true
           },
           "formal_environment": true,
@@ -581,7 +654,7 @@
           "logical_cpu_count": 24,
           "machine": "AMD64",
           "memory": {
-            "available_mb": 9759.7265625,
+            "available_mb": 12466.46875,
             "current_mb": null,
             "source": "windows_global_memory_status_ex",
             "total_mb": 32222.125
@@ -592,6 +665,7 @@
           "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
           "python": "3.12.14",
           "python_implementation": "CPython",
+          "rfc8785": "0.1.4",
           "scipy": "1.15.3",
           "spot_analyzer": "0.1.0"
         },
@@ -615,21 +689,21 @@
         "workloads": [
           {
             "core": {
-              "max_seconds": 0.04104110000480432,
+              "max_seconds": 0.032230900003924035,
               "mode": "hot_analyze",
-              "p50_seconds": 0.03220040000087465,
-              "p95_seconds": 0.03848541500301507,
+              "p50_seconds": 0.030295199998363387,
+              "p95_seconds": 0.03209464000101434,
               "runs_seconds": [
-                0.031071700002939906,
-                0.035361800000828225,
-                0.03182270000252174,
-                0.03355780000129016,
-                0.03157860000646906,
-                0.03257809999922756,
-                0.03266909999365453,
-                0.03025109999725828,
-                0.03036460000294028,
-                0.04104110000480432
+                0.029731400005402975,
+                0.030224999994970858,
+                0.03192809999745805,
+                0.030328500004543457,
+                0.029665800000657327,
+                0.03030890000081854,
+                0.032230900003924035,
+                0.031214599999657366,
+                0.029630699995323084,
+                0.030281499995908234
               ],
               "target_p95_seconds": null,
               "target_passed": true
@@ -648,21 +722,21 @@
               "timed": false
             },
             "worker": {
-              "max_seconds": 0.520710800003144,
+              "max_seconds": 0.5800744000007398,
               "mode": "cold_process_png_analysis_derived_write",
-              "p50_seconds": 0.4905042999998841,
-              "p95_seconds": 0.5181633500018507,
+              "p50_seconds": 0.5198375999971176,
+              "p95_seconds": 0.5635257399979309,
               "runs_seconds": [
-                0.5003668999997899,
-                0.499071999998705,
-                0.4819366000010632,
-                0.5150498000002699,
-                0.520710800003144,
-                0.48036750000028405,
-                0.4801258000006783,
-                0.46973199999774806,
-                0.5143960999994306,
-                0.47864929999923334
+                0.5081062000026577,
+                0.5800744000007398,
+                0.5432995999944978,
+                0.5423857999994652,
+                0.522207599999092,
+                0.5174675999951432,
+                0.5255806000059238,
+                0.4828457999974489,
+                0.5123397999996087,
+                0.5003716000064742
               ],
               "target_p95_seconds": null,
               "target_passed": true
@@ -670,21 +744,21 @@
           },
           {
             "core": {
-              "max_seconds": 0.09898640000028536,
+              "max_seconds": 0.09798489999957383,
               "mode": "hot_analyze",
-              "p50_seconds": 0.09691039999961504,
-              "p95_seconds": 0.0989690749993315,
+              "p50_seconds": 0.09632314999907976,
+              "p95_seconds": 0.09798323499999242,
               "runs_seconds": [
-                0.09882440000365023,
-                0.09894789999816567,
-                0.09331270000257064,
-                0.09745380000094883,
-                0.09898640000028536,
-                0.0958387999999104,
-                0.09683760000189068,
-                0.09116350000113016,
-                0.09415920000174083,
-                0.0969831999973394
+                0.09501949999685166,
+                0.09798120000050403,
+                0.09533999999985099,
+                0.09554880000359844,
+                0.0960071000008611,
+                0.09663919999729842,
+                0.09442629999830388,
+                0.09705799999937881,
+                0.09723639999720035,
+                0.09798489999957383
               ],
               "target_p95_seconds": 2.0,
               "target_passed": true
@@ -703,21 +777,21 @@
               "timed": false
             },
             "worker": {
-              "max_seconds": 0.6268070000005537,
+              "max_seconds": 0.6165435000002617,
               "mode": "cold_process_png_analysis_derived_write",
-              "p50_seconds": 0.5983426499988127,
-              "p95_seconds": 0.6247158499998477,
+              "p50_seconds": 0.5932948499976192,
+              "p95_seconds": 0.6122911799993744,
               "runs_seconds": [
-                0.5775021000008564,
-                0.6221599999989849,
-                0.5988906999991741,
-                0.5992350999949849,
-                0.567406200003461,
-                0.5878771999996388,
-                0.6069497999997111,
-                0.6268070000005537,
-                0.595447100000456,
-                0.5977945999984513
+                0.5865038999982062,
+                0.5940246999962255,
+                0.5858671000023605,
+                0.5995414999997593,
+                0.5925649999990128,
+                0.5689667000042391,
+                0.5806930999970064,
+                0.5985681999954977,
+                0.60709389999829,
+                0.6165435000002617
               ],
               "target_p95_seconds": 5.0,
               "target_passed": true
@@ -732,203 +806,571 @@
       "result": {
         "absolute_physical_accuracy_claim": false,
         "behavioral_evidence_only": true,
+        "bounded_limitations": [
+          {
+            "acceptance": "requires_explicit_human_acceptance_or_rejection",
+            "affected_fixtures": "all",
+            "classification": "bounded_limitation",
+            "code": "independent_physical_ground_truth_absent",
+            "consequence": "Evidence is behavioral_evidence_only and cannot establish absolute size accuracy."
+          },
+          {
+            "acceptance": "requires_explicit_human_acceptance_or_rejection",
+            "affected_fixtures": [
+              "20251016/1.png",
+              "20251016/2.png",
+              "20251016/3.png",
+              "20260607/1-7.png",
+              "20260607/2-7\u53f3\u4e0b.png"
+            ],
+            "classification": "bounded_limitation",
+            "code": "historical_acquisition_metadata_unrecoverable",
+            "consequence": "These fixtures support decode, identity, repeatability, status, and reason-code evidence, but not acquisition-condition conclusions.",
+            "unknown_fields": [
+              "instrument",
+              "acquired_at",
+              "metadata_version"
+            ]
+          },
+          {
+            "acceptance": "requires_explicit_human_acceptance_or_rejection",
+            "affected_fixtures": [
+              "20260901/1.PNG"
+            ],
+            "classification": "bounded_limitation",
+            "code": "rgb_acquisition_timezone_unknown",
+            "consequence": "The embedded local creation time is retained without inventing a UTC offset; this RGB display asset is excluded from grayscale measurement regression.",
+            "unknown_fields": [
+              "acquired_at_timezone"
+            ]
+          },
+          {
+            "acceptance": "requires_explicit_human_acceptance_or_rejection",
+            "affected_fixtures": "all",
+            "classification": "bounded_limitation",
+            "code": "png_color_management_matrix_absent",
+            "consequence": "The fixtures verify metadata absence handling, not behavior across PNG color-management combinations.",
+            "observed": "No representative fixture contains gAMA, sRGB, or iCCP metadata."
+          },
+          {
+            "acceptance": "requires_explicit_human_acceptance_or_rejection",
+            "affected_fixtures": "all",
+            "classification": "bounded_limitation",
+            "code": "acquisition_condition_matrix_absent",
+            "consequence": "No controlled real-fixture matrix varies exposure, gain, temperature, optical path, focal length, or acquisition batch while holding physical truth constant."
+          }
+        ],
+        "evidence_scope": {
+          "excluded_claims": [
+            "absolute_physical_accuracy",
+            "independent_physical_ground_truth",
+            "complete_png_color_management_coverage",
+            "complete_acquisition_condition_coverage"
+          ],
+          "supported_claims": [
+            "png_decode_behavior",
+            "source_asset_identity",
+            "source_snapshot_record",
+            "sha256_identity",
+            "analysis_repeatability",
+            "summary_status",
+            "reason_codes",
+            "input_metadata_capture"
+          ]
+        },
         "fixture_count": 6,
         "fixtures": [
           {
             "actual_sha256": "096d4ae25dacf44f68b7957ec2c667fa72c9bfbca39e50326fcdfeb59ef71fef",
+            "analysis_fingerprint": "sha256-690644ae7a994a13a0bb9e4ba7abfe12213f22316505f790533e2eae02e036bf",
+            "analysis_reason_codes": [
+              "possible_saturation",
+              "ring_candidate"
+            ],
             "behavioral_evidence_only": true,
+            "behavioral_validation": "passed",
             "channels": 1,
             "channels_identical": false,
+            "color_management": {
+              "gamma": null,
+              "icc_profile_present": false,
+              "metadata_present": false,
+              "srgb": null
+            },
             "flow_status": "computed",
+            "forbidden_reason_codes": [
+              "multiple_peaks",
+              "no_positive_signal",
+              "saturated_core"
+            ],
+            "forbidden_reason_codes_passed": true,
+            "input_metadata": {
+              "asset_id": "input-096d4ae25dacf44f",
+              "background_frame": null,
+              "background_match_unverified_requested": false,
+              "bit_depth": 8,
+              "byte_order": null,
+              "channels": 1,
+              "channels_identical": false,
+              "dtype": "uint8",
+              "encoding_semantic": "relative_intensity_code",
+              "encoding_semantic_confirmed": true,
+              "metadata": "{'format': 'PNG', 'mode': 'L', 'info_keys': (), 'gamma': None, 'srgb': None, 'icc_profile_present': False, 'png_bit_depth': 8}",
+              "read_status": "read",
+              "sha256": "096d4ae25dacf44f68b7957ec2c667fa72c9bfbca39e50326fcdfeb59ef71fef",
+              "uri_hint": "file:///D:/Files/CLAPA2/Spot/20251016/1.png"
+            },
             "input_semantics_confirmed": true,
             "kind": "gray_input",
             "manifest_metadata": {
               "acquisition": {
-                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "metadata_version": "fixture-metadata-v1"
+                "acquired_at": null,
+                "evidence_status": "unrecoverable_from_checked_sources",
+                "instrument": null,
+                "metadata_version": null
               },
               "input_semantics": "relative_intensity_code",
               "provenance": {
                 "source_asset": "Spot/20251016/1.png",
-                "source_snapshot": "spot-inputs-2026-09-10"
+                "source_snapshot": {
+                  "id": "spot-inputs-2026-09-10",
+                  "identity_basis": "relative_path_and_sha256",
+                  "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902"
+                }
               }
             },
+            "metadata_issues": [
+              "acquisition_instrument_unknown",
+              "acquisition_acquired_at_unknown",
+              "acquisition_metadata_version_unknown"
+            ],
             "metadata_recorded": true,
             "metadata_validation": "incomplete",
             "passed": false,
             "path": "D:\\Files\\CLAPA2\\Spot\\20251016\\1.png",
             "reason_codes": [
-              "acquisition_metadata_placeholder"
+              "acquisition_acquired_at_unknown",
+              "acquisition_instrument_unknown",
+              "acquisition_metadata_version_unknown",
+              "possible_saturation",
+              "ring_candidate"
             ],
             "relative_path": "20251016/1.png",
-            "repeatability_passed": false,
+            "repeatability_differences": [],
+            "repeatability_passed": true,
+            "required_reason_codes": [
+              "possible_saturation",
+              "ring_candidate"
+            ],
+            "required_reason_codes_passed": true,
             "sha256": "096d4ae25dacf44f68b7957ec2c667fa72c9bfbca39e50326fcdfeb59ef71fef",
-            "status": "incomplete"
+            "status": "incomplete",
+            "status_expectation_passed": true,
+            "summary_status": "caution"
           },
           {
             "actual_sha256": "5f3f10771c9990018d8437ac6a91e18b96fd4677ffdf1916b6a98b03e1cd83da",
+            "analysis_fingerprint": "sha256-276e6667d0c07593584197504b3a424650c686594392ee617aa1dfc77ed0e434",
+            "analysis_reason_codes": [
+              "no_positive_signal"
+            ],
             "behavioral_evidence_only": true,
+            "behavioral_validation": "passed",
             "channels": 1,
             "channels_identical": false,
+            "color_management": {
+              "gamma": null,
+              "icc_profile_present": false,
+              "metadata_present": false,
+              "srgb": null
+            },
             "flow_status": "computed",
+            "forbidden_reason_codes": [
+              "saturated_core"
+            ],
+            "forbidden_reason_codes_passed": true,
+            "input_metadata": {
+              "asset_id": "input-5f3f10771c999001",
+              "background_frame": null,
+              "background_match_unverified_requested": false,
+              "bit_depth": 8,
+              "byte_order": null,
+              "channels": 1,
+              "channels_identical": false,
+              "dtype": "uint8",
+              "encoding_semantic": "relative_intensity_code",
+              "encoding_semantic_confirmed": true,
+              "metadata": "{'format': 'PNG', 'mode': 'L', 'info_keys': (), 'gamma': None, 'srgb': None, 'icc_profile_present': False, 'png_bit_depth': 8}",
+              "read_status": "read",
+              "sha256": "5f3f10771c9990018d8437ac6a91e18b96fd4677ffdf1916b6a98b03e1cd83da",
+              "uri_hint": "file:///D:/Files/CLAPA2/Spot/20251016/2.png"
+            },
             "input_semantics_confirmed": true,
             "kind": "blank_gray_input",
             "manifest_metadata": {
               "acquisition": {
-                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "metadata_version": "fixture-metadata-v1"
+                "acquired_at": null,
+                "evidence_status": "unrecoverable_from_checked_sources",
+                "instrument": null,
+                "metadata_version": null
               },
               "input_semantics": "relative_intensity_code",
               "provenance": {
                 "source_asset": "Spot/20251016/2.png",
-                "source_snapshot": "spot-inputs-2026-09-10"
+                "source_snapshot": {
+                  "id": "spot-inputs-2026-09-10",
+                  "identity_basis": "relative_path_and_sha256",
+                  "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902"
+                }
               }
             },
+            "metadata_issues": [
+              "acquisition_instrument_unknown",
+              "acquisition_acquired_at_unknown",
+              "acquisition_metadata_version_unknown"
+            ],
             "metadata_recorded": true,
             "metadata_validation": "incomplete",
             "passed": false,
             "path": "D:\\Files\\CLAPA2\\Spot\\20251016\\2.png",
             "reason_codes": [
-              "acquisition_metadata_placeholder"
+              "acquisition_acquired_at_unknown",
+              "acquisition_instrument_unknown",
+              "acquisition_metadata_version_unknown",
+              "no_positive_signal"
             ],
             "relative_path": "20251016/2.png",
-            "repeatability_passed": false,
+            "repeatability_differences": [],
+            "repeatability_passed": true,
+            "required_reason_codes": [
+              "no_positive_signal"
+            ],
+            "required_reason_codes_passed": true,
             "sha256": "5f3f10771c9990018d8437ac6a91e18b96fd4677ffdf1916b6a98b03e1cd83da",
-            "status": "incomplete"
+            "status": "incomplete",
+            "status_expectation_passed": true,
+            "summary_status": "invalid"
           },
           {
             "actual_sha256": "6b5623cdd5edece19e48e7765f42a1b96c0af9f7c7dd206e7a062d7514ba1722",
+            "analysis_fingerprint": "sha256-4129987ac138a5df817ba2d231dd7c6f78bfdf96beef3148efbf034ccaf9dada",
+            "analysis_reason_codes": [
+              "multiple_peaks",
+              "possible_saturation"
+            ],
             "behavioral_evidence_only": true,
+            "behavioral_validation": "passed",
             "channels": 1,
             "channels_identical": false,
+            "color_management": {
+              "gamma": null,
+              "icc_profile_present": false,
+              "metadata_present": false,
+              "srgb": null
+            },
             "flow_status": "computed",
+            "forbidden_reason_codes": [
+              "no_positive_signal",
+              "saturated_core"
+            ],
+            "forbidden_reason_codes_passed": true,
+            "input_metadata": {
+              "asset_id": "input-6b5623cdd5edece1",
+              "background_frame": null,
+              "background_match_unverified_requested": false,
+              "bit_depth": 8,
+              "byte_order": null,
+              "channels": 1,
+              "channels_identical": false,
+              "dtype": "uint8",
+              "encoding_semantic": "relative_intensity_code",
+              "encoding_semantic_confirmed": true,
+              "metadata": "{'format': 'PNG', 'mode': 'L', 'info_keys': (), 'gamma': None, 'srgb': None, 'icc_profile_present': False, 'png_bit_depth': 8}",
+              "read_status": "read",
+              "sha256": "6b5623cdd5edece19e48e7765f42a1b96c0af9f7c7dd206e7a062d7514ba1722",
+              "uri_hint": "file:///D:/Files/CLAPA2/Spot/20251016/3.png"
+            },
             "input_semantics_confirmed": true,
             "kind": "gray_input",
             "manifest_metadata": {
               "acquisition": {
-                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "metadata_version": "fixture-metadata-v1"
+                "acquired_at": null,
+                "evidence_status": "unrecoverable_from_checked_sources",
+                "instrument": null,
+                "metadata_version": null
               },
               "input_semantics": "relative_intensity_code",
               "provenance": {
                 "source_asset": "Spot/20251016/3.png",
-                "source_snapshot": "spot-inputs-2026-09-10"
+                "source_snapshot": {
+                  "id": "spot-inputs-2026-09-10",
+                  "identity_basis": "relative_path_and_sha256",
+                  "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902"
+                }
               }
             },
+            "metadata_issues": [
+              "acquisition_instrument_unknown",
+              "acquisition_acquired_at_unknown",
+              "acquisition_metadata_version_unknown"
+            ],
             "metadata_recorded": true,
             "metadata_validation": "incomplete",
             "passed": false,
             "path": "D:\\Files\\CLAPA2\\Spot\\20251016\\3.png",
             "reason_codes": [
-              "acquisition_metadata_placeholder"
+              "acquisition_acquired_at_unknown",
+              "acquisition_instrument_unknown",
+              "acquisition_metadata_version_unknown",
+              "multiple_peaks",
+              "possible_saturation"
             ],
             "relative_path": "20251016/3.png",
-            "repeatability_passed": false,
+            "repeatability_differences": [],
+            "repeatability_passed": true,
+            "required_reason_codes": [
+              "multiple_peaks",
+              "possible_saturation"
+            ],
+            "required_reason_codes_passed": true,
             "sha256": "6b5623cdd5edece19e48e7765f42a1b96c0af9f7c7dd206e7a062d7514ba1722",
-            "status": "incomplete"
+            "status": "incomplete",
+            "status_expectation_passed": true,
+            "summary_status": "caution"
           },
           {
             "actual_sha256": "56f2aacf76f7b0f78e6b5108fef0bed8490657246b2d1bf8c345a7807f7dc268",
+            "analysis_fingerprint": "sha256-f942a9d5b557d4d88ae0f977a05638098ec29c1dbf14071b291bdf0277b4911f",
+            "analysis_reason_codes": [
+              "multiple_peaks",
+              "possible_saturation"
+            ],
             "behavioral_evidence_only": true,
+            "behavioral_validation": "passed",
             "channels": 1,
             "channels_identical": false,
+            "color_management": {
+              "gamma": null,
+              "icc_profile_present": false,
+              "metadata_present": false,
+              "srgb": null
+            },
             "flow_status": "computed",
+            "forbidden_reason_codes": [
+              "no_positive_signal",
+              "saturated_core"
+            ],
+            "forbidden_reason_codes_passed": true,
+            "input_metadata": {
+              "asset_id": "input-56f2aacf76f7b0f7",
+              "background_frame": null,
+              "background_match_unverified_requested": false,
+              "bit_depth": 8,
+              "byte_order": null,
+              "channels": 1,
+              "channels_identical": false,
+              "dtype": "uint8",
+              "encoding_semantic": "relative_intensity_code",
+              "encoding_semantic_confirmed": true,
+              "metadata": "{'format': 'PNG', 'mode': 'L', 'info_keys': (), 'gamma': None, 'srgb': None, 'icc_profile_present': False, 'png_bit_depth': 8}",
+              "read_status": "read",
+              "sha256": "56f2aacf76f7b0f78e6b5108fef0bed8490657246b2d1bf8c345a7807f7dc268",
+              "uri_hint": "file:///D:/Files/CLAPA2/Spot/20260607/1-7.png"
+            },
             "input_semantics_confirmed": true,
             "kind": "gray_input",
             "manifest_metadata": {
               "acquisition": {
-                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "metadata_version": "fixture-metadata-v1"
+                "acquired_at": null,
+                "evidence_status": "unrecoverable_from_checked_sources",
+                "instrument": null,
+                "metadata_version": null
               },
               "input_semantics": "relative_intensity_code",
               "provenance": {
                 "source_asset": "Spot/20260607/1-7.png",
-                "source_snapshot": "spot-inputs-2026-09-10"
+                "source_snapshot": {
+                  "id": "spot-inputs-2026-09-10",
+                  "identity_basis": "relative_path_and_sha256",
+                  "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902"
+                }
               }
             },
+            "metadata_issues": [
+              "acquisition_instrument_unknown",
+              "acquisition_acquired_at_unknown",
+              "acquisition_metadata_version_unknown"
+            ],
             "metadata_recorded": true,
             "metadata_validation": "incomplete",
             "passed": false,
             "path": "D:\\Files\\CLAPA2\\Spot\\20260607\\1-7.png",
             "reason_codes": [
-              "acquisition_metadata_placeholder"
+              "acquisition_acquired_at_unknown",
+              "acquisition_instrument_unknown",
+              "acquisition_metadata_version_unknown",
+              "multiple_peaks",
+              "possible_saturation"
             ],
             "relative_path": "20260607/1-7.png",
-            "repeatability_passed": false,
+            "repeatability_differences": [],
+            "repeatability_passed": true,
+            "required_reason_codes": [
+              "multiple_peaks",
+              "possible_saturation"
+            ],
+            "required_reason_codes_passed": true,
             "sha256": "56f2aacf76f7b0f78e6b5108fef0bed8490657246b2d1bf8c345a7807f7dc268",
-            "status": "incomplete"
+            "status": "incomplete",
+            "status_expectation_passed": true,
+            "summary_status": "invalid"
           },
           {
             "actual_sha256": "39e5f52f8287ce8bb0e447ae35573922749c87c95766b39eab7dea3416ef15c1",
+            "analysis_fingerprint": "sha256-1e48a27dd0a8f605352ea601a833eda11f9428d7dc958975802c6d79ec72e1a3",
+            "analysis_reason_codes": [
+              "multiple_peaks",
+              "possible_saturation"
+            ],
             "behavioral_evidence_only": true,
+            "behavioral_validation": "passed",
             "channels": 1,
             "channels_identical": false,
+            "color_management": {
+              "gamma": null,
+              "icc_profile_present": false,
+              "metadata_present": false,
+              "srgb": null
+            },
             "flow_status": "computed",
+            "forbidden_reason_codes": [
+              "no_positive_signal",
+              "saturated_core"
+            ],
+            "forbidden_reason_codes_passed": true,
+            "input_metadata": {
+              "asset_id": "input-39e5f52f8287ce8b",
+              "background_frame": null,
+              "background_match_unverified_requested": false,
+              "bit_depth": 8,
+              "byte_order": null,
+              "channels": 1,
+              "channels_identical": false,
+              "dtype": "uint8",
+              "encoding_semantic": "relative_intensity_code",
+              "encoding_semantic_confirmed": true,
+              "metadata": "{'format': 'PNG', 'mode': 'L', 'info_keys': (), 'gamma': None, 'srgb': None, 'icc_profile_present': False, 'png_bit_depth': 8}",
+              "read_status": "read",
+              "sha256": "39e5f52f8287ce8bb0e447ae35573922749c87c95766b39eab7dea3416ef15c1",
+              "uri_hint": "file:///D:/Files/CLAPA2/Spot/20260607/2-7%E5%8F%B3%E4%B8%8B.png"
+            },
             "input_semantics_confirmed": true,
             "kind": "gray_input",
             "manifest_metadata": {
               "acquisition": {
-                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "metadata_version": "fixture-metadata-v1"
+                "acquired_at": null,
+                "evidence_status": "unrecoverable_from_checked_sources",
+                "instrument": null,
+                "metadata_version": null
               },
               "input_semantics": "relative_intensity_code",
               "provenance": {
                 "source_asset": "Spot/20260607/2-7\u53f3\u4e0b.png",
-                "source_snapshot": "spot-inputs-2026-09-10"
+                "source_snapshot": {
+                  "id": "spot-inputs-2026-09-10",
+                  "identity_basis": "relative_path_and_sha256",
+                  "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902"
+                }
               }
             },
+            "metadata_issues": [
+              "acquisition_instrument_unknown",
+              "acquisition_acquired_at_unknown",
+              "acquisition_metadata_version_unknown"
+            ],
             "metadata_recorded": true,
             "metadata_validation": "incomplete",
             "passed": false,
             "path": "D:\\Files\\CLAPA2\\Spot\\20260607\\2-7\u53f3\u4e0b.png",
             "reason_codes": [
-              "acquisition_metadata_placeholder"
+              "acquisition_acquired_at_unknown",
+              "acquisition_instrument_unknown",
+              "acquisition_metadata_version_unknown",
+              "multiple_peaks",
+              "possible_saturation"
             ],
             "relative_path": "20260607/2-7\u53f3\u4e0b.png",
-            "repeatability_passed": false,
+            "repeatability_differences": [],
+            "repeatability_passed": true,
+            "required_reason_codes": [
+              "multiple_peaks",
+              "possible_saturation"
+            ],
+            "required_reason_codes_passed": true,
             "sha256": "39e5f52f8287ce8bb0e447ae35573922749c87c95766b39eab7dea3416ef15c1",
-            "status": "incomplete"
+            "status": "incomplete",
+            "status_expectation_passed": true,
+            "summary_status": "caution"
           },
           {
             "actual_sha256": "5d7f073dde5fe2d1b04617f6907250ddcb4c0a93cf6db7b3109a198abdbf5db4",
             "behavioral_evidence_only": true,
+            "behavioral_validation": "passed",
             "channels": 3,
             "channels_identical": true,
+            "color_management": {
+              "gamma": null,
+              "icc_profile_present": false,
+              "metadata_present": false,
+              "srgb": null
+            },
             "flow_status": "computed",
             "input_semantics_confirmed": true,
             "kind": "rgb_display_excluded",
             "manifest_metadata": {
               "acquisition": {
-                "acquired_at": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "instrument": "\u672a\u8bb0\u5f55\uff08\u5386\u53f2 PNG\uff09",
-                "metadata_version": "fixture-metadata-v1"
+                "acquired_at": "2026-09-01T15:12:31",
+                "acquired_at_timezone": null,
+                "evidence_fields": {
+                  "acquired_at": [
+                    "Creation Time"
+                  ],
+                  "instrument": [
+                    "Description",
+                    "Frame Description"
+                  ],
+                  "metadata_version": [
+                    "Software"
+                  ]
+                },
+                "evidence_status": "recovered_from_embedded_png_text",
+                "instrument": "Aptina AR0880AI (PICAM:0880:00:APTINA)",
+                "metadata_version": "DTLC V1.00"
               },
               "input_semantics": "relative_intensity_code",
               "provenance": {
                 "source_asset": "Spot/20260901/1.PNG",
-                "source_snapshot": "spot-inputs-2026-09-10"
+                "source_snapshot": {
+                  "id": "spot-inputs-2026-09-10",
+                  "identity_basis": "relative_path_and_sha256",
+                  "recorded_in_commit": "51e1750fb90f4937386127643f6e9b5bab7cd902"
+                }
               }
             },
+            "metadata_issues": [],
             "metadata_recorded": true,
-            "metadata_validation": "incomplete",
-            "passed": false,
+            "metadata_validation": "passed",
+            "passed": true,
             "path": "D:\\Files\\CLAPA2\\Spot\\20260901\\1.PNG",
-            "reason_codes": [
-              "acquisition_metadata_placeholder"
-            ],
+            "reason_codes": [],
             "relative_path": "20260901/1.PNG",
             "repeatability_passed": false,
             "sha256": "5d7f073dde5fe2d1b04617f6907250ddcb4c0a93cf6db7b3109a198abdbf5db4",
-            "status": "incomplete"
+            "status": "passed"
           }
         ],
         "manifest_schema": "real-fixture-manifest-v1",
-        "manifest_sha256": "sha256-82121f5ea38a5b07046215b06479f4a40e1b992e1bb49dd48ed4eeeab4e1d6c7",
+        "manifest_sha256": "sha256-feeb5041a73f4932f6e9de3ff6b1263316c04649253fbde4f691f872c5c52ab6",
         "manifest_status": "loaded",
         "manifest_version": "real-fixture-manifest-v1",
         "passed": false,
@@ -963,23 +1405,23 @@
         "exports": [
           {
             "format": "png",
-            "path": "C:\\Users\\16520\\AppData\\Local\\Temp\\spot-report-validation-uh_tldff\\issue-15-png.png",
-            "record_id": "record-240a118a3b114ec5adbea44609f2b8a3",
-            "sha256": "ecfeeb317eac3463705f5aa8442d1411d876f71e427977bd8692044b00898ed8",
+            "path": "C:\\Users\\16520\\AppData\\Local\\Temp\\spot-report-validation-h1u6546h\\issue-15-png.png",
+            "record_id": "record-c8c9e58234b847eb9751074bb5b73438",
+            "sha256": "502a8194a9b269895c62a89d9056668389da818b03adc938ed3332f6159f9a91",
             "status": "exported",
-            "uri": "file:///C:/Users/16520/AppData/Local/Temp/spot-report-validation-uh_tldff/issue-15-png.png"
+            "uri": "file:///C:/Users/16520/AppData/Local/Temp/spot-report-validation-h1u6546h/issue-15-png.png"
           },
           {
             "format": "pdf",
-            "path": "C:\\Users\\16520\\AppData\\Local\\Temp\\spot-report-validation-uh_tldff\\issue-15-pdf.pdf",
-            "record_id": "record-240a118a3b114ec5adbea44609f2b8a3",
-            "sha256": "852aee8976e436ac11ff9c2a24ad30b70ca70f91f916f015a648c0017133b29e",
+            "path": "C:\\Users\\16520\\AppData\\Local\\Temp\\spot-report-validation-h1u6546h\\issue-15-pdf.pdf",
+            "record_id": "record-c8c9e58234b847eb9751074bb5b73438",
+            "sha256": "ff4a7bf215f6fa44fa9ee39a5b77fb155a7a1220f998e1a750cbced621ce08a6",
             "status": "exported",
-            "uri": "file:///C:/Users/16520/AppData/Local/Temp/spot-report-validation-uh_tldff/issue-15-pdf.pdf"
+            "uri": "file:///C:/Users/16520/AppData/Local/Temp/spot-report-validation-h1u6546h/issue-15-pdf.pdf"
           }
         ],
         "passed": true,
-        "record_id": "record-240a118a3b114ec5adbea44609f2b8a3",
+        "record_id": "record-c8c9e58234b847eb9751074bb5b73438",
         "status": "passed"
       },
       "status": "passed"

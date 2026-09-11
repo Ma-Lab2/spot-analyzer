@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import spot_analyzer.validation as validation
 
@@ -83,6 +84,43 @@ def test_complete_validation_persists_machine_and_human_materials(tmp_path, monk
     assert "Accept current bounded results" in text
     assert "Request specification changes" in text
     assert "user acceptance" in text
+
+
+def test_formal_artifacts_record_explicit_bounded_results_acceptance():
+    repository = Path(__file__).resolve().parents[1]
+    result = json.loads(
+        (repository / "docs/validation/issue-10-formal-results.json").read_text(
+            encoding="utf-8-sig"
+        )
+    )
+    text = (
+        repository / "docs/validation/issue-10-formal-acceptance.md"
+    ).read_text(encoding="utf-8")
+
+    acceptance = result["acceptance"]
+    limitation_codes = {
+        item["code"] for item in acceptance["bounded_limitations"]
+    }
+    assert result["overall_status"] == "incomplete"
+    assert result["sections"]["real_fixtures"]["status"] == "incomplete"
+    assert acceptance["validation_complete"] is False
+    assert acceptance["user_acceptance"] == "accepted_current_bounded_results"
+    assert acceptance["bounded_results_accepted"] is True
+    assert acceptance["human_decision_required"] is False
+    assert acceptance["issue_10_completion_condition_met"] is True
+    assert acceptance["decision"] == {
+        "acceptance_candidate_commit": "d8f27a14e8a80e8c229f22c24c4e6f088616151c",
+        "date": "2026-09-11",
+        "original_text": "接受",
+        "recorded_interpretation": "accept_current_bounded_results",
+    }
+    assert set(acceptance["accepted_bounded_limitation_codes"]) == limitation_codes
+    assert len(limitation_codes) == 5
+    assert acceptance["production_release"] == "out_of_scope"
+    assert result["identity"]["profile_validation"] == "provisional"
+    assert "the user stated exactly: `接受`" in text
+    assert "does not convert the real-fixture evidence" in text
+    assert "Production release remains out of scope" in text
 
 
 def test_acceptance_materials_use_renderable_newlines():
