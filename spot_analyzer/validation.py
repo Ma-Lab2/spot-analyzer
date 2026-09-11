@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import math
+import os
 from pathlib import Path
 import platform
 import re
@@ -372,6 +373,7 @@ def _validation_environment() -> dict[str, Any]:
         "platform": platform.platform(),
         "machine": platform.machine(),
         "processor": platform.processor(),
+        "logical_cpu_count": os.cpu_count(),
         "numpy": np.__version__,
         "scipy": _package_version("scipy"),
         "pillow": _package_version("pillow"),
@@ -1234,15 +1236,57 @@ def _percentile95(values: list[float]) -> float:
 
 
 def _memory_snapshot() -> dict[str, Any]:
-    """Return best-effort process memory metadata without adding a dependency."""
+    """Return auditable system and process memory without requiring psutil."""
 
     try:
         import psutil
 
         process = psutil.Process()
-        return {"current_mb": process.memory_info().rss / (1024 * 1024), "source": "psutil"}
+        virtual = psutil.virtual_memory()
+        return {
+            "current_mb": process.memory_info().rss / (1024 * 1024),
+            "total_mb": virtual.total / (1024 * 1024),
+            "available_mb": virtual.available / (1024 * 1024),
+            "source": "psutil",
+        }
     except Exception:
-        return {"current_mb": None, "source": "unavailable"}
+        pass
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            class MemoryStatus(ctypes.Structure):
+                _fields_ = [
+                    ("length", ctypes.c_ulong),
+                    ("memory_load", ctypes.c_ulong),
+                    ("total_physical", ctypes.c_ulonglong),
+                    ("available_physical", ctypes.c_ulonglong),
+                    ("total_page_file", ctypes.c_ulonglong),
+                    ("available_page_file", ctypes.c_ulonglong),
+                    ("total_virtual", ctypes.c_ulonglong),
+                    ("available_virtual", ctypes.c_ulonglong),
+                    ("available_extended_virtual", ctypes.c_ulonglong),
+                ]
+
+            status = MemoryStatus()
+            status.length = ctypes.sizeof(status)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                return {
+                    "current_mb": None,
+                    "total_mb": status.total_physical / (1024 * 1024),
+                    "available_mb": status.available_physical / (1024 * 1024),
+                    "source": "windows_global_memory_status_ex",
+                }
+        except Exception:
+            pass
+
+    return {
+        "current_mb": None,
+        "total_mb": None,
+        "available_mb": None,
+        "source": "unavailable",
+    }
 
 
 def _performance_environment() -> dict[str, Any]:

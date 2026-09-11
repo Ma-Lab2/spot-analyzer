@@ -14,8 +14,8 @@
 - `low_snr`: `passed`
 - `real_fixtures`: `incomplete`
 - `report`: `passed`
-- `identity`: `incomplete`
-- `performance`: `incomplete`
+- `identity`: `passed`
+- `performance`: `passed`
 
 ## Interpretation
 
@@ -27,8 +27,6 @@
 ## Bounded limitations
 
 - Required evidence is incomplete for `real_fixtures`.
-- Required evidence is incomplete for `identity`.
-- Required evidence is incomplete for `performance`.
 
 ## Recommendation to parent Issue #10
 

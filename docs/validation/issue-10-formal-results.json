@@ -1,9 +1,7 @@
 {
   "acceptance": {
     "bounded_limitations": [
-      "real_fixtures",
-      "identity",
-      "performance"
+      "real_fixtures"
     ],
     "calculation_success": true,
     "implementation_complete": true,
@@ -18,12 +16,13 @@
   },
   "contract": "validation-contract-v1",
   "environment": {
+    "logical_cpu_count": 24,
     "machine": "AMD64",
     "numpy": "2.2.6",
     "pillow": "12.2.0",
-    "platform": "Windows-10-10.0.26200-SP0",
+    "platform": "Windows-11-10.0.26200-SP0",
     "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
-    "python": "3.10.11",
+    "python": "3.12.14",
     "python_implementation": "CPython",
     "scipy": "1.15.3",
     "spot_analyzer": "0.1.0"
@@ -37,9 +36,7 @@
     "validation_contract": "validation-contract-v1"
   },
   "incomplete_items": [
-    "real_fixtures",
-    "identity",
-    "performance"
+    "real_fixtures"
   ],
   "issue": 10,
   "overall_status": "incomplete",
@@ -50,15 +47,14 @@
         "golden_vectors": {
           "canonicalizer_version": "rfc8785-python-0.1.4",
           "failures": [],
-          "incomplete_reason": "formal_validation_requires_python_3_12",
           "name": "identity",
-          "python": "3.10.11",
-          "status": "incomplete",
+          "python": "3.12.14",
+          "status": "passed",
           "vector_count": 3
         },
-        "incomplete_reason": "formal_identity_validation_requires_python_3_12",
-        "passed": false,
-        "status": "incomplete",
+        "incomplete_reason": null,
+        "passed": true,
+        "status": "passed",
         "worker_parity": {
           "analysis_fingerprint": "sha256-9fb20048c133d0c07e53a463b5071efc6692375d5babf6879a814f0ede463388",
           "checks": {
@@ -71,7 +67,7 @@
           "status": "passed"
         }
       },
-      "status": "incomplete"
+      "status": "passed"
     },
     "low_snr": {
       "name": "low_snr",
@@ -580,23 +576,26 @@
             "pillow": true,
             "scipy": true
           },
-          "formal_environment": false,
-          "formal_python": false,
+          "formal_environment": true,
+          "formal_python": true,
+          "logical_cpu_count": 24,
           "machine": "AMD64",
           "memory": {
-            "current_mb": 80.05078125,
-            "source": "psutil"
+            "available_mb": 9759.7265625,
+            "current_mb": null,
+            "source": "windows_global_memory_status_ex",
+            "total_mb": 32222.125
           },
           "numpy": "2.2.6",
           "pillow": "12.2.0",
-          "platform": "Windows-10-10.0.26200-SP0",
+          "platform": "Windows-11-10.0.26200-SP0",
           "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
-          "python": "3.10.11",
+          "python": "3.12.14",
           "python_implementation": "CPython",
           "scipy": "1.15.3",
           "spot_analyzer": "0.1.0"
         },
-        "formal_status": "incomplete",
+        "formal_status": "passed",
         "formal_workload": true,
         "formal_workload_contract": {
           "requested_repetitions": 10,
@@ -611,26 +610,26 @@
           ],
           "violations": []
         },
-        "incomplete_reason": "formal performance evidence requires Python 3.12 and locked dependencies",
-        "passed": false,
+        "incomplete_reason": null,
+        "passed": true,
         "workloads": [
           {
             "core": {
-              "max_seconds": 0.038941699999668344,
+              "max_seconds": 0.04104110000480432,
               "mode": "hot_analyze",
-              "p50_seconds": 0.03474695000022621,
-              "p95_seconds": 0.038267104999749786,
+              "p50_seconds": 0.03220040000087465,
+              "p95_seconds": 0.03848541500301507,
               "runs_seconds": [
-                0.03411770000002434,
-                0.03472440000041388,
-                0.03329369999937626,
-                0.037442599999849335,
-                0.038941699999668344,
-                0.03506169999945996,
-                0.034769500000038533,
-                0.03397309999945719,
-                0.032811700000820565,
-                0.03695979999974952
+                0.031071700002939906,
+                0.035361800000828225,
+                0.03182270000252174,
+                0.03355780000129016,
+                0.03157860000646906,
+                0.03257809999922756,
+                0.03266909999365453,
+                0.03025109999725828,
+                0.03036460000294028,
+                0.04104110000480432
               ],
               "target_p95_seconds": null,
               "target_passed": true
@@ -649,21 +648,21 @@
               "timed": false
             },
             "worker": {
-              "max_seconds": 0.4043554999998378,
+              "max_seconds": 0.520710800003144,
               "mode": "cold_process_png_analysis_derived_write",
-              "p50_seconds": 0.37092484999948283,
-              "p95_seconds": 0.39955660999980863,
+              "p50_seconds": 0.4905042999998841,
+              "p95_seconds": 0.5181633500018507,
               "runs_seconds": [
-                0.3691022000002704,
-                0.3697691000006671,
-                0.39369129999977304,
-                0.37672959999963496,
-                0.3705272999995941,
-                0.387462400000004,
-                0.4043554999998378,
-                0.35814050000044517,
-                0.37132239999937156,
-                0.365759799999978
+                0.5003668999997899,
+                0.499071999998705,
+                0.4819366000010632,
+                0.5150498000002699,
+                0.520710800003144,
+                0.48036750000028405,
+                0.4801258000006783,
+                0.46973199999774806,
+                0.5143960999994306,
+                0.47864929999923334
               ],
               "target_p95_seconds": null,
               "target_passed": true
@@ -671,21 +670,21 @@
           },
           {
             "core": {
-              "max_seconds": 0.09956300000067131,
+              "max_seconds": 0.09898640000028536,
               "mode": "hot_analyze",
-              "p50_seconds": 0.09529805000011038,
-              "p95_seconds": 0.09817556000016338,
+              "p50_seconds": 0.09691039999961504,
+              "p95_seconds": 0.0989690749993315,
               "runs_seconds": [
-                0.09546959999988758,
-                0.08978630000001431,
-                0.0910198000001401,
-                0.09956300000067131,
-                0.09366700000009587,
-                0.09611970000059955,
-                0.09617690000050061,
-                0.09647979999954259,
-                0.09419609999986278,
-                0.09512650000033318
+                0.09882440000365023,
+                0.09894789999816567,
+                0.09331270000257064,
+                0.09745380000094883,
+                0.09898640000028536,
+                0.0958387999999104,
+                0.09683760000189068,
+                0.09116350000113016,
+                0.09415920000174083,
+                0.0969831999973394
               ],
               "target_p95_seconds": 2.0,
               "target_passed": true
@@ -704,21 +703,21 @@
               "timed": false
             },
             "worker": {
-              "max_seconds": 0.5180302999997366,
+              "max_seconds": 0.6268070000005537,
               "mode": "cold_process_png_analysis_derived_write",
-              "p50_seconds": 0.4903233,
-              "p95_seconds": 0.5144278249998024,
+              "p50_seconds": 0.5983426499988127,
+              "p95_seconds": 0.6247158499998477,
               "runs_seconds": [
-                0.47303050000027724,
-                0.48004779999973834,
-                0.47759359999963635,
-                0.478117800000291,
-                0.492623399999502,
-                0.5025759999998627,
-                0.5100247999998828,
-                0.49894829999993817,
-                0.5180302999997366,
-                0.48802320000049804
+                0.5775021000008564,
+                0.6221599999989849,
+                0.5988906999991741,
+                0.5992350999949849,
+                0.567406200003461,
+                0.5878771999996388,
+                0.6069497999997111,
+                0.6268070000005537,
+                0.595447100000456,
+                0.5977945999984513
               ],
               "target_p95_seconds": 5.0,
               "target_passed": true
@@ -726,7 +725,7 @@
           }
         ]
       },
-      "status": "incomplete"
+      "status": "passed"
     },
     "real_fixtures": {
       "name": "real_fixtures",
@@ -964,23 +963,23 @@
         "exports": [
           {
             "format": "png",
-            "path": "C:\\Users\\16520\\AppData\\Local\\Temp\\spot-report-validation-a42kvzh2\\issue-15-png.png",
-            "record_id": "record-7326cf74f0e447f88693af4f988e44f2",
-            "sha256": "bd4be81cd7db46959f031f1b6eabbc5e8919d5fe950a9c9c7776d731afec643e",
+            "path": "C:\\Users\\16520\\AppData\\Local\\Temp\\spot-report-validation-uh_tldff\\issue-15-png.png",
+            "record_id": "record-240a118a3b114ec5adbea44609f2b8a3",
+            "sha256": "ecfeeb317eac3463705f5aa8442d1411d876f71e427977bd8692044b00898ed8",
             "status": "exported",
-            "uri": "file:///C:/Users/16520/AppData/Local/Temp/spot-report-validation-a42kvzh2/issue-15-png.png"
+            "uri": "file:///C:/Users/16520/AppData/Local/Temp/spot-report-validation-uh_tldff/issue-15-png.png"
           },
           {
             "format": "pdf",
-            "path": "C:\\Users\\16520\\AppData\\Local\\Temp\\spot-report-validation-a42kvzh2\\issue-15-pdf.pdf",
-            "record_id": "record-7326cf74f0e447f88693af4f988e44f2",
-            "sha256": "920c6c7b6b5facd3258e47333805eb1ff61afc9e07c2cc67937cc6aa7b8322c9",
+            "path": "C:\\Users\\16520\\AppData\\Local\\Temp\\spot-report-validation-uh_tldff\\issue-15-pdf.pdf",
+            "record_id": "record-240a118a3b114ec5adbea44609f2b8a3",
+            "sha256": "852aee8976e436ac11ff9c2a24ad30b70ca70f91f916f015a648c0017133b29e",
             "status": "exported",
-            "uri": "file:///C:/Users/16520/AppData/Local/Temp/spot-report-validation-a42kvzh2/issue-15-pdf.pdf"
+            "uri": "file:///C:/Users/16520/AppData/Local/Temp/spot-report-validation-uh_tldff/issue-15-pdf.pdf"
           }
         ],
         "passed": true,
-        "record_id": "record-7326cf74f0e447f88693af4f988e44f2",
+        "record_id": "record-240a118a3b114ec5adbea44609f2b8a3",
         "status": "passed"
       },
       "status": "passed"

@@ -159,6 +159,12 @@ def test_performance_baseline_reports_structured_workload_and_formal_status() ->
     assert environment["formal_environment"] is (
         environment["formal_python"] and all(environment["formal_dependencies"].values())
     )
+    assert environment["logical_cpu_count"] is None or environment["logical_cpu_count"] > 0
+    memory = environment["memory"]
+    assert set(memory) == {"current_mb", "total_mb", "available_mb", "source"}
+    if memory["source"] != "unavailable":
+        assert memory["total_mb"] > 0
+        assert memory["available_mb"] >= 0
 
 
 def test_nonformal_performance_workload_is_incomplete(monkeypatch) -> None:
