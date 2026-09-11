@@ -27,6 +27,13 @@ reason codes, diagnostics, and derived asset identities. It emits an
 for compatibility with the initial worker smoke tests; it is not the canonical
 real-analysis contract.
 
+The WPF result view renders the worker's returned metric domains, units, validity
+states, and quality reason codes without reinterpreting the measurement. A current
+result can be exported as a JSON report from a user-selected destination. Export
+uses the complete worker result (including record ID, analysis fingerprint,
+configuration, diagnostics, and metrics), reserves a collision-free filename, and
+never writes to the input image.
+
 ## Checks
 
 ```text

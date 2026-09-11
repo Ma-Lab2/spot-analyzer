@@ -49,6 +49,10 @@
         <Button Margin="8,0,0,0" Width="100" Click="CancelAnalysis_Click" Content="Cancel" />
       </StackPanel>
       <TextBlock x:Name="RecordText" Margin="0,8,0,0" TextWrapping="Wrap" />
+      <Button x:Name="ExportResultButton" Margin="0,12,0,0" Width="190" HorizontalAlignment="Left"
+              Click="ExportResult_Click" Content="Export result report" IsEnabled="False" />
+      <TextBlock Margin="0,16,0,4" Text="Measured metrics and validity" />
+      <TextBlock x:Name="MetricsText" Text="No result available" TextWrapping="Wrap" />
     </StackPanel>
   </ScrollViewer>
 </Window>

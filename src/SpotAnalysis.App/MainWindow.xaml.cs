@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text;
+using System.Text.Json;
 using System.Windows;
 using Microsoft.Win32;
 
@@ -10,6 +12,7 @@ public partial class MainWindow : Window
     private PngInputInfo? _selectedInput;
     private bool _configurationConfirmed;
     private bool _hasResult;
+    private WorkerOutcome? _lastOutcome;
     private CancellationTokenSource? _analysisCancellation;
 
     public MainWindow() => InitializeComponent();
@@ -161,8 +164,11 @@ public partial class MainWindow : Window
             {
                 case "success":
                     StatusText.Text = "Completed";
-                    RecordText.Text = $"Input: {_selectedInput?.Summary ?? outcome.InputSummary}\nRecord: {outcome.RecordId}\nFingerprint: {outcome.AnalysisFingerprint}";
+                    _lastOutcome = outcome;
                     _hasResult = true;
+                    RecordText.Text = FormatRecordSummary(outcome);
+                    MetricsText.Text = FormatMetrics(outcome);
+                    ExportResultButton.IsEnabled = true;
                     break;
                 case "cancelled":
                     StatusText.Text = "Cancelled";
@@ -175,6 +181,8 @@ public partial class MainWindow : Window
                 default:
                     StatusText.Text = $"Failed ({outcome.FailureCode ?? "worker_failure"}): {outcome.ErrorMessage}";
                     RecordText.Text = StatusText.Text;
+                    MetricsText.Text = FormatDiagnostics(outcome);
+                    ExportResultButton.IsEnabled = false;
                     break;
             }
         }
@@ -233,13 +241,133 @@ public partial class MainWindow : Window
         MarkResultStale();
     }
 
+    private string FormatRecordSummary(WorkerOutcome outcome)
+    {
+        if (outcome.Result is not JsonElement terminal || !terminal.TryGetProperty("record", out var record)
+            || record.ValueKind != JsonValueKind.Object)
+            return $"Input: {_selectedInput?.Summary ?? outcome.InputSummary}\nRecord: {outcome.RecordId}\nFingerprint: {outcome.AnalysisFingerprint}";
+
+        var input = record.TryGetProperty("input", out var inputNode) ? inputNode : default;
+        var inputIdentity = input.ValueKind == JsonValueKind.Object
+            ? $"{GetString(input, "asset_id") ?? "unknown"}, SHA-256 {GetString(input, "sha256") ?? "unknown"}"
+            : _selectedInput?.Summary ?? outcome.InputSummary ?? "unknown";
+        var flowStatus = GetString(record, "flow_status") ?? "unknown";
+        var summaryStatus = GetString(record, "summary_status") ?? "unknown";
+        var configuration = record.TryGetProperty("configuration", out var configurationNode) ? configurationNode : default;
+        var region = configuration.ValueKind == JsonValueKind.Object && configuration.TryGetProperty("region", out var regionNode)
+            ? $"({GetNumber(regionNode, "x")}, {GetNumber(regionNode, "y")}, {GetNumber(regionNode, "width")}, {GetNumber(regionNode, "height")})"
+            : "unknown";
+        var calibration = configuration.ValueKind == JsonValueKind.Object && configuration.TryGetProperty("calibration", out var calibrationNode)
+            ? $"{GetNumber(calibrationNode, "x_unit_per_pixel")} × {GetNumber(calibrationNode, "y_unit_per_pixel")} {GetString(calibrationNode, "physical_unit") ?? ""} ({GetString(calibrationNode, "confirmation") ?? "missing"})"
+            : "unknown";
+        return $"Input: {inputIdentity}\nRecord: {GetString(record, "record_id") ?? outcome.RecordId}\nFingerprint: {GetString(record, "analysis_fingerprint") ?? outcome.AnalysisFingerprint}\nFlow status: {flowStatus}; measurement validity: {summaryStatus}\nCalibration: {calibration}\nAnalysis region: {region}";
+    }
+
+    private string FormatMetrics(WorkerOutcome outcome)
+    {
+        if (outcome.Result is not JsonElement terminal || !terminal.TryGetProperty("record", out var record)
+            || !record.TryGetProperty("metrics", out var metrics) || metrics.ValueKind != JsonValueKind.Object)
+            return FormatDiagnostics(outcome);
+
+        var lines = new StringBuilder();
+        foreach (var metric in metrics.EnumerateObject())
+        {
+            if (metric.Value.TryGetProperty("domains", out var domains) && domains.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var domain in domains.EnumerateObject())
+                    AppendMetric(lines, metric.Name, domain.Name, domain.Value);
+            }
+            else
+            {
+                AppendMetric(lines, metric.Name, "", metric.Value);
+            }
+        }
+        return lines.Length == 0 ? "No metrics returned" : lines.ToString().TrimEnd();
+    }
+
+    private static void AppendMetric(StringBuilder lines, string name, string domain, JsonElement metric)
+    {
+        var value = metric.TryGetProperty("value", out var valueNode) && valueNode.ValueKind != JsonValueKind.Null
+            ? valueNode.ToString()
+            : "N/A";
+        var unit = GetString(metric, "unit") ?? "";
+        var status = GetString(metric, "status") ?? "unknown";
+        var reasons = metric.TryGetProperty("reason_codes", out var reasonNode) && reasonNode.ValueKind == JsonValueKind.Array
+            ? string.Join(", ", reasonNode.EnumerateArray().Select(item => item.ToString()))
+            : "none";
+        var label = string.IsNullOrEmpty(domain) ? name : $"{name} ({domain})";
+        lines.AppendLine($"{label}: {value} {unit}; validity={status}; reasons={reasons}");
+    }
+
+    private static string FormatDiagnostics(WorkerOutcome outcome)
+    {
+        if (outcome.Diagnostics is null || outcome.Diagnostics.Count == 0)
+            return "No metrics returned";
+        return string.Join(Environment.NewLine, outcome.Diagnostics.Select(item =>
+            $"{GetString(item, "code") ?? "diagnostic"}: {GetString(item, "message") ?? item.ToString()}"));
+    }
+
+    private static string? GetString(JsonElement node, string property) =>
+        node.ValueKind == JsonValueKind.Object && node.TryGetProperty(property, out var value)
+            && value.ValueKind != JsonValueKind.Null ? value.ToString() : null;
+
+    private static string GetNumber(JsonElement node, string property) => GetString(node, property) ?? "?";
+
+    private async void ExportResult_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hasResult || _lastOutcome?.Result is not JsonElement result)
+        {
+            StatusText.Text = "No current result is available to export.";
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = "JSON report (*.json)|*.json",
+            DefaultExt = ".json",
+            AddExtension = true,
+            OverwritePrompt = false,
+            FileName = $"spot-analysis-{_lastOutcome.RecordId ?? "result"}.json",
+        };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            var target = ReserveReportPath(dialog.FileName);
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var json = JsonSerializer.Serialize(result, options);
+            var temporary = target + ".tmp-" + Guid.NewGuid().ToString("N");
+            await File.WriteAllTextAsync(temporary, json, Encoding.UTF8);
+            File.Move(temporary, target);
+            StatusText.Text = $"Result exported: {target}";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            StatusText.Text = $"Export failed (report_write_failed): {exception.Message}";
+        }
+    }
+
+    private static string ReserveReportPath(string requestedPath)
+    {
+        var directory = Path.GetDirectoryName(requestedPath) ?? AppContext.BaseDirectory;
+        var stem = Path.GetFileNameWithoutExtension(requestedPath);
+        var extension = Path.GetExtension(requestedPath);
+        var candidate = Path.Combine(directory, stem + extension);
+        for (var index = 2; File.Exists(candidate); index++)
+            candidate = Path.Combine(directory, $"{stem}-{index}{extension}");
+        return candidate;
+    }
+
     private void ConfigurationSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) =>
         ConfigurationChanged(sender, e);
 
     private void MarkResultStale()
     {
-        if (_hasResult)
-            RecordText.Text = "Previous result is stale; run analysis again for the current input and configuration.";
+        if (!_hasResult) return;
+        _hasResult = false;
+        _lastOutcome = null;
+        ExportResultButton.IsEnabled = false;
+        MetricsText.Text = "Previous result is stale; run analysis again for the current input and configuration.";
+        RecordText.Text = MetricsText.Text;
     }
 }
 
