@@ -68,11 +68,11 @@ $pythonArchitecture = Invoke-PythonCheck "import struct; print(struct.calcsize('
 if ($pythonArchitecture -ne "64") {
     throw "A 64-bit Python interpreter is required; found ${pythonArchitecture}-bit."
 }
-$pyInstallerCheck = Invoke-PythonCheck "import PyInstaller; print(PyInstaller.__version__)" "PyInstaller 6.14.2 is required. Install the locked build dependency."
-if ($pyInstallerCheck -ne $identity.pyinstaller_version) {
-    throw "PyInstaller version mismatch: installed $pyInstallerCheck, identity requires $($identity.pyinstaller_version)."
+$pyInstallerVersion = Invoke-PythonCheck "import PyInstaller; print(PyInstaller.__version__)" "PyInstaller 6.14.2 is required. Install the locked build dependency."
+if ($pyInstallerVersion -ne $identity.pyinstaller_version) {
+    throw "PyInstaller version mismatch: installed $pyInstallerVersion, identity requires $($identity.pyinstaller_version)."
 }
-$dependencyCheck = Invoke-PythonCheck @"
+Invoke-PythonCheck @"
 import importlib.metadata as metadata
 import json
 from pathlib import Path
