@@ -18,8 +18,10 @@ required on the target machine.
    when sharing the image is intended; that option creates a ZIP attachment.
 
 Normal logs are written to `%LOCALAPPDATA%\SpotAnalysis\logs\app.log`.
-Feedback should include the client version, input scenario, steps, expected and
-observed behavior, severity, and the diagnostic package when available.
+For the clean-machine acceptance procedure and the complete feedback template, see
+`ALPHA-TRIAL-ACCEPTANCE.md`. Feedback should include the client version, input
+scenario, steps, expected and observed behavior, severity, package SHA-256, record
+identity, and the diagnostic package when available.
 
 The Alpha exercises provisional `standard-profile-v1` and
 `quality-profile-v1`; it is not a production release and does not claim formal

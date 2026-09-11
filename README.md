@@ -57,6 +57,17 @@ with PyInstaller, adds the versioned profiles, bundled example, quick-start,
 notices, and SHA-256 manifest, and rejects source/test/cache files in the final
 stage. See `packaging/BUILD.md` for the build environment and commands.
 
+## Clean-machine Alpha trial
+
+`packaging/ALPHA-TRIAL-ACCEPTANCE.md` is the acceptance record and manual
+procedure for the Windows 11 x64 clean-machine trial. It records the package
+hash and manifest, preconditions, first-analysis steps, expected outcomes,
+privacy checks, evidence paths, and the feedback template. Its rows intentionally
+start as **NOT RUN**: a developer-machine test must not be presented as evidence
+that the portable client works without Python, the .NET SDK, a compiler, or
+administrator rights. The trial is bounded to this Alpha workflow and does not
+promote provisional profiles or claim formal production validation.
+
 ## Checks
 
 ```text

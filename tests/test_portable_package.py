@@ -71,3 +71,20 @@ def test_bundled_example_is_png_and_readable() -> None:
     assert int.from_bytes(content[20:24], "big") == 64
     assert content[24] == 8
     assert content[25] == 0
+
+
+def test_clean_machine_acceptance_record_preserves_evidence_boundary() -> None:
+    record = (ROOT / "packaging" / "ALPHA-TRIAL-ACCEPTANCE.md").read_text(encoding="utf-8")
+
+    assert "Windows 11 x64" in record
+    assert "spot-analysis-0.1.0-alpha.1-win-x64.zip" in record
+    assert "without Python, .NET SDK" in record
+    assert "**NOT RUN**" in record
+    assert "Package SHA-256" in record
+    assert "diagnostic package" in record
+    assert "formal physical-accuracy validation" in record
+    assert "Severity (blocker, high, medium, low):" in record
+
+    # A template must not accidentally claim that the clean-machine trial passed.
+    assert "clean-machine\nrun is **NOT RUN**" in record
+    assert "Result | Evidence/notes" in record

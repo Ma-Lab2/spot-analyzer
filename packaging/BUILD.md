@@ -30,4 +30,7 @@ ZIP is created.
 
 A clean-machine smoke run remains a separate acceptance step. The build itself
 must run with developer tooling, while the resulting ZIP is intended to start
-without Python, the .NET SDK, a compiler, or administrator rights.
+without Python, the .NET SDK, a compiler, or administrator rights. Follow
+`packaging/ALPHA-TRIAL-ACCEPTANCE.md` and preserve the ZIP hash, manifest, logs,
+exports, and target-machine outcomes. A development-machine build or test must
+not be recorded as clean-machine acceptance evidence.
