@@ -6,6 +6,8 @@ import sys
 import time
 from typing import Any
 
+from png_analysis import InputError, analyze_png
+
 PROTOCOL_VERSION = 1
 
 
@@ -52,31 +54,24 @@ def handle(request: object) -> None:
         }
     )
     payload = request.get("input")
-    if not isinstance(payload, dict) or payload.get("kind") != "synthetic":
-        fail(request_id, "invalid_input", "only synthetic input is supported by the MVP worker")
+    if isinstance(payload, dict) and payload.get("kind") == "synthetic":
+        width = payload.get("width")
+        height = payload.get("height")
+        if not isinstance(width, int) or not isinstance(height, int) or width <= 0 or height <= 0:
+            fail(request_id, "invalid_input", "synthetic width and height must be positive integers")
+            return
+        time.sleep(0.001)
+        send({"protocol_version": PROTOCOL_VERSION, "type": "terminal", "status": "success",
+              "request_id": request_id, "result": {"input_kind": "synthetic", "width": width,
+              "height": height, "pixel_count": width * height}})
         return
-    width = payload.get("width")
-    height = payload.get("height")
-    if not isinstance(width, int) or not isinstance(height, int) or width <= 0 or height <= 0:
-        fail(request_id, "invalid_input", "synthetic width and height must be positive integers")
+    try:
+        record = analyze_png(request)
+    except InputError as exc:
+        fail(request_id, exc.code, str(exc))
         return
-
-    # Keep the smoke path deterministic and intentionally inexpensive.
-    time.sleep(0.001)
-    send(
-        {
-            "protocol_version": PROTOCOL_VERSION,
-            "type": "terminal",
-            "status": "success",
-            "request_id": request_id,
-            "result": {
-                "input_kind": "synthetic",
-                "width": width,
-                "height": height,
-                "pixel_count": width * height,
-            },
-        }
-    )
+    send({"protocol_version": PROTOCOL_VERSION, "type": "terminal", "status": "success",
+          "request_id": request_id, "result": record})
 
 
 def main() -> int:
