@@ -52,33 +52,10 @@ public sealed record AnalysisDraft(
     string CalibrationUnits,
     string CalibrationSource);
 
-public enum DisplayLayer { Input, CorrectedIntensity, PositiveSignal, Fit, Residual, MeasurementMask, CoreMask }
-public enum DisplayColorMode { Grayscale, Pseudocolor }
-public enum DisplayRangeMode { Percentile, Full, Fixed }
-
 /// <summary>Settings that alter rendering only, never analysis identity or staleness.</summary>
-public sealed record DisplaySettings(
-    string ColorMap = "gray",
-    string DisplayRange = "full",
-    double Zoom = 1.0,
-    bool ShowOverlays = true,
-    DisplayLayer Layer = DisplayLayer.Input,
-    DisplayColorMode ColorMode = DisplayColorMode.Grayscale,
-    DisplayRangeMode RangeMode = DisplayRangeMode.Percentile,
-    double FixedMinimum = 0,
-    double FixedMaximum = 1,
-    bool ShowCenter = true,
-    bool ShowRoi = true,
-    bool ShowAxes = true,
-    bool ShowUnits = true,
-    bool ShowLegend = true)
-{
-    public DisplaySettings HideOverlays() => this with
-    {
-        ShowOverlays = false, ShowCenter = false, ShowRoi = false, ShowAxes = false,
-        ShowUnits = false, ShowLegend = false,
-    };
-}
+// The rendering definition lives in DisplayProjection.cs; this alias-compatible
+// shape keeps the presentation model and renderer on one immutable value.
+
 
 public sealed record AnalysisRecordSnapshot(
     string RequestId,

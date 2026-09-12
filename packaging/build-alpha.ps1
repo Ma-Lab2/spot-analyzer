@@ -7,6 +7,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "build-helpers.ps1")
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $identityPath = Join-Path $repoRoot "packaging\build-identity.json"
@@ -142,6 +143,6 @@ $forbidden = Get-ChildItem $stage -Recurse -File | Where-Object {
 if ($forbidden) {
     throw "Portable package contains excluded source/test files: $($forbidden.FullName -join ', ')"
 }
-Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zipPath -CompressionLevel Optimal
+Compress-WithRetry -SourcePath (Join-Path $stage "*") -DestinationPath $zipPath
 Write-Host "Portable Alpha package: $zipPath"
 Write-Host "Staged package directory: $stage"

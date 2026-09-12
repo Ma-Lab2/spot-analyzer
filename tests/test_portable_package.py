@@ -47,8 +47,22 @@ def test_manifest_generator_records_identity_and_hashes(tmp_path: Path) -> None:
     assert "prototype/" in document["source_exclusions"]
 
 
+def test_wpf_application_opens_the_main_window_on_startup() -> None:
+    application = (ROOT / "src" / "SpotAnalysis.App" / "App.xaml").read_text(encoding="utf-8")
+
+    assert 'StartupUri="MainWindow.xaml"' in application
+
+
+def test_configuration_events_wait_for_window_initialization() -> None:
+    window = (ROOT / "src" / "SpotAnalysis.App" / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+
+    assert window.index("InitializeComponent();") < window.index("_configurationReady = true;")
+    assert "if (!_configurationReady)\n            return;" in window
+
+
 def test_portable_build_contract_is_explicit() -> None:
     script = (ROOT / "packaging" / "build-alpha.ps1").read_text(encoding="utf-8")
+    helpers = (ROOT / "packaging" / "build-helpers.ps1").read_text(encoding="utf-8")
     spec = (ROOT / "packaging" / "worker.spec").read_text(encoding="utf-8")
     project = (ROOT / "src" / "SpotAnalysis.App" / "SpotAnalysis.App.csproj").read_text(encoding="utf-8")
 
@@ -59,10 +73,78 @@ def test_portable_build_contract_is_explicit() -> None:
     assert "PyInstaller version mismatch" in script
     assert "dotnet --list-sdks" in script
     assert "Python 3.12" in script
-    assert "Compress-Archive" in script
+    assert "Compress-WithRetry" in script
+    assert "function Compress-WithRetry" in helpers
+    assert "Compress-Archive" in helpers
+    assert "catch [System.IO.IOException]" in helpers
+    assert "Start-Sleep -Milliseconds" in helpers
     assert "COLLECT(" in spec
     assert "hiddenimports=collect_submodules(\"spot_analyzer\")" in spec
     assert "CopyToOutputDirectory" in project
+
+
+def test_compress_with_retry_recovers_from_transient_file_lock(tmp_path: Path) -> None:
+    if sys.platform != "win32":
+        return
+
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    locked_file = stage / "base_library.zip"
+    locked_file.write_bytes(b"nested archive payload")
+    destination = tmp_path / "package.zip"
+    ready = tmp_path / "lock-ready"
+    probe = tmp_path / "compress-retry.ps1"
+    helper = str(ROOT / "packaging" / "build-helpers.ps1").replace("'", "''")
+    probe.write_text(
+        f"""
+. '{helper}'
+$source = '{str(locked_file).replace("'", "''")}'
+$stage = '{str(stage).replace("'", "''")}'
+$destination = '{str(destination).replace("'", "''")}'
+$ready = '{str(ready).replace("'", "''")}'
+$job = Start-Job -ArgumentList $source, $ready -ScriptBlock {{
+    param($sourcePath, $readyPath)
+    $stream = [System.IO.File]::Open(
+        $sourcePath,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::None)
+    [System.IO.File]::WriteAllText($readyPath, 'ready')
+    Start-Sleep -Milliseconds 900
+    $stream.Dispose()
+}}
+$deadline = (Get-Date).AddSeconds(5)
+while (-not (Test-Path $ready)) {{
+    if ((Get-Date) -gt $deadline) {{ throw 'Timed out waiting for file lock.' }}
+    Start-Sleep -Milliseconds 10
+}}
+try {{
+    Compress-WithRetry -SourcePath (Join-Path $stage '*') -DestinationPath $destination
+}}
+finally {{
+    Wait-Job $job | Out-Null
+    Receive-Job $job | Out-Null
+    Remove-Job $job
+}}
+if (-not (Test-Path $destination)) {{ throw 'Compression retry did not create the archive.' }}
+""",
+        encoding="utf-8",
+    )
+
+    subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(probe),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_build_stage_contains_offline_acceptance_procedure() -> None:
