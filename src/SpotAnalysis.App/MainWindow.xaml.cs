@@ -9,6 +9,7 @@ namespace SpotAnalysis.App;
 public partial class MainWindow : Window
 {
     private readonly WorkerClient _workerClient = new();
+    private readonly WorkspacePresentationModel _workspace = new();
     private PngInputInfo? _selectedInput;
     private bool _configurationConfirmed;
     private bool _hasResult;
@@ -144,6 +145,7 @@ public partial class MainWindow : Window
             _lastConfiguration = ReadConfiguration();
             _pendingRequest = BuildRequest(_lastConfiguration);
             _configurationConfirmed = true;
+            _workspace.Confirm(_pendingRequest);
             SummaryText.Text = _pendingRequest.Summary;
             _flowStatus = "configuration_confirmed";
             _failureCode = null;
@@ -171,12 +173,29 @@ public partial class MainWindow : Window
         }
 
         var request = _pendingRequest;
+        var workspaceRequestId = _workspace.Start();
+        if (workspaceRequestId is null)
+        {
+            StatusText.Text = "Confirm a valid pending configuration before running analysis.";
+            return;
+        }
         _inFlightRequest = request;
         UpdateRunAvailability();
-        await RunAnalysisAsync(() => _workerClient.RunAsync(
-            request,
-            _analysisCancellation!.Token,
-            TimeSpan.FromSeconds(30)));
+        await RunAnalysisAsync(async () =>
+        {
+            var outcome = await _workerClient.RunAsync(
+                request,
+                _analysisCancellation!.Token,
+                TimeSpan.FromSeconds(30));
+            WorkspaceWorkerEvent workerEvent = outcome.Status switch
+            {
+                "success" => new WorkspaceWorkerEvent.Completed(workspaceRequestId, outcome),
+                "cancelled" => new WorkspaceWorkerEvent.Cancelled(workspaceRequestId, outcome),
+                _ => new WorkspaceWorkerEvent.Failed(workspaceRequestId, outcome),
+            };
+            _workspace.Apply(workerEvent);
+            return outcome;
+        });
         _inFlightRequest = null;
         RefreshDraftSummary();
         UpdateRunAvailability();
@@ -185,6 +204,7 @@ public partial class MainWindow : Window
     private async void CancelAnalysis_Click(object sender, RoutedEventArgs e)
     {
         _analysisCancellation?.Cancel();
+        _workspace.RequestCancel();
         _flowStatus = "cancelling";
         DiagnosticLog.Write("analysis_cancellation_requested", new { flow_status = _flowStatus });
         StatusText.Text = "Cancelling";
@@ -305,6 +325,7 @@ public partial class MainWindow : Window
         {
             var input = await PngInput.ReadAsync(dialog.FileName);
             _selectedInput = input;
+            _workspace.LoadInput(new WorkspaceInput(input.Path, input.Sha256, input.Width, input.Height, input.BitDepth, input.Summary));
             InputSummaryText.Text = input.Summary;
             InputPreview.Source = input.Preview;
             _configurationConfirmed = false;
@@ -320,6 +341,7 @@ public partial class MainWindow : Window
         catch (InputValidationException exception)
         {
             _selectedInput = null;
+            _workspace.RejectInput(exception.Code, exception.Message);
             _pendingRequest = null;
             _configurationConfirmed = false;
             InputPreview.Source = null;
@@ -540,6 +562,19 @@ public partial class MainWindow : Window
     {
         _configurationConfirmed = false;
         _pendingRequest = null;
+        try
+        {
+            var draft = ReadConfiguration();
+            _workspace.EditDraft(new AnalysisDraft(
+                draft.RegionX, draft.RegionY, draft.RegionWidth, draft.RegionHeight,
+                draft.BackgroundX, draft.BackgroundY, draft.BackgroundWidth, draft.BackgroundHeight,
+                draft.CalibrationStatus, draft.CalibrationX, draft.CalibrationY,
+                draft.CalibrationUnits, draft.CalibrationSource));
+        }
+        catch (ConfigurationValidationException)
+        {
+            _workspace.RejectConfiguration("configuration_changed", "The unsubmitted configuration is not yet valid.");
+        }
         _flowStatus = _hasResult ? "needs_recalculation" : "configuration_changed";
         MarkResultStale();
         if (_inFlightRequest is null)
