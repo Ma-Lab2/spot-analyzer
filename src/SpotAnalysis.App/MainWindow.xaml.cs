@@ -31,7 +31,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _configurationReady = true;
+        _workspace.Changed += (_, _) => UpdateConfigurationAvailability();
         RefreshDraftSummary();
+        UpdateConfigurationAvailability();
         ImageEmptyState.Visibility = Visibility.Visible;
         CurvesEmptyStateText.Text = "No analysis result yet — curves will appear here after a successful run.";
         DiagnosticsText.Text = DiagnosticPackage.BuildAboutText();
@@ -151,8 +153,11 @@ public partial class MainWindow : Window
         {
             _lastConfiguration = ReadConfiguration();
             _pendingRequest = BuildRequest(_lastConfiguration);
+            if (!_workspace.Confirm(_pendingRequest))
+                throw new ConfigurationValidationException(
+                    _workspace.State.FailureCode ?? "configuration_invalid",
+                    _workspace.State.FailureMessage ?? "The configuration snapshot could not be confirmed.");
             _configurationConfirmed = true;
-            _workspace.Confirm(_pendingRequest);
             SummaryText.Text = _pendingRequest.Summary;
             _flowStatus = "configuration_confirmed";
             _failureCode = null;
@@ -200,7 +205,8 @@ public partial class MainWindow : Window
                 "cancelled" => new WorkspaceWorkerEvent.Cancelled(workspaceRequestId, outcome),
                 _ => new WorkspaceWorkerEvent.Failed(workspaceRequestId, outcome),
             };
-            _workspace.Apply(workerEvent);
+            if (!_workspace.Apply(workerEvent))
+                return new WorkerOutcome("failure", "The worker event was rejected because it no longer belongs to the active run.", FailureCode: "worker_event_ignored");
             return outcome;
         });
         _inFlightRequest = null;
@@ -255,31 +261,39 @@ public partial class MainWindow : Window
             switch (outcome.Status)
             {
                 case "success":
-                    StatusText.Text = "Completed";
                     _lastSuccessfulOutcome = outcome;
-                    _hasResult = true;
-                    _resultStale = false;
-                    RecordText.Text = FormatRecordSummary(outcome);
-                    MetricsText.Text = FormatMetrics(outcome);
-                    CurvesEmptyStateText.Text = "Curves are reserved for a subsequent interpretation layer; this result is ready to export.";
-                    ExportResultButton.IsEnabled = true;
+                    _hasResult = _workspace.CurrentRecord is not null;
+                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
+                    if (_resultStale)
+                    {
+                        StatusText.Text = "Completed, but configuration changed during the run; recompute required";
+                        ShowRetainedResult("The completed record belongs to the superseded configuration.");
+                    }
+                    else
+                    {
+                        StatusText.Text = "Completed";
+                        RecordText.Text = FormatRecordSummary(outcome);
+                        MetricsText.Text = FormatMetrics(outcome);
+                        CurvesEmptyStateText.Text = "Curves are reserved for a subsequent interpretation layer; this result is ready to export.";
+                        ExportResultButton.IsEnabled = _workspace.CanExportReport;
+                    }
                     break;
                 case "cancelled":
                     StatusText.Text = "Cancelled";
-                    _resultStale = _lastSuccessfulOutcome is not null;
-                    _hasResult = _lastSuccessfulOutcome is not null;
+                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
+                    _hasResult = _workspace.CurrentRecord is not null;
                     ShowRetainedResult($"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}");
                     break;
                 case "timeout":
                     StatusText.Text = "Timed out";
-                    _resultStale = _lastSuccessfulOutcome is not null;
-                    _hasResult = _lastSuccessfulOutcome is not null;
+                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
+                    _hasResult = _workspace.CurrentRecord is not null;
                     ShowRetainedResult($"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}");
                     break;
                 default:
                     StatusText.Text = $"Failed ({outcome.FailureCode ?? "worker_failure"}): {outcome.ErrorMessage}";
-                    _resultStale = _lastSuccessfulOutcome is not null;
-                    _hasResult = _lastSuccessfulOutcome is not null;
+                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
+                    _hasResult = _workspace.CurrentRecord is not null;
                     ShowRetainedResult(StatusText.Text);
                     break;
             }
@@ -309,8 +323,8 @@ public partial class MainWindow : Window
             _failureDetails = "analysis cancelled";
             DiagnosticLog.Write("analysis_cancelled", new { flow_status = _flowStatus });
             StatusText.Text = "Cancelled";
-            _resultStale = _lastSuccessfulOutcome is not null;
-            _hasResult = _lastSuccessfulOutcome is not null;
+            _resultStale = _workspace.CurrentRecord?.IsStale != false;
+            _hasResult = _workspace.CurrentRecord is not null;
             ShowRetainedResult("Cancelled: analysis did not produce a new record.");
         }
         finally
@@ -322,6 +336,12 @@ public partial class MainWindow : Window
 
     private async void OpenPng_Click(object sender, RoutedEventArgs e)
     {
+        if (_workspace.IsProcessing)
+        {
+            StatusText.Text = "Cancel the active analysis before changing the input.";
+            return;
+        }
+
         var dialog = new OpenFileDialog
         {
             Filter = "PNG files (*.png)|*.png",
@@ -566,7 +586,28 @@ public partial class MainWindow : Window
             && _configurationConfirmed
             && _pendingRequest is not null
             && _pendingRequest.IsValid
-            && _selectedInput is not null;
+            && _selectedInput is not null
+            && _workspace.CanRun;
+
+    private void UpdateConfigurationAvailability()
+    {
+        var enabled = _workspace.CanEditConfiguration;
+        OpenInputButton.IsEnabled = enabled;
+        CalibrationXText.IsEnabled = enabled;
+        CalibrationYText.IsEnabled = enabled;
+        CalibrationUnitsText.IsEnabled = enabled;
+        CalibrationSourceText.IsEnabled = enabled;
+        CalibrationStatus.IsEnabled = enabled;
+        RoiXText.IsEnabled = enabled;
+        RoiYText.IsEnabled = enabled;
+        RoiWidthText.IsEnabled = enabled;
+        RoiHeightText.IsEnabled = enabled;
+        BackgroundXText.IsEnabled = enabled;
+        BackgroundYText.IsEnabled = enabled;
+        BackgroundWidthText.IsEnabled = enabled;
+        BackgroundHeightText.IsEnabled = enabled;
+        ConfirmConfigurationButton.IsEnabled = enabled;
+    }
 
     private void ConfigurationChanged(object sender, RoutedEventArgs e)
     {
@@ -585,7 +626,7 @@ public partial class MainWindow : Window
         }
         catch (ConfigurationValidationException)
         {
-            _workspace.RejectConfiguration("configuration_changed", "The unsubmitted configuration is not yet valid.");
+            _workspace.StageInvalidDraft();
         }
         _flowStatus = _hasResult ? "needs_recalculation" : "configuration_changed";
         MarkResultStale();
@@ -608,7 +649,7 @@ public partial class MainWindow : Window
         var recordLabel = _resultStale ? "Previous result (stale)" : "Previous result";
         RecordText.Text = $"Current run: {currentRunStatus}\n{recordLabel}:\n{FormatRecordSummary(_lastSuccessfulOutcome)}";
         MetricsText.Text = $"Previous result (stale; no new record was produced.)\n{FormatMetrics(_lastSuccessfulOutcome)}";
-        ExportResultButton.IsEnabled = true;
+        ExportResultButton.IsEnabled = _workspace.CanExportReport;
     }
 
     private string FormatRecordSummary(WorkerOutcome outcome)
@@ -685,9 +726,9 @@ public partial class MainWindow : Window
 
     private void ExportResult_Click(object sender, RoutedEventArgs e)
     {
-        if (!_hasResult || _lastOutcome?.Result is not JsonElement result)
+        if (!_hasResult || !_workspace.CanExportReport || _lastSuccessfulOutcome?.Result is not JsonElement result)
         {
-            StatusText.Text = "No current result is available to export.";
+            StatusText.Text = "No current result is available to export; recompute the stale record first.";
             return;
         }
 
