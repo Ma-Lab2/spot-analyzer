@@ -1,7 +1,9 @@
 using System.Globalization;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
 
 namespace SpotAnalysis.App;
@@ -21,12 +23,15 @@ public partial class MainWindow : Window
     private AnalysisRequest? _inFlightRequest;
     private ConfigurationValues? _lastConfiguration;
     private string _flowStatus = "ready";
+    private bool _configurationReady;
     private string? _failureCode;
     private string? _failureDetails;
 
     public MainWindow()
     {
         InitializeComponent();
+        _configurationReady = true;
+        RefreshDraftSummary();
         ImageEmptyState.Visibility = Visibility.Visible;
         CurvesEmptyStateText.Text = "No analysis result yet — curves will appear here after a successful run.";
         DiagnosticsText.Text = DiagnosticPackage.BuildAboutText();
@@ -565,6 +570,8 @@ public partial class MainWindow : Window
 
     private void ConfigurationChanged(object sender, RoutedEventArgs e)
     {
+        if (!_configurationReady)
+            return;
         _configurationConfirmed = false;
         _pendingRequest = null;
         try
