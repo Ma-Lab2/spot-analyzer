@@ -38,11 +38,33 @@ class DisplayLayer:
 @dataclass(frozen=True)
 class DisplayCurves:
     record_id: str
-    actual_profile: Any
-    fitted_profile: Any
+    profile_x: Any
+    profile_x_actual: Any
+    profile_x_fitted: Any
+    profile_y: Any
+    profile_y_actual: Any
+    profile_y_fitted: Any
     energy_radius: Any
     energy_fraction: Any
+    profile_axis_unit: str | None
     energy_radius_unit: str | None
+    energy_fraction_unit: str | None
+
+    @property
+    def actual_profile(self) -> Any:
+        return self.profile_x_actual
+
+    @property
+    def fitted_profile(self) -> Any:
+        return self.profile_x_fitted
+
+
+def _curve(value: Any, code: str, message: str) -> Any:
+    if value is None:
+        return _unavailable(code, message)
+    if isinstance(value, DisplayUnavailable):
+        return value
+    return np.array(value, dtype=float, copy=True)
 
 
 @dataclass(frozen=True)
@@ -94,11 +116,17 @@ def project(record: Any) -> DisplayProjection:
         curves_data = {}
     curves = DisplayCurves(
         record_id,
-        curves_data.get("profile", _unavailable("curve_unavailable", "actual profile unavailable")),
-        curves_data.get("fitted_profile", _unavailable("curve_unavailable", "fitted profile unavailable")),
-        curves_data.get("energy_radius", _unavailable("curve_unavailable", "energy curve unavailable")),
-        curves_data.get("energy_fraction", _unavailable("curve_unavailable", "energy curve unavailable")),
+        _curve(curves_data.get("profile_x"), "curve_unavailable", "X profile axis unavailable"),
+        _curve(curves_data.get("profile_x_actual", curves_data.get("profile")), "curve_unavailable", "X actual profile unavailable"),
+        _curve(curves_data.get("profile_x_fitted", curves_data.get("fitted_profile")), "curve_unavailable", "X fitted profile unavailable"),
+        _curve(curves_data.get("profile_y"), "curve_unavailable", "Y profile axis unavailable"),
+        _curve(curves_data.get("profile_y_actual"), "curve_unavailable", "Y actual profile unavailable"),
+        _curve(curves_data.get("profile_y_fitted"), "curve_unavailable", "Y fitted profile unavailable"),
+        _curve(curves_data.get("energy_radius"), "curve_unavailable", "cumulative energy radius unavailable"),
+        _curve(curves_data.get("energy_fraction"), "curve_unavailable", "cumulative energy fraction unavailable"),
+        curves_data.get("profile_axis_unit", "px"),
         curves_data.get("energy_radius_unit"),
+        curves_data.get("energy_fraction_unit", "fraction"),
     )
     center = curves_data.get("center_pixel", _unavailable("center_unavailable", "analysis center unavailable"))
     configuration = record.configuration

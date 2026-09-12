@@ -114,15 +114,33 @@
       </ScrollViewer>
     </Border>
 
-    <Border Grid.Row="2" Grid.ColumnSpan="3" Margin="12,0,12,12" Padding="16" BorderBrush="#FFD1D5DB" BorderThickness="1" CornerRadius="4" Background="White">
+    <Border Grid.Row="2" Grid.ColumnSpan="3" Margin="12,0,12,12" Padding="12" BorderBrush="#FFD1D5DB" BorderThickness="1" CornerRadius="4" Background="White">
       <Grid>
-        <StackPanel>
+        <Grid.RowDefinitions><RowDefinition Height="24"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <DockPanel Grid.Row="0">
           <TextBlock FontSize="15" FontWeight="SemiBold" Text="Explanation curves" />
-          <TextBlock Margin="0,4,0,0" Foreground="#FF6B7280" Text="A reserved interpretation area for profile, fit, and quality curves." />
-        </StackPanel>
-        <StackPanel x:Name="CurvesEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center">
-          <TextBlock x:Name="CurvesEmptyStateText" Foreground="#FF6B7280" FontSize="14" HorizontalAlignment="Center" Text="No analysis result yet — curves will appear here after a successful run." />
-        </StackPanel>
+          <TextBlock x:Name="CurveIdentityText" Margin="14,2,0,0" Foreground="#FF6B7280" />
+          <TextBlock x:Name="CurveStatusText" Margin="14,2,0,0" Foreground="#FFB45309" />
+        </DockPanel>
+        <Grid Grid.Row="1">
+          <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+          <Border Grid.Column="0" BorderBrush="#FFE5E7EB" BorderThickness="0,0,1,0" Margin="0,0,8,0">
+            <Grid><Canvas x:Name="XProfileCanvas" SizeChanged="CurveCanvas_SizeChanged" />
+              <TextBlock VerticalAlignment="Top" Foreground="#FF6B7280" Text="X center profile · position (px), intensity (code)" />
+              <TextBlock VerticalAlignment="Bottom" Foreground="#FF6B7280" Text="actual — solid   fitted — dashed" /></Grid>
+          </Border>
+          <Border Grid.Column="1" BorderBrush="#FFE5E7EB" BorderThickness="0,0,1,0" Margin="8,0,8,0">
+            <Grid><Canvas x:Name="YProfileCanvas" SizeChanged="CurveCanvas_SizeChanged" />
+              <TextBlock VerticalAlignment="Top" Foreground="#FF6B7280" Text="Y center profile · position (px), intensity (code)" />
+              <TextBlock VerticalAlignment="Bottom" Foreground="#FF6B7280" Text="actual — solid   fitted — dashed" /></Grid>
+          </Border>
+          <Grid Grid.Column="2" Margin="8,0,0,0"><Canvas x:Name="EnergyCanvas" SizeChanged="CurveCanvas_SizeChanged" />
+            <TextBlock VerticalAlignment="Top" Foreground="#FF6B7280" Text="Radius–cumulative energy · radius (record unit), fraction" />
+            <TextBlock x:Name="EnergyMarkerText" VerticalAlignment="Bottom" Foreground="#FF6B7280" /></Grid>
+          <StackPanel x:Name="CurvesEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+            <TextBlock x:Name="CurvesEmptyStateText" Foreground="#FF6B7280" FontSize="14" HorizontalAlignment="Center" Text="No analysis result yet — curves will appear here after a successful run." />
+          </StackPanel>
+        </Grid>
       </Grid>
     </Border>
   </Grid>
