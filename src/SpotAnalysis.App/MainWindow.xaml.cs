@@ -238,33 +238,53 @@ public partial class MainWindow : Window
                 case "success":
                     StatusText.Text = "Completed";
                     _lastSuccessfulOutcome = outcome;
-                    _hasResult = true;
+                    _hasResult = _workspace.CurrentRecord is not null;
                     _resultStale = false;
-                    RecordText.Text = FormatRecordSummary(outcome);
-                    MetricsText.Text = FormatMetrics(outcome);
-                    _displayProjection = outcome.Result is JsonElement result
-                        ? DisplayProjectionReader.FromResult(result, outcome.RecordId)
-                        : null;
-                    ExportResultButton.IsEnabled = true;
-                    RenderDisplay();
+                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
+                    if (_resultStale)
+                    {
+                        StatusText.Text = "Completed, but configuration changed during the run; recompute required";
+                        ShowRetainedResult("The completed record belongs to the superseded configuration.");
+                    }
+                    else
+                    {
+                        StatusText.Text = "Completed";
+                        RecordText.Text = FormatRecordSummary(outcome);
+                        MetricsText.Text = FormatMetrics(outcome);
+                        CurvesEmptyStateText.Text = "Curves are reserved for a subsequent interpretation layer; this result is ready to export.";
+                        ExportResultButton.IsEnabled = _workspace.CanExportReport;
+                        _displayProjection = outcome.Result is JsonElement result
+                            ? DisplayProjectionReader.FromResult(result, outcome.RecordId)
+                            : null;
+                        RenderDisplay();
+                    }
                     break;
                 case "cancelled":
                     StatusText.Text = "Cancelled";
-                    _resultStale = _lastSuccessfulOutcome is not null;
-                    _hasResult = _lastSuccessfulOutcome is not null;
-                    ShowRetainedResult($"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}");
+                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
+                    _hasResult = _workspace.CurrentRecord is not null;
+                    if (_lastSuccessfulOutcome is not null)
+                        ShowRetainedResult($"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}");
+                    else
+                        ShowRetainedResult($"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}");
                     break;
                 case "timeout":
                     StatusText.Text = "Timed out";
-                    _resultStale = _lastSuccessfulOutcome is not null;
-                    _hasResult = _lastSuccessfulOutcome is not null;
-                    ShowRetainedResult($"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}");
+                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
+                    _hasResult = _workspace.CurrentRecord is not null;
+                    if (_lastSuccessfulOutcome is not null)
+                        ShowRetainedResult($"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}");
+                    else
+                        ShowRetainedResult($"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}");
                     break;
                 default:
                     StatusText.Text = $"Failed ({outcome.FailureCode ?? "worker_failure"}): {outcome.ErrorMessage}";
-                    _resultStale = _lastSuccessfulOutcome is not null;
-                    _hasResult = _lastSuccessfulOutcome is not null;
-                    ShowRetainedResult(StatusText.Text);
+                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
+                    _hasResult = _workspace.CurrentRecord is not null;
+                    if (_lastSuccessfulOutcome is not null)
+                        ShowRetainedResult(StatusText.Text);
+                    else
+                        ShowRetainedResult(StatusText.Text);
                     break;
             }
         }
@@ -698,6 +718,7 @@ public partial class MainWindow : Window
     private void DisplaySettingChanged(object sender, RoutedEventArgs e)
     {
         _displaySettings = ReadDisplaySettings();
+        _workspace.SetDisplaySettings(_displaySettings);
         RenderDisplay();
     }
 
@@ -711,15 +732,27 @@ public partial class MainWindow : Window
             ? parsedRange : DisplayRangeMode.Percentile;
         var minimum = double.TryParse(DisplayMinimumText.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var min) ? min : double.NaN;
         var maximum = double.TryParse(DisplayMaximumText.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var max) ? max : double.NaN;
-        return new DisplaySettings(layer, color, range, minimum, maximum,
-            DisplayCenterCheck.IsChecked == true, DisplayRoiCheck.IsChecked == true,
-            DisplayAxesCheck.IsChecked == true, DisplayUnitsCheck.IsChecked == true,
-            DisplayLegendCheck.IsChecked == true);
+        return new DisplaySettings(
+            ColorMap: color == DisplayColorMode.Pseudocolor ? "viridis" : "gray",
+            DisplayRange: range.ToString().ToLowerInvariant(),
+            Zoom: 1.0,
+            ShowOverlays: DisplayCenterCheck.IsChecked == true || DisplayRoiCheck.IsChecked == true || DisplayAxesCheck.IsChecked == true || DisplayUnitsCheck.IsChecked == true || DisplayLegendCheck.IsChecked == true,
+            Layer: layer,
+            ColorMode: color,
+            RangeMode: range,
+            FixedMinimum: minimum,
+            FixedMaximum: maximum,
+            ShowCenter: DisplayCenterCheck.IsChecked == true,
+            ShowRoi: DisplayRoiCheck.IsChecked == true,
+            ShowAxes: DisplayAxesCheck.IsChecked == true,
+            ShowUnits: DisplayUnitsCheck.IsChecked == true,
+            ShowLegend: DisplayLegendCheck.IsChecked == true);
     }
 
     private void HideDisplayOverlays_Click(object sender, RoutedEventArgs e)
     {
         _displaySettings = _displaySettings.HideOverlays();
+        _workspace.SetDisplaySettings(_displaySettings);
         DisplayCenterCheck.IsChecked = false;
         DisplayRoiCheck.IsChecked = false;
         DisplayAxesCheck.IsChecked = false;

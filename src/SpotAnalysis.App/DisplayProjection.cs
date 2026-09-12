@@ -8,42 +8,6 @@ using System.Windows.Media.Imaging;
 
 namespace SpotAnalysis.App;
 
-public enum DisplayLayer
-{
-    Input,
-    CorrectedIntensity,
-    PositiveSignal,
-    Fit,
-    Residual,
-    MeasurementMask,
-    CoreMask,
-}
-
-public enum DisplayColorMode { Grayscale, Pseudocolor }
-public enum DisplayRangeMode { Percentile, Full, Fixed }
-
-public sealed record DisplaySettings(
-    DisplayLayer Layer = DisplayLayer.Input,
-    DisplayColorMode ColorMode = DisplayColorMode.Grayscale,
-    DisplayRangeMode RangeMode = DisplayRangeMode.Percentile,
-    double FixedMinimum = 0,
-    double FixedMaximum = 1,
-    bool ShowCenter = true,
-    bool ShowRoi = true,
-    bool ShowAxes = true,
-    bool ShowUnits = true,
-    bool ShowLegend = true)
-{
-    public DisplaySettings HideOverlays() => this with
-    {
-        ShowCenter = false,
-        ShowRoi = false,
-        ShowAxes = false,
-        ShowUnits = false,
-        ShowLegend = false,
-    };
-}
-
 public sealed record DisplayAsset(string Kind, string RecordId, string Uri, string Sha256, string Format);
 
 public sealed record DisplayProjectionSnapshot(
