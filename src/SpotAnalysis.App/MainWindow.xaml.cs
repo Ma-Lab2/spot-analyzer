@@ -27,6 +27,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ImageEmptyState.Visibility = Visibility.Visible;
+        CurvesEmptyStateText.Text = "No analysis result yet — curves will appear here after a successful run.";
         DiagnosticsText.Text = DiagnosticPackage.BuildAboutText();
         DiagnosticLog.Write("client_started", new { output_capability = DiagnosticPackage.OutputCapability });
     }
@@ -254,6 +256,7 @@ public partial class MainWindow : Window
                     _resultStale = false;
                     RecordText.Text = FormatRecordSummary(outcome);
                     MetricsText.Text = FormatMetrics(outcome);
+                    CurvesEmptyStateText.Text = "Curves are reserved for a subsequent interpretation layer; this result is ready to export.";
                     ExportResultButton.IsEnabled = true;
                     break;
                 case "cancelled":
@@ -328,6 +331,7 @@ public partial class MainWindow : Window
             _workspace.LoadInput(new WorkspaceInput(input.Path, input.Sha256, input.Width, input.Height, input.BitDepth, input.Summary));
             InputSummaryText.Text = input.Summary;
             InputPreview.Source = input.Preview;
+            ImageEmptyState.Visibility = Visibility.Collapsed;
             _configurationConfirmed = false;
             _flowStatus = "input_loaded";
             _failureCode = null;
@@ -345,6 +349,7 @@ public partial class MainWindow : Window
             _pendingRequest = null;
             _configurationConfirmed = false;
             InputPreview.Source = null;
+            ImageEmptyState.Visibility = Visibility.Visible;
             InputSummaryText.Text = "No input selected";
             SummaryText.Text = "No input selected; pending request is not valid.";
             UpdateRunAvailability();
