@@ -28,7 +28,7 @@
         <StackPanel Margin="18,16,16,18">
           <TextBlock FontSize="15" FontWeight="SemiBold" Text="01 · 输入与配置" />
           <TextBlock Margin="0,5,0,12" Foreground="#FF6B7280" Text="Choose an input, confirm analysis choices, then run." TextWrapping="Wrap" />
-          <Button Width="230" HorizontalAlignment="Left" Click="OpenPng_Click" Content="Open grayscale PNG" />
+          <Button x:Name="OpenInputButton" Width="230" HorizontalAlignment="Left" Click="OpenPng_Click" Content="Open grayscale PNG" />
           <TextBlock Margin="0,12,0,4" FontWeight="SemiBold" Text="Selected input" />
           <TextBlock x:Name="InputSummaryText" Text="No input selected" TextWrapping="Wrap" />
 
@@ -62,7 +62,7 @@
           </StackPanel>
           <TextBlock Margin="0,4,0,0" Foreground="#FF6B7280" Text="Background correction is recorded only when all four values are provided." TextWrapping="Wrap" />
 
-          <Button Margin="0,16,0,0" Width="230" HorizontalAlignment="Left" Click="ConfirmConfiguration_Click" Content="Confirm configuration" />
+          <Button x:Name="ConfirmConfigurationButton" Margin="0,16,0,0" Width="230" HorizontalAlignment="Left" Click="ConfirmConfiguration_Click" Content="Confirm configuration" />
           <TextBlock Margin="0,10,0,4" FontWeight="SemiBold" Text="Pending request" />
           <TextBox x:Name="SummaryText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72"
                    VerticalScrollBarVisibility="Auto" Text="No pending request" />
