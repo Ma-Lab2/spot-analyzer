@@ -67,6 +67,19 @@ def _array(record: Any, name: str) -> np.ndarray | DisplayUnavailable:
     return np.array(value, copy=True)
 
 
+def _layer_array(record: Any, layer_name: str) -> np.ndarray | DisplayUnavailable:
+    attribute = {
+        "input_image": "input_intensity",
+        "corrected_intensity": "corrected_intensity",
+        "positive_signal": "positive_intensity",
+        "fitted_intensity": "fitted_intensity",
+        "fit_residual": "fit_residual_intensity",
+        "measurement_mask": "measurement_mask",
+        "core_mask": "core_mask",
+    }[layer_name]
+    return _array(record, attribute)
+
+
 def project(record: Any) -> DisplayProjection:
     """Create a read-only projection tied to one analysis record.
 
@@ -74,7 +87,7 @@ def project(record: Any) -> DisplayProjection:
     record's measurement source. Missing diagnostics are explicit N/A values.
     """
     record_id = record.record_id
-    layers = tuple(DisplayLayer(name, record_id, _array(record, name)) for name in LAYER_NAMES)
+    layers = tuple(DisplayLayer(name, record_id, _layer_array(record, name)) for name in LAYER_NAMES)
     diagnostics = record.diagnostics
     curves_data = diagnostics.get("report_curves", {}) if isinstance(diagnostics, Mapping) else {}
     if not isinstance(curves_data, Mapping):

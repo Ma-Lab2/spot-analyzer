@@ -79,14 +79,30 @@
 
     <Border Grid.Row="1" Grid.Column="1" Margin="12" BorderBrush="#FFD1D5DB" BorderThickness="1" CornerRadius="4" Background="#FF111827">
       <Grid>
-        <Image x:Name="InputPreview" Margin="18" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
-        <StackPanel x:Name="ImageEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center">
-          <TextBlock Foreground="#FFD1D5DB" FontSize="20" HorizontalAlignment="Center" Text="No input image" />
-          <TextBlock Margin="0,6,0,0" Foreground="#FF9CA3AF" HorizontalAlignment="Center" Text="Open a grayscale PNG to view the display image." />
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <StackPanel Grid.Row="0" Margin="12">
+          <TextBlock x:Name="DisplayIdentityText" Foreground="White" Text="No analysis display available" TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+            <TextBlock VerticalAlignment="Center" Foreground="White" Text="Layer" Margin="0,0,6,0" />
+            <ComboBox x:Name="DisplayLayerCombo" Width="155" SelectionChanged="DisplaySettingChanged">
+              <ComboBoxItem Content="Input image" Tag="Input" IsSelected="True" /><ComboBoxItem Content="Corrected intensity" Tag="CorrectedIntensity" /><ComboBoxItem Content="Positive signal" Tag="PositiveSignal" /><ComboBoxItem Content="Fit" Tag="Fit" /><ComboBoxItem Content="Residual" Tag="Residual" /><ComboBoxItem Content="Measurement mask" Tag="MeasurementMask" /><ComboBoxItem Content="Core mask" Tag="CoreMask" />
+            </ComboBox>
+            <TextBlock VerticalAlignment="Center" Foreground="White" Text="Color" Margin="12,0,6,0" />
+            <ComboBox x:Name="DisplayColorCombo" Width="105" SelectionChanged="DisplaySettingChanged"><ComboBoxItem Content="Grayscale" Tag="Grayscale" IsSelected="True" /><ComboBoxItem Content="Pseudocolor" Tag="Pseudocolor" /></ComboBox>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+            <TextBlock VerticalAlignment="Center" Foreground="White" Text="Range" Margin="0,0,6,0" />
+            <ComboBox x:Name="DisplayRangeCombo" Width="105" SelectionChanged="DisplaySettingChanged"><ComboBoxItem Content="Percentile" Tag="Percentile" IsSelected="True" /><ComboBoxItem Content="Full" Tag="Full" /><ComboBoxItem Content="Fixed" Tag="Fixed" /></ComboBox>
+            <TextBox x:Name="DisplayMinimumText" Width="60" Margin="8,0,4,0" Text="0" TextChanged="DisplaySettingChanged" /><TextBox x:Name="DisplayMaximumText" Width="60" Text="1" TextChanged="DisplaySettingChanged" />
+          </StackPanel>
+          <WrapPanel Margin="0,8,0,0">
+            <CheckBox x:Name="DisplayCenterCheck" Foreground="White" Content="Center" IsChecked="True" Checked="DisplaySettingChanged" Unchecked="DisplaySettingChanged" /><CheckBox x:Name="DisplayRoiCheck" Foreground="White" Content="ROI" IsChecked="True" Margin="10,0,0,0" Checked="DisplaySettingChanged" Unchecked="DisplaySettingChanged" /><CheckBox x:Name="DisplayAxesCheck" Foreground="White" Content="Axes" IsChecked="True" Margin="10,0,0,0" Checked="DisplaySettingChanged" Unchecked="DisplaySettingChanged" /><CheckBox x:Name="DisplayUnitsCheck" Foreground="White" Content="Units" IsChecked="True" Margin="10,0,0,0" Checked="DisplaySettingChanged" Unchecked="DisplaySettingChanged" /><CheckBox x:Name="DisplayLegendCheck" Foreground="White" Content="Legend" IsChecked="True" Margin="10,0,0,0" Checked="DisplaySettingChanged" Unchecked="DisplaySettingChanged" /><Button Content="Hide overlays" Margin="12,0,0,0" Click="HideDisplayOverlays_Click" />
+          </WrapPanel>
         </StackPanel>
-        <Border VerticalAlignment="Top" HorizontalAlignment="Left" Margin="14" Padding="8,4" Background="#AA111827" CornerRadius="3">
-          <TextBlock Foreground="White" Text="Display image · input data" />
-        </Border>
+        <Grid Grid.Row="1" Margin="12" SizeChanged="DisplaySurface_SizeChanged"><Image x:Name="DisplayImage" Stretch="Uniform" /><Canvas x:Name="DisplayOverlayCanvas" IsHitTestVisible="False" /></Grid>
+        <StackPanel Grid.Row="2" Margin="12"><TextBlock x:Name="DisplayOverlayText" Foreground="White" TextWrapping="Wrap" /><TextBlock x:Name="DisplayFeedbackText" Foreground="#FFD1D5DB" Margin="0,4,0,0" TextWrapping="Wrap" /></StackPanel>
+        <Image x:Name="InputPreview" Visibility="Collapsed" />
+        <StackPanel x:Name="ImageEmptyState" Visibility="Collapsed" />
       </Grid>
     </Border>
 
