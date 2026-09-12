@@ -603,12 +603,15 @@ def _report_curves(
     center_x = min(positive.shape[1] - 1, max(0, int(round(center_xy[0]))))
     center_y = min(positive.shape[0] - 1, max(0, int(round(center_xy[1]))))
     profile_x = np.arange(positive.shape[1], dtype=np.float64)
-    profile = np.asarray(positive[center_y, :], dtype=np.float64)
-    fitted_profile = (
-        np.asarray(fitted[center_y, :], dtype=np.float64)
-        if fitted.shape == positive.shape
-        else np.full(positive.shape[1], np.nan, dtype=np.float64)
-    )
+    profile_y = np.arange(positive.shape[0], dtype=np.float64)
+    profile_x_actual = np.asarray(positive[center_y, :], dtype=np.float64)
+    profile_y_actual = np.asarray(positive[:, center_x], dtype=np.float64)
+    if fitted.shape == positive.shape:
+        profile_x_fitted = np.asarray(fitted[center_y, :], dtype=np.float64)
+        profile_y_fitted = np.asarray(fitted[:, center_x], dtype=np.float64)
+    else:
+        profile_x_fitted = np.full(positive.shape[1], np.nan, dtype=np.float64)
+        profile_y_fitted = np.full(positive.shape[0], np.nan, dtype=np.float64)
     y, x = np.indices(positive.shape, dtype=np.float64)
     valid = valid_mask & np.isfinite(positive)
     radii = np.hypot((x - center_xy[0]) * x_scale, (y - center_xy[1]) * y_scale)[valid]
@@ -623,12 +626,22 @@ def _report_curves(
         radii = radii[indexes]
         energy = energy[indexes]
     return {
+        # Legacy center-X names remain for report compatibility; explicit axes
+        # make the immutable projection unambiguous for the workspace renderer.
         "profile_x_pixels": profile_x.tolist(),
-        "profile": profile.tolist(),
-        "fitted_profile": fitted_profile.tolist(),
+        "profile": profile_x_actual.tolist(),
+        "fitted_profile": profile_x_fitted.tolist(),
+        "profile_x": profile_x.tolist(),
+        "profile_x_actual": profile_x_actual.tolist(),
+        "profile_x_fitted": profile_x_fitted.tolist(),
+        "profile_y": profile_y.tolist(),
+        "profile_y_actual": profile_y_actual.tolist(),
+        "profile_y_fitted": profile_y_fitted.tolist(),
+        "profile_axis_unit": "px",
         "energy_radius": radii.tolist(),
         "energy_fraction": energy.tolist(),
         "energy_radius_unit": "px" if x_scale == 1.0 and y_scale == 1.0 else "physical",
+        "energy_fraction_unit": "fraction",
         "center_pixel": {"x": center_x, "y": center_y},
     }
 
@@ -1636,6 +1649,12 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
         if configuration.calibration.is_usable
         else "px"
     )
+    report_curves["energy_markers"] = {
+        "ee50": {"fraction": 0.5, "radius": metrics["ee50"].physical_value if configuration.calibration.is_usable else metrics["ee50"].value,
+                 "status": metrics["ee50"].status.value, "reason_codes": list(metrics["ee50"].reason_codes)},
+        "ee80": {"fraction": 0.8, "radius": metrics["ee80"].physical_value if configuration.calibration.is_usable else metrics["ee80"].value,
+                 "status": metrics["ee80"].status.value, "reason_codes": list(metrics["ee80"].reason_codes)},
+    }
     diagnostics: dict[str, Any] = {
         **background_diagnostics,
         "mask_version": _MASK_VERSION,

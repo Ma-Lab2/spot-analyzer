@@ -271,6 +271,8 @@ def _record_payload(record: Any, derived_assets: list[dict[str, Any]]) -> dict[s
         "display_projection": {
             "schema": "display-projection-v1",
             "record_id": record.record_id,
+            "analysis_fingerprint": record.analysis_fingerprint,
+            "curves": record.diagnostics.get("report_curves", {}),
             "layers": [
                 {"name": "input_image", "source": "input"},
                 {"name": "corrected_intensity", "asset_kind": "corrected_intensity"},

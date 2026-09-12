@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using Shapes = System.Windows.Shapes;
 using Microsoft.Win32;
 
 namespace SpotAnalysis.App;
@@ -263,6 +265,7 @@ public partial class MainWindow : Window
                 case "success":
                     _lastSuccessfulOutcome = outcome;
                     _hasResult = _workspace.CurrentRecord is not null;
+                    _resultStale = false;
                     _resultStale = _workspace.CurrentRecord?.IsStale != false;
                     if (_resultStale)
                     {
@@ -274,7 +277,7 @@ public partial class MainWindow : Window
                         StatusText.Text = "Completed";
                         RecordText.Text = FormatRecordSummary(outcome);
                         MetricsText.Text = FormatMetrics(outcome);
-                        CurvesEmptyStateText.Text = "Curves are reserved for a subsequent interpretation layer; this result is ready to export.";
+                        RenderCurves(outcome, stale: false);
                         ExportResultButton.IsEnabled = _workspace.CanExportReport;
                     }
                     break;
@@ -282,18 +285,21 @@ public partial class MainWindow : Window
                     StatusText.Text = "Cancelled";
                     _resultStale = _workspace.CurrentRecord?.IsStale != false;
                     _hasResult = _workspace.CurrentRecord is not null;
+                    if (_lastSuccessfulOutcome is not null) _resultStale = true;
                     ShowRetainedResult($"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}");
                     break;
                 case "timeout":
                     StatusText.Text = "Timed out";
                     _resultStale = _workspace.CurrentRecord?.IsStale != false;
                     _hasResult = _workspace.CurrentRecord is not null;
+                    if (_lastSuccessfulOutcome is not null) _resultStale = true;
                     ShowRetainedResult($"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}");
                     break;
                 default:
                     StatusText.Text = $"Failed ({outcome.FailureCode ?? "worker_failure"}): {outcome.ErrorMessage}";
                     _resultStale = _workspace.CurrentRecord?.IsStale != false;
                     _hasResult = _workspace.CurrentRecord is not null;
+                    if (_lastSuccessfulOutcome is not null) _resultStale = true;
                     ShowRetainedResult(StatusText.Text);
                     break;
             }
@@ -635,8 +641,91 @@ public partial class MainWindow : Window
         UpdateRunAvailability();
     }
 
+    private void CurveCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_lastSuccessfulOutcome is not null && !_resultStale)
+            RenderCurves(_lastSuccessfulOutcome, stale: false);
+    }
+
+    private void RenderCurves(WorkerOutcome? outcome, bool stale)
+    {
+        XProfileCanvas.Children.Clear(); YProfileCanvas.Children.Clear(); EnergyCanvas.Children.Clear();
+        CurveIdentityText.Text = ""; EnergyMarkerText.Text = "";
+        if (stale)
+        {
+            CurvesEmptyState.Visibility = Visibility.Visible;
+            CurvesEmptyStateText.Text = "N/A — curves belong to a stale analysis record; recompute to interpret the current configuration.";
+            CurveStatusText.Text = "stale";
+            return;
+        }
+        if (outcome?.Result is not JsonElement result || !result.TryGetProperty("record", out var record)
+            || record.ValueKind != JsonValueKind.Object)
+        {
+            CurvesEmptyState.Visibility = Visibility.Visible;
+            CurvesEmptyStateText.Text = "N/A — no current analysis record.";
+            CurveStatusText.Text = "unavailable";
+            return;
+        }
+        var curves = record.TryGetProperty("display_projection", out var projection)
+            && projection.ValueKind == JsonValueKind.Object && projection.TryGetProperty("curves", out var projected)
+            ? projected
+            : record.TryGetProperty("diagnostics", out var diagnostics) && diagnostics.TryGetProperty("report_curves", out var reported)
+                ? reported : default;
+        if (curves.ValueKind != JsonValueKind.Object)
+        {
+            CurvesEmptyState.Visibility = Visibility.Visible;
+            CurvesEmptyStateText.Text = "N/A — curve projection unavailable (curve_unavailable).";
+            CurveStatusText.Text = "unavailable";
+            return;
+        }
+        CurvesEmptyState.Visibility = Visibility.Collapsed;
+        var id = GetString(record, "record_id") ?? outcome.RecordId ?? "unknown";
+        CurveIdentityText.Text = $"record {id} · read-only projection";
+        CurveStatusText.Text = "current";
+        var axisUnit = GetString(curves, "profile_axis_unit") ?? "px";
+        var energyUnit = GetString(curves, "energy_radius_unit") ?? "N/A";
+        DrawSeries(XProfileCanvas, Numbers(curves, "profile_x"), Numbers(curves, "profile_x_actual"), Brushes.SteelBlue, false);
+        DrawSeries(XProfileCanvas, Numbers(curves, "profile_x"), Numbers(curves, "profile_x_fitted"), Brushes.IndianRed, true);
+        DrawSeries(YProfileCanvas, Numbers(curves, "profile_y"), Numbers(curves, "profile_y_actual"), Brushes.SteelBlue, false);
+        DrawSeries(YProfileCanvas, Numbers(curves, "profile_y"), Numbers(curves, "profile_y_fitted"), Brushes.IndianRed, true);
+        DrawSeries(EnergyCanvas, Numbers(curves, "energy_radius"), Numbers(curves, "energy_fraction"), Brushes.DarkGreen, false);
+        var markers = curves.TryGetProperty("energy_markers", out var markerNode) && markerNode.ValueKind == JsonValueKind.Object
+            ? markerNode : default;
+        EnergyMarkerText.Text = $"EE50 / EE80 ({energyUnit}): {Marker(markers, "ee50")} / {Marker(markers, "ee80")} · Y={GetString(curves, "energy_fraction_unit") ?? "fraction"}";
+    }
+
+    private static string Marker(JsonElement markers, string name)
+    {
+        if (markers.ValueKind == JsonValueKind.Object && markers.TryGetProperty(name, out var node)
+            && node.ValueKind == JsonValueKind.Object && node.TryGetProperty("radius", out var radius)
+            && radius.ValueKind != JsonValueKind.Null)
+            return radius.ToString();
+        return "N/A (unavailable)";
+    }
+
+    private static double[] Numbers(JsonElement node, string property) =>
+        node.ValueKind == JsonValueKind.Object && node.TryGetProperty(property, out var values) && values.ValueKind == JsonValueKind.Array
+            ? values.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.Number && double.IsFinite(item.GetDouble())).Select(item => item.GetDouble()).ToArray()
+            : Array.Empty<double>();
+
+    private static void DrawSeries(Canvas canvas, double[] xs, double[] ys, Brush brush, bool dashed)
+    {
+        if (xs.Length == 0 || xs.Length != ys.Length || canvas.ActualWidth < 2 || canvas.ActualHeight < 2) return;
+        var finite = xs.Zip(ys, (x, y) => (x, y)).Where(pair => double.IsFinite(pair.x) && double.IsFinite(pair.y)).ToArray();
+        if (finite.Length < 2) return;
+        var minX = finite.Min(pair => pair.x); var maxX = finite.Max(pair => pair.x);
+        var minY = finite.Min(pair => pair.y); var maxY = finite.Max(pair => pair.y);
+        var dx = Math.Max(maxX - minX, 1e-12); var dy = Math.Max(maxY - minY, 1e-12);
+        var line = new Shapes.Polyline { Stroke = brush, StrokeThickness = 1.5, Opacity = .9 };
+        if (dashed) line.StrokeDashArray = new DoubleCollection { 4, 3 };
+        foreach (var pair in finite)
+            line.Points.Add(new Point((pair.x - minX) / dx * (canvas.ActualWidth - 4) + 2, canvas.ActualHeight - 2 - (pair.y - minY) / dy * (canvas.ActualHeight - 6)));
+        canvas.Children.Add(line);
+    }
+
     private void ShowRetainedResult(string currentRunStatus)
     {
+        RenderCurves(_lastSuccessfulOutcome, stale: true);
         if (_lastSuccessfulOutcome is null)
         {
             RecordText.Text = currentRunStatus;
