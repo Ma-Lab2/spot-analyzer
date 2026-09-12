@@ -12,6 +12,53 @@
       <Button Margin="0,12,0,0" Width="190" HorizontalAlignment="Left"
               Click="OpenPng_Click" Content="Open grayscale PNG" />
 
+      <GroupBox Header="Record-driven display" Margin="0,18,0,0">
+        <StackPanel Margin="8">
+          <TextBlock x:Name="DisplayIdentityText" Text="No analysis display available" TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+            <TextBlock VerticalAlignment="Center" Text="Layer" Margin="0,0,6,0" />
+            <ComboBox x:Name="DisplayLayerCombo" Width="155" SelectionChanged="DisplaySettingChanged">
+              <ComboBoxItem Content="Input image" Tag="Input" IsSelected="True" />
+              <ComboBoxItem Content="Corrected intensity" Tag="CorrectedIntensity" />
+              <ComboBoxItem Content="Positive signal" Tag="PositiveSignal" />
+              <ComboBoxItem Content="Fit" Tag="Fit" />
+              <ComboBoxItem Content="Residual" Tag="Residual" />
+              <ComboBoxItem Content="Measurement mask" Tag="MeasurementMask" />
+              <ComboBoxItem Content="Core mask" Tag="CoreMask" />
+            </ComboBox>
+            <TextBlock VerticalAlignment="Center" Text="Color" Margin="12,0,6,0" />
+            <ComboBox x:Name="DisplayColorCombo" Width="105" SelectionChanged="DisplaySettingChanged">
+              <ComboBoxItem Content="Grayscale" Tag="Grayscale" IsSelected="True" />
+              <ComboBoxItem Content="Pseudocolor" Tag="Pseudocolor" />
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+            <TextBlock VerticalAlignment="Center" Text="Range" Margin="0,0,6,0" />
+            <ComboBox x:Name="DisplayRangeCombo" Width="105" SelectionChanged="DisplaySettingChanged">
+              <ComboBoxItem Content="Percentile" Tag="Percentile" IsSelected="True" />
+              <ComboBoxItem Content="Full" Tag="Full" />
+              <ComboBoxItem Content="Fixed" Tag="Fixed" />
+            </ComboBox>
+            <TextBox x:Name="DisplayMinimumText" Width="70" Margin="8,0,4,0" Text="0" TextChanged="DisplaySettingChanged" />
+            <TextBox x:Name="DisplayMaximumText" Width="70" Text="1" TextChanged="DisplaySettingChanged" />
+          </StackPanel>
+          <WrapPanel Margin="0,8,0,0">
+            <CheckBox x:Name="DisplayCenterCheck" Content="Center" IsChecked="True" Checked="DisplaySettingChanged" Unchecked="DisplaySettingChanged" />
+            <CheckBox x:Name="DisplayRoiCheck" Content="ROI" IsChecked="True" Margin="10,0,0,0" Checked="DisplaySettingChanged" Unchecked="DisplaySettingChanged" />
+            <CheckBox x:Name="DisplayAxesCheck" Content="Axes" IsChecked="True" Margin="10,0,0,0" Checked="DisplaySettingChanged" Unchecked="DisplaySettingChanged" />
+            <CheckBox x:Name="DisplayUnitsCheck" Content="Units" IsChecked="True" Margin="10,0,0,0" Checked="DisplaySettingChanged" Unchecked="DisplaySettingChanged" />
+            <CheckBox x:Name="DisplayLegendCheck" Content="Legend" IsChecked="True" Margin="10,0,0,0" Checked="DisplaySettingChanged" Unchecked="DisplaySettingChanged" />
+            <Button Content="Hide overlays and legend" Margin="12,0,0,0" Click="HideDisplayOverlays_Click" />
+          </WrapPanel>
+          <Grid Margin="0,10,0,0" MaxHeight="420" MaxWidth="620" HorizontalAlignment="Left" SizeChanged="DisplaySurface_SizeChanged">
+            <Image x:Name="DisplayImage" Stretch="Uniform" />
+            <Canvas x:Name="DisplayOverlayCanvas" IsHitTestVisible="False" />
+          </Grid>
+          <TextBlock x:Name="DisplayOverlayText" Margin="0,6,0,0" TextWrapping="Wrap" />
+          <TextBlock x:Name="DisplayFeedbackText" Margin="0,4,0,0" TextWrapping="Wrap" />
+        </StackPanel>
+      </GroupBox>
+
       <TextBlock Margin="0,16,0,4" Text="Spatial calibration (units per pixel)" />
       <StackPanel Orientation="Horizontal">
         <TextBox x:Name="CalibrationXText" Width="70" Text="1" Margin="0,0,6,0" TextChanged="ConfigurationChanged" />

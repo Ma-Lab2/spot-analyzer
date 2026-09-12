@@ -268,6 +268,19 @@ def _record_payload(record: Any, derived_assets: list[dict[str, Any]]) -> dict[s
         "arrays": arrays,
         "mask_statistics": mask_statistics,
         "derived_assets": derived_assets,
+        "display_projection": {
+            "schema": "display-projection-v1",
+            "record_id": record.record_id,
+            "layers": [
+                {"name": "input_image", "source": "input"},
+                {"name": "corrected_intensity", "asset_kind": "corrected_intensity"},
+                {"name": "positive_signal", "asset_kind": "positive_intensity"},
+                {"name": "fitted_intensity", "asset_kind": "gaussian_fit"},
+                {"name": "fit_residual", "asset_kind": "fit_residual"},
+                {"name": "measurement_mask", "asset_kind": "measurement_mask"},
+                {"name": "core_mask", "asset_kind": "core_mask"},
+            ],
+        },
         "configuration": asdict(record.configuration),
         "input_shape": list(record.input_shape),
     }

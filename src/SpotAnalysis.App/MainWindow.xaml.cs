@@ -1,7 +1,13 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Security.Cryptography;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using Ellipse = System.Windows.Shapes.Ellipse;
+using Line = System.Windows.Shapes.Line;
+using Rectangle = System.Windows.Shapes.Rectangle;
 using Microsoft.Win32;
 
 namespace SpotAnalysis.App;
@@ -22,6 +28,8 @@ public partial class MainWindow : Window
     private string _flowStatus = "ready";
     private string? _failureCode;
     private string? _failureDetails;
+    private DisplayProjectionSnapshot? _displayProjection;
+    private DisplaySettings _displaySettings = new();
 
     public MainWindow()
     {
@@ -234,7 +242,11 @@ public partial class MainWindow : Window
                     _resultStale = false;
                     RecordText.Text = FormatRecordSummary(outcome);
                     MetricsText.Text = FormatMetrics(outcome);
+                    _displayProjection = outcome.Result is JsonElement result
+                        ? DisplayProjectionReader.FromResult(result, outcome.RecordId)
+                        : null;
                     ExportResultButton.IsEnabled = true;
+                    RenderDisplay();
                     break;
                 case "cancelled":
                     StatusText.Text = "Cancelled";
@@ -681,6 +693,163 @@ public partial class MainWindow : Window
         {
             StatusText.Text = $"Export failed (report_write_failed): {exception.Message}";
         }
+    }
+
+    private void DisplaySettingChanged(object sender, RoutedEventArgs e)
+    {
+        _displaySettings = ReadDisplaySettings();
+        RenderDisplay();
+    }
+
+    private DisplaySettings ReadDisplaySettings()
+    {
+        var layer = Enum.TryParse<DisplayLayer>((DisplayLayerCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var parsedLayer)
+            ? parsedLayer : DisplayLayer.Input;
+        var color = Enum.TryParse<DisplayColorMode>((DisplayColorCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var parsedColor)
+            ? parsedColor : DisplayColorMode.Grayscale;
+        var range = Enum.TryParse<DisplayRangeMode>((DisplayRangeCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var parsedRange)
+            ? parsedRange : DisplayRangeMode.Percentile;
+        var minimum = double.TryParse(DisplayMinimumText.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var min) ? min : double.NaN;
+        var maximum = double.TryParse(DisplayMaximumText.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var max) ? max : double.NaN;
+        return new DisplaySettings(layer, color, range, minimum, maximum,
+            DisplayCenterCheck.IsChecked == true, DisplayRoiCheck.IsChecked == true,
+            DisplayAxesCheck.IsChecked == true, DisplayUnitsCheck.IsChecked == true,
+            DisplayLegendCheck.IsChecked == true);
+    }
+
+    private void HideDisplayOverlays_Click(object sender, RoutedEventArgs e)
+    {
+        _displaySettings = _displaySettings.HideOverlays();
+        DisplayCenterCheck.IsChecked = false;
+        DisplayRoiCheck.IsChecked = false;
+        DisplayAxesCheck.IsChecked = false;
+        DisplayUnitsCheck.IsChecked = false;
+        DisplayLegendCheck.IsChecked = false;
+        RenderDisplay();
+    }
+
+    private void RenderDisplay()
+    {
+        if (_displayProjection is null)
+        {
+            DisplayImage.Source = null;
+            DisplayIdentityText.Text = "No analysis display available";
+            DisplayOverlayText.Text = string.Empty;
+            DisplayFeedbackText.Text = "Run an analysis to load record-bound display layers.";
+            return;
+        }
+        DisplayIdentityText.Text = $"Record {_displayProjection.RecordId}; fingerprint {_displayProjection.AnalysisFingerprint}";
+        if (_displaySettings.Layer == DisplayLayer.Input)
+        {
+            DisplayImage.Source = InputPreview.Source;
+            DisplayFeedbackText.Text = InputPreview.Source is null ? "Layer unavailable (input preview is not loaded)." : "Input image; display-only settings do not alter the analysis record.";
+        }
+        else
+        {
+            var kind = _displaySettings.Layer switch
+            {
+                DisplayLayer.CorrectedIntensity => "corrected_intensity",
+                DisplayLayer.PositiveSignal => "positive_intensity",
+                DisplayLayer.Fit => "gaussian_fit",
+                DisplayLayer.Residual => "fit_residual",
+                DisplayLayer.MeasurementMask => "measurement_mask",
+                DisplayLayer.CoreMask => "core_mask",
+                _ => string.Empty,
+            };
+            if (!_displayProjection.Assets.TryGetValue(kind, out var asset))
+            {
+                DisplayImage.Source = null;
+                DisplayFeedbackText.Text = $"N/A: display layer '{kind}' is unavailable in record {_displayProjection.RecordId}.";
+            }
+            else
+            {
+                try
+                {
+                    var path = new Uri(asset.Uri, UriKind.Absolute).LocalPath;
+                    if (!File.Exists(path)) throw new FileNotFoundException("display asset unavailable", path);
+                    using var sha = SHA256.Create();
+                    using var stream = File.OpenRead(path);
+                    if (!string.Equals(Convert.ToHexString(sha.ComputeHash(stream)), asset.Sha256, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("display asset hash does not match its record identity");
+                    var data = NpyDisplayReader.Read(path) ?? throw new InvalidDataException("display asset is empty");
+                    var rendered = DisplayRenderer.Render(data, _displaySettings);
+                    DisplayImage.Source = rendered.Image;
+                    DisplayFeedbackText.Text = rendered.IsAvailable
+                        ? $"{rendered.Message}; display-only settings do not alter the analysis record."
+                        : $"N/A: {rendered.Message}";
+                }
+                catch (Exception exception) when (exception is IOException or InvalidDataException or UriFormatException)
+                {
+                    DisplayImage.Source = null;
+                    DisplayFeedbackText.Text = $"N/A ({exception.Message}). Check the record-bound derived asset.";
+                }
+            }
+        }
+        DisplayOverlayText.Text = FormatDisplayOverlays(_displayProjection.Record, _displaySettings);
+        DrawDisplayOverlays(_displayProjection.Record, _displaySettings);
+    }
+
+    private void DisplaySurface_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_displayProjection is not null)
+            DrawDisplayOverlays(_displayProjection.Record, _displaySettings);
+    }
+
+    private void DrawDisplayOverlays(JsonElement record, DisplaySettings settings)
+    {
+        DisplayOverlayCanvas.Children.Clear();
+        if (DisplayOverlayCanvas.ActualWidth <= 0 || DisplayOverlayCanvas.ActualHeight <= 0) return;
+        if (!record.TryGetProperty("input_shape", out var shape) || shape.ValueKind != JsonValueKind.Array) return;
+        var dimensions = shape.EnumerateArray().ToArray();
+        if (dimensions.Length != 2 || !dimensions[0].TryGetDouble(out var imageHeight) || !dimensions[1].TryGetDouble(out var imageWidth)
+            || imageWidth <= 0 || imageHeight <= 0) return;
+        double X(double value) => value / imageWidth * DisplayOverlayCanvas.ActualWidth;
+        double Y(double value) => value / imageHeight * DisplayOverlayCanvas.ActualHeight;
+        if (settings.ShowRoi && record.TryGetProperty("configuration", out var configuration)
+            && configuration.TryGetProperty("region", out var region))
+        {
+            var rectangle = new Rectangle
+            {
+                Width = X(GetDouble(region, "width")), Height = Y(GetDouble(region, "height")),
+                Stroke = Brushes.Cyan, StrokeThickness = 2,
+            };
+            Canvas.SetLeft(rectangle, X(GetDouble(region, "x")));
+            Canvas.SetTop(rectangle, Y(GetDouble(region, "y")));
+            DisplayOverlayCanvas.Children.Add(rectangle);
+        }
+        if (settings.ShowCenter && record.TryGetProperty("diagnostics", out var diagnostics)
+            && diagnostics.TryGetProperty("center_xy", out var center))
+        {
+            var x = X(GetDouble(center, "x"));
+            var y = Y(GetDouble(center, "y"));
+            var marker = new Ellipse { Width = 12, Height = 12, Stroke = Brushes.Yellow, StrokeThickness = 2 };
+            Canvas.SetLeft(marker, x - 6); Canvas.SetTop(marker, y - 6);
+            DisplayOverlayCanvas.Children.Add(marker);
+        }
+        if (settings.ShowAxes)
+        {
+            DisplayOverlayCanvas.Children.Add(new Line { X1 = 0, Y1 = DisplayOverlayCanvas.ActualHeight - 1, X2 = DisplayOverlayCanvas.ActualWidth, Y2 = DisplayOverlayCanvas.ActualHeight - 1, Stroke = Brushes.White, StrokeThickness = 1 });
+            DisplayOverlayCanvas.Children.Add(new Line { X1 = 0, Y1 = 0, X2 = 0, Y2 = DisplayOverlayCanvas.ActualHeight, Stroke = Brushes.White, StrokeThickness = 1 });
+        }
+    }
+
+    private static double GetDouble(JsonElement node, string property) =>
+        node.ValueKind == JsonValueKind.Object && node.TryGetProperty(property, out var value) && value.TryGetDouble(out var number)
+            ? number : 0;
+
+    private static string FormatDisplayOverlays(JsonElement record, DisplaySettings settings)
+    {
+        var values = new List<string>();
+        if (settings.ShowCenter) values.Add("center: recorded normative center");
+        if (settings.ShowRoi && record.TryGetProperty("configuration", out var configuration)
+            && configuration.TryGetProperty("region", out var region))
+            values.Add($"ROI: ({GetNumber(region, "x")}, {GetNumber(region, "y")}, {GetNumber(region, "width")}, {GetNumber(region, "height")})");
+        if (settings.ShowAxes) values.Add("axes: pixel coordinates");
+        if (settings.ShowUnits && record.TryGetProperty("configuration", out configuration)
+            && configuration.TryGetProperty("calibration", out var calibration))
+            values.Add($"units: {GetString(calibration, "physical_unit") ?? "px"}");
+        if (settings.ShowLegend) values.Add("legend: active display layer");
+        return string.Join(" | ", values);
     }
 
     private void ConfigurationSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) =>
