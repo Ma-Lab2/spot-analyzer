@@ -270,6 +270,7 @@ public partial class MainWindow : Window
                 case "success":
                     _lastSuccessfulOutcome = outcome;
                     _hasResult = _workspace.CurrentRecord is not null;
+                    _resultStale = false;
                     _resultStale = _workspace.CurrentRecord?.IsStale != false;
                     if (_resultStale)
                     {
@@ -293,19 +294,28 @@ public partial class MainWindow : Window
                     StatusText.Text = "Cancelled";
                     _resultStale = _workspace.CurrentRecord?.IsStale != false;
                     _hasResult = _workspace.CurrentRecord is not null;
-                    ShowRetainedResult($"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}");
+                    if (_lastSuccessfulOutcome is not null)
+                        ShowRetainedResult($"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}");
+                    else
+                        ShowRetainedResult($"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}");
                     break;
                 case "timeout":
                     StatusText.Text = "Timed out";
                     _resultStale = _workspace.CurrentRecord?.IsStale != false;
                     _hasResult = _workspace.CurrentRecord is not null;
-                    ShowRetainedResult($"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}");
+                    if (_lastSuccessfulOutcome is not null)
+                        ShowRetainedResult($"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}");
+                    else
+                        ShowRetainedResult($"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}");
                     break;
                 default:
                     StatusText.Text = $"Failed ({outcome.FailureCode ?? "worker_failure"}): {outcome.ErrorMessage}";
                     _resultStale = _workspace.CurrentRecord?.IsStale != false;
                     _hasResult = _workspace.CurrentRecord is not null;
-                    ShowRetainedResult(StatusText.Text);
+                    if (_lastSuccessfulOutcome is not null)
+                        ShowRetainedResult(StatusText.Text);
+                    else
+                        ShowRetainedResult(StatusText.Text);
                     break;
             }
         }
@@ -785,6 +795,7 @@ public partial class MainWindow : Window
     private void DisplaySettingChanged(object sender, RoutedEventArgs e)
     {
         _displaySettings = ReadDisplaySettings();
+        _workspace.SetDisplaySettings(_displaySettings);
         RenderDisplay();
     }
 
@@ -818,6 +829,7 @@ public partial class MainWindow : Window
     private void HideDisplayOverlays_Click(object sender, RoutedEventArgs e)
     {
         _displaySettings = _displaySettings.HideOverlays();
+        _workspace.SetDisplaySettings(_displaySettings);
         DisplayCenterCheck.IsChecked = false;
         DisplayRoiCheck.IsChecked = false;
         DisplayAxesCheck.IsChecked = false;
