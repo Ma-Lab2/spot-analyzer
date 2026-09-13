@@ -9,10 +9,10 @@ using System.Windows.Media.Imaging;
 namespace SpotAnalysis.App;
 
 public sealed record ReportSpecification(
-    string Format,
-    string ReportName,
-    string OutputDirectory,
-    bool AppendTimestamp = false);
+    string Format = "png",
+    string ReportName = "",
+    string OutputDirectory = "",
+    bool AppendTimestamp = true);
 
 public sealed record ReportExportOutcome(
     string? Path,
@@ -20,6 +20,20 @@ public sealed record ReportExportOutcome(
     string FlowStatus,
     string? ErrorCode = null,
     string? ErrorMessage = null);
+
+/// <summary>Explicit batch eligibility metadata; analysis state remains owned by the worker.</summary>
+public sealed record ReportWorkItem(
+    JsonElement? TerminalResult,
+    bool IsPreview = false,
+    bool IsStale = false,
+    bool IsFormal = true);
+
+public sealed record ReportBatchSummary(IReadOnlyList<ReportExportOutcome> Outcomes)
+{
+    public int ExportedCount => Outcomes.Count(item => item.FlowStatus == "exported");
+    public int FailedCount => Outcomes.Count(item => item.FlowStatus == "export_failed");
+    public int SkippedCount => Outcomes.Count(item => item.FlowStatus == "skipped");
+}
 
 /// <summary>
 /// Client-side adapter for the report seam. It creates one immutable text snapshot,
@@ -33,11 +47,14 @@ public static class ReportExporter
         if (format is not ("png" or "pdf"))
             return new ReportExportOutcome(null, "", "export_failed", "report_format_invalid", "Report format must be PDF or PNG.");
 
+        if (!terminalResult.TryGetProperty("record", out var record) || record.ValueKind != JsonValueKind.Object)
+            return new ReportExportOutcome(null, "", "export_failed", "report_record_missing", "The analysis result has no reportable record.");
+
         var reportName = specification.ReportName.Trim();
         if (reportName.Length == 0)
-            return new ReportExportOutcome(null, "", "export_failed", "report_name_empty", "Report name must not be empty.");
+            reportName = DefaultReportName(record);
 
-        if (!terminalResult.TryGetProperty("record", out var record) || record.ValueKind != JsonValueKind.Object)
+        if (reportName.Length == 0)
             return new ReportExportOutcome(null, "", "export_failed", "report_record_missing", "The analysis result has no reportable record.");
 
         var recordId = StringValue(record, "record_id") ?? "";
@@ -68,40 +85,116 @@ public static class ReportExporter
         }
     }
 
+    public static ReportBatchSummary WriteBatch(IEnumerable<ReportWorkItem> workItems, ReportSpecification specification)
+    {
+        var outcomes = new List<ReportExportOutcome>();
+        foreach (var item in workItems)
+        {
+            var recordId = item.TerminalResult is { } result
+                && result.TryGetProperty("record", out var record)
+                && record.ValueKind == JsonValueKind.Object
+                ? StringValue(record, "record_id") ?? ""
+                : "";
+            if (item.TerminalResult is null)
+            {
+                outcomes.Add(new ReportExportOutcome(null, recordId, "skipped", "report_record_missing", "No formal analysis record is available."));
+                continue;
+            }
+            if (!item.IsFormal)
+            {
+                outcomes.Add(new ReportExportOutcome(null, recordId, "skipped", "report_item_not_formal", "Only formal analysis records can be exported."));
+                continue;
+            }
+            if (item.IsPreview)
+            {
+                outcomes.Add(new ReportExportOutcome(null, recordId, "skipped", "report_item_preview", "Preview records cannot be exported."));
+                continue;
+            }
+            if (item.IsStale)
+            {
+                outcomes.Add(new ReportExportOutcome(null, recordId, "skipped", "report_item_stale", "Stale records must be recalculated before export."));
+                continue;
+            }
+            try
+            {
+                outcomes.Add(Write(item.TerminalResult.Value, specification));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+            {
+                outcomes.Add(new ReportExportOutcome(null, recordId, "export_failed", "report_export_failed", exception.Message));
+            }
+        }
+        return new ReportBatchSummary(outcomes);
+    }
+
     private static IReadOnlyList<string> BuildReportLines(JsonElement record, string reportName, string generatedAt)
     {
+        var summaryStatus = StringValue(record, "summary_status") ?? "unknown";
         var lines = new List<string>
         {
-            $"Spot analysis report — {reportName}",
-            $"record_id: {StringValue(record, "record_id") ?? "unknown"}",
-            $"generated_at: {generatedAt}",
-            $"flow_status: {StringValue(record, "flow_status") ?? "unknown"}",
-            $"summary_status: {StringValue(record, "summary_status") ?? "unknown"}",
-            $"measurement_validity: {StringValue(record, "measurement_validity") ?? StringValue(record, "summary_status") ?? "unknown"}",
-            $"quality_reason_codes: {Display(record, "quality_reason_codes")}",
+            $"焦斑分析报告 — {reportName}",
+            $"记录编号：{StringValue(record, "record_id") ?? "unknown"}",
+            $"生成时间：{generatedAt}",
+            $"总体流程状态：{StatusText(StringValue(record, "flow_status"))}",
+            $"总体测量有效性：{StatusText(summaryStatus)}",
+            $"总体原因码：{ReasonText(record, "quality_reason_codes")}",
         };
         if (record.TryGetProperty("input", out var input) && input.ValueKind == JsonValueKind.Object)
         {
-            lines.Add("input:");
+            lines.Add("【输入图像】");
             foreach (var property in input.EnumerateObject())
-                lines.Add($"  {property.Name}: {Display(property.Value)}");
+                lines.Add($"  {property.Name}：{Display(property.Value)}");
         }
-        AddObjectSection(lines, record, "configuration");
-        AddObjectSection(lines, record, "diagnostics");
-        lines.Add("metrics:");
+        AddObjectSection(lines, record, "configuration", "【分析配置】");
+        AddObjectSection(lines, record, "diagnostics", "【质量诊断】");
+        lines.Add("【测量指标】");
         if (record.TryGetProperty("metrics", out var metrics) && metrics.ValueKind == JsonValueKind.Object)
             AppendMetrics(lines, metrics, "  ");
         else
             lines.Add("  N/A");
-        lines.Add("provenance:");
+        lines.Add("【复现信息】");
         foreach (var name in new[] { "analysis_fingerprint", "input_shape" })
-            if (record.TryGetProperty(name, out var value)) lines.Add($"  {name}: {Display(value)}");
+            if (record.TryGetProperty(name, out var value)) lines.Add($"  {name}：{Display(value)}");
         return lines;
     }
 
-    private static void AddObjectSection(List<string> lines, JsonElement record, string name)
+    private static string DefaultReportName(JsonElement record)
     {
-        lines.Add(name + ":");
+        if (record.TryGetProperty("input", out var input) && input.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in new[] { "file_name", "filename", "name", "uri_hint" })
+            {
+                if (!input.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.String)
+                    continue;
+                var candidate = value.GetString() ?? "";
+                if (candidate.Contains("://", StringComparison.Ordinal))
+                    candidate = candidate[(candidate.LastIndexOf('/') + 1)..];
+                var stem = Path.GetFileNameWithoutExtension(candidate);
+                if (!string.IsNullOrWhiteSpace(stem)) return stem + " 焦斑分析报告";
+            }
+        }
+        return "焦斑分析报告";
+    }
+
+    private static string StatusText(string? status)
+    {
+        var code = string.IsNullOrWhiteSpace(status) ? "unknown" : status;
+        var label = code switch
+        {
+            "valid" => "有效",
+            "caution" or "warning" => "需复核",
+            "invalid" => "无效",
+            "unavailable" or "not_applicable" => "不可用",
+            "computed" => "计算完成",
+            "exported" => "已导出",
+            _ => code,
+        };
+        return $"{label} ({code})";
+    }
+
+    private static void AddObjectSection(List<string> lines, JsonElement record, string name, string label)
+    {
+        lines.Add(label);
         if (record.TryGetProperty(name, out var section) && section.ValueKind == JsonValueKind.Object)
             AppendObject(lines, section, "  ");
         else
@@ -154,9 +247,9 @@ public static class ReportExporter
             : "N/A";
         var unit = StringValue(metric, "unit") ?? "";
         var reasons = metric.ValueKind == JsonValueKind.Object && metric.TryGetProperty("reason_codes", out var reasonNode)
-            ? Display(reasonNode)
+            ? ReasonText(reasonNode)
             : "[]";
-        lines.Add($"{indent}{name}: {value} {unit}; validity={status}; reasons={reasons}");
+        lines.Add($"{indent}{name}：{value} {unit}; 状态：{StatusText(status)}; 原因码：{reasons}");
     }
 
     private static string Display(JsonElement value, string property) =>
@@ -170,6 +263,32 @@ public static class ReportExporter
         JsonValueKind.String => value.GetString() ?? "N/A",
         _ => value.ToString(),
     };
+
+    private static string ReasonText(JsonElement value, string property) =>
+        value.ValueKind == JsonValueKind.Object && value.TryGetProperty(property, out var child)
+            ? ReasonText(child)
+            : "[]";
+
+    private static string ReasonText(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Array)
+            return Display(value);
+        return string.Join(", ", value.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item =>
+        {
+            var code = item.GetString() ?? "";
+            var explanation = code switch
+            {
+                "calibration_missing" => "缺少空间标定",
+                "calibration_provisional" => "空间标定尚未确认",
+                "core_clipped" => "核心区域被边界截断",
+                "low_snr" => "信噪比偏低",
+                "rref_missing" => "缺少独立参考半径",
+                "window_truncated" => "分析窗口截断信号",
+                _ => "质量原因",
+            };
+            return $"{code}（{explanation}）";
+        }));
+    }
 
     private static string? StringValue(JsonElement value, string property) =>
         value.ValueKind == JsonValueKind.Object && value.TryGetProperty(property, out var child)
