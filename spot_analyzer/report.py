@@ -651,8 +651,10 @@ def _skip_outcome(item: ReportWorkItem, code: str, message: str) -> ExportOutcom
     return ExportOutcome(None, record_id, "skipped", None, ({"code": code, "message": message},))
 
 
-def is_report_eligible(item: ReportWorkItem) -> bool:
+def is_report_eligible(item: ReportWorkItem | AnalysisRecord) -> bool:
     """Apply only export eligibility gates; analysis owns measurement states."""
+    if isinstance(item, AnalysisRecord):
+        item = ReportWorkItem(item)
     return (
         item.record is not None
         and item.is_formal
