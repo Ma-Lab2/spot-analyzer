@@ -121,15 +121,36 @@
     <!-- Region 2: central display gets the star-sized column and no competing scroll surface. -->
     <Border x:Name="ImageRegion" Grid.Row="1" Grid.Column="1" Style="{DynamicResource PanelBorder}" Margin="4,12,4,12" Background="{DynamicResource ColorImageBackground}">
       <Grid>
-        <Image x:Name="InputPreview" Margin="18" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" AutomationProperties.Name="Input display image" />
-        <StackPanel x:Name="ImageEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="340">
-          <TextBlock Foreground="White" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" Text="No input image" />
-          <TextBlock Margin="0,6,0,0" Foreground="{DynamicResource ColorImageText}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Text="Open a grayscale PNG to view the display image." />
-        </StackPanel>
-        <Border VerticalAlignment="Top" HorizontalAlignment="Left" Margin="14" Padding="9,5" Background="{DynamicResource ColorImageOverlay}" CornerRadius="4">
-          <TextBlock Foreground="White" Text="Display image · input data" />
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Border Grid.Row="0" Background="{DynamicResource ColorPanel}" Padding="10,8" BorderBrush="{DynamicResource ColorBorder}" BorderThickness="0,0,0,1">
+          <WrapPanel>
+            <TextBlock Foreground="{DynamicResource ColorInk}" VerticalAlignment="Center" FontWeight="SemiBold" Text="图层" Margin="0,0,6,0" />
+            <ComboBox x:Name="DisplayLayerCombo" Width="132" AutomationProperties.Name="显示图层" SelectionChanged="DisplaySettingsChanged" TabIndex="22">
+              <ComboBoxItem Content="输入图像" Tag="Input" IsSelected="True"/><ComboBoxItem Content="校正强度图" Tag="CorrectedIntensity"/><ComboBoxItem Content="正信号图" Tag="PositiveSignal"/><ComboBoxItem Content="拟合图" Tag="Fit"/><ComboBoxItem Content="残差图" Tag="Residual"/><ComboBoxItem Content="测量 mask" Tag="MeasurementMask"/><ComboBoxItem Content="核心 mask" Tag="CoreMask"/>
+            </ComboBox>
+            <TextBlock Foreground="{DynamicResource ColorInk}" VerticalAlignment="Center" FontWeight="SemiBold" Text="色图" Margin="12,0,6,0" />
+            <ComboBox x:Name="DisplayColorCombo" Width="92" AutomationProperties.Name="显示色图" SelectionChanged="DisplaySettingsChanged" TabIndex="23">
+              <ComboBoxItem Content="灰度" Tag="Grayscale" IsSelected="True"/><ComboBoxItem Content="伪彩" Tag="Pseudocolor"/>
+            </ComboBox>
+            <TextBlock Foreground="{DynamicResource ColorInk}" VerticalAlignment="Center" FontWeight="SemiBold" Text="范围" Margin="12,0,6,0" />
+            <ComboBox x:Name="DisplayRangeCombo" Width="96" AutomationProperties.Name="显示范围" SelectionChanged="DisplaySettingsChanged" TabIndex="24">
+              <ComboBoxItem Content="分位数" Tag="Percentile" IsSelected="True"/><ComboBoxItem Content="全范围" Tag="Full"/><ComboBoxItem Content="固定" Tag="Fixed"/>
+            </ComboBox>
+            <Button x:Name="HideOverlaysButton" Style="{DynamicResource SecondaryButton}" Content="隐藏全部覆盖层" Margin="10,0,0,0" Padding="8,4" Click="HideOverlays_Click" AutomationProperties.Name="隐藏全部覆盖层" TabIndex="25" />
+          </WrapPanel>
         </Border>
-        <GridSplitter Width="6" HorizontalAlignment="Left" VerticalAlignment="Stretch" Background="Transparent" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" ShowsPreview="True" ToolTip="Resize configuration and image regions" AutomationProperties.Name="Resize configuration and image regions" />
+        <Grid Grid.Row="1">
+          <Image x:Name="InputPreview" Margin="18" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" AutomationProperties.Name="Input display image" />
+          <Canvas x:Name="DisplayOverlayCanvas" Margin="18" IsHitTestVisible="False" />
+          <StackPanel x:Name="ImageEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="340">
+            <TextBlock Foreground="White" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" Text="No input image" />
+            <TextBlock Margin="0,6,0,0" Foreground="{DynamicResource ColorImageText}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Text="Open a grayscale PNG to view the display image." />
+          </StackPanel>
+          <Border VerticalAlignment="Top" HorizontalAlignment="Left" Margin="14" Padding="9,5" Background="{DynamicResource ColorImageOverlay}" CornerRadius="4">
+            <TextBlock x:Name="DisplayLayerStatusText" Foreground="White" Text="Display image · input data" />
+          </Border>
+          <GridSplitter Width="6" HorizontalAlignment="Left" VerticalAlignment="Stretch" Background="Transparent" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" ShowsPreview="True" ToolTip="Resize configuration and image regions" AutomationProperties.Name="Resize configuration and image regions" />
+        </Grid>
       </Grid>
     </Border>
 

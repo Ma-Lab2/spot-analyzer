@@ -136,16 +136,26 @@ var wpfConnections = RunOnSta(() =>
     var cancel = (System.Windows.Controls.Button)window.FindName("CancelAnalysisButton");
     var roiLock = (System.Windows.Controls.CheckBox)window.FindName("LockRoiCheck");
     var batchCalibration = (System.Windows.Controls.Button)window.FindName("ApplyCalibrationBatchButton");
+    var displayLayer = (System.Windows.Controls.ComboBox)window.FindName("DisplayLayerCombo");
+    var displayColor = (System.Windows.Controls.ComboBox)window.FindName("DisplayColorCombo");
+    var displayRange = (System.Windows.Controls.ComboBox)window.FindName("DisplayRangeCombo");
+    var hideOverlays = (System.Windows.Controls.Button)window.FindName("HideOverlaysButton");
     list.ItemsSource = new[] { "first", "second" };
     list.SelectedIndex = 1;
     cancel.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
     roiLock.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
     batchCalibration.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+    displayLayer.SelectedIndex = 1;
+    displayColor.SelectedIndex = 1;
+    displayRange.SelectedIndex = 2;
+    hideOverlays.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
     window.Close();
-    return (list.SelectedIndex, cancel is not null, roiLock is not null, batchCalibration is not null);
+    return (list.SelectedIndex, cancel is not null, roiLock is not null, batchCalibration is not null,
+        displayLayer is not null, displayColor is not null, displayRange is not null, hideOverlays is not null);
 });
-Assert(wpfConnections.SelectedIndex == 1 && wpfConnections.Item2 && wpfConnections.Item3 && wpfConnections.Item4,
-    "real WPF controls for list selection, cancellation, ROI lock, and batch calibration should load with connected handlers");
+Assert(wpfConnections.SelectedIndex == 1 && wpfConnections.Item2 && wpfConnections.Item3 && wpfConnections.Item4
+    && wpfConnections.Item5 && wpfConnections.Item6 && wpfConnections.Item7 && wpfConnections.Item8,
+    "real WPF controls for workspace display layers, display settings, overlays, list selection, cancellation, ROI lock, and batch calibration should load with connected handlers");
 
 var model = new WorkspacePresentationModel();
 var input = new WorkspaceInput("sample.png", "abc", 32, 32, 8, "32×32, 8-bit grayscale PNG, SHA-256 abc");
