@@ -15,7 +15,7 @@ from typing import Any, Mapping
 
 import numpy as np
 import rfc8785
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from .models import AnalysisRecord
 
@@ -492,8 +492,26 @@ def report_text(package: ReportPackage) -> str:
     return "\n".join(lines)
 
 
+def _report_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    # Prefer a CJK-capable font so Chinese labels are rendered, not replaced by
+    # tofu glyphs.  The fallback keeps headless/non-Windows environments usable.
+    candidates = (
+        r"C:\\Windows\\Fonts\\msyh.ttc",
+        r"C:\\Windows\\Fonts\\NotoSansSC-VF.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    )
+    for candidate in candidates:
+        try:
+            return ImageFont.truetype(candidate, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
 def _render(package: ReportPackage) -> Image.Image:
     lines = report_text(package).splitlines()
+    font = _report_font(16)
     panel_size = (300, 190)
     visual_entries: list[tuple[str, Image.Image]] = [
         (name, _annotated_preview(package, name, array, panel_size))
@@ -524,10 +542,10 @@ def _render(package: ReportPackage) -> Image.Image:
         row = index // columns
         left = 24 + column * 340
         top = 20 + row * 230
-        draw.text((left, top), name, fill="black")
+        draw.text((left, top), name, fill="black", font=font)
         image.paste(panel.convert("RGB"), (left, top + 24))
     for index, line in enumerate(lines):
-        draw.text((24, visual_height + 28 * index), line, fill="black")
+        draw.text((24, visual_height + 28 * index), line, fill="black", font=font)
     return image
 
 
