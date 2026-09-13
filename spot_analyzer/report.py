@@ -17,7 +17,7 @@ import numpy as np
 import rfc8785
 from PIL import Image, ImageDraw, ImageFont
 
-from .models import AnalysisRecord
+from .models import AnalysisRecord, AnalysisRecordKind
 
 
 @dataclass(frozen=True)
@@ -186,6 +186,8 @@ def _report_diagnostics(record: AnalysisRecord) -> dict[str, Any]:
 
 
 def prepare_report(record: AnalysisRecord, specification: ReportSpecification) -> ReportPackage:
+    if record.record_kind == AnalysisRecordKind.PREVIEW:
+        raise ValueError("preview analysis records cannot be exported")
     format_name = _format_name(specification)
     report_name = _resolved_report_name(record, specification)
     configuration = asdict(record.configuration)
@@ -204,6 +206,9 @@ def prepare_report(record: AnalysisRecord, specification: ReportSpecification) -
             "analysis_fingerprint": record.analysis_fingerprint,
             "flow_status": record.flow_status.value,
             "summary_status": record.summary_status.value,
+            "record_kind": record.record_kind.value,
+            "measurement_semantics": record.measurement_semantics,
+            "measurement_semantics_confirmed": record.measurement_semantics_confirmed,
         },
         "input": {
             **dict(record.input_metadata),
@@ -657,6 +662,7 @@ def is_report_eligible(item: ReportWorkItem | AnalysisRecord) -> bool:
         item = ReportWorkItem(item)
     return (
         item.record is not None
+        and item.record.record_kind == AnalysisRecordKind.FORMAL
         and item.is_formal
         and not item.is_preview
         and not item.is_stale
@@ -700,7 +706,7 @@ def batch_export_reports(
         if item.record is None:
             outcomes.append(_skip_outcome(item, "report_record_missing", "No formal analysis record is available."))
             continue
-        if not item.is_formal:
+        if item.record.record_kind != AnalysisRecordKind.FORMAL or not item.is_formal:
             outcomes.append(_skip_outcome(item, "report_item_not_formal", "Only formal analysis records can be exported."))
             continue
         if item.is_preview:

@@ -176,9 +176,12 @@ public partial class MainWindow : Window
             _failureCode = null;
             _failureDetails = null;
             DiagnosticLog.Write("configuration_confirmed", new { configuration = BuildConfigurationSnapshot(_lastConfiguration), request = _pendingRequest.Summary });
-            StatusText.Text = "Configuration confirmed; ready to run";
+            StatusText.Text = "已确认 ROI 和相对强度码值语义，正在生成正式结果";
             MarkResultStale();
             UpdateRunAvailability();
+            // The final confirmation is the only formal-run action.  The
+            // hidden compatibility button is not part of the normal path.
+            RunAnalysis_Click(sender, e);
         }
         catch (ConfigurationValidationException exception)
         {
@@ -352,6 +355,91 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ApplyPreviewConfiguration(WorkerOutcome outcome)
+    {
+        if (outcome.Result is not JsonElement terminal || !terminal.TryGetProperty("record", out var record)
+            || !record.TryGetProperty("configuration", out var configuration)
+            || !configuration.TryGetProperty("region", out var region)) return;
+        var background = configuration.TryGetProperty("background_region", out var backgroundNode)
+            && backgroundNode.ValueKind == JsonValueKind.Object ? backgroundNode : default;
+        var calibration = configuration.TryGetProperty("calibration", out var calibrationNode) ? calibrationNode : default;
+        _configurationReady = false;
+        try
+        {
+            RoiXText.Text = GetString(region, "x") ?? "0";
+            RoiYText.Text = GetString(region, "y") ?? "0";
+            RoiWidthText.Text = GetString(region, "width") ?? "1";
+            RoiHeightText.Text = GetString(region, "height") ?? "1";
+            BackgroundXText.Text = background.ValueKind == JsonValueKind.Object ? GetString(background, "x") ?? "" : "";
+            BackgroundYText.Text = background.ValueKind == JsonValueKind.Object ? GetString(background, "y") ?? "" : "";
+            BackgroundWidthText.Text = background.ValueKind == JsonValueKind.Object ? GetString(background, "width") ?? "" : "";
+            BackgroundHeightText.Text = background.ValueKind == JsonValueKind.Object ? GetString(background, "height") ?? "" : "";
+            if (calibration.ValueKind == JsonValueKind.Object)
+            {
+                CalibrationXText.Text = GetString(calibration, "x_unit_per_pixel") ?? "";
+                CalibrationYText.Text = GetString(calibration, "y_unit_per_pixel") ?? "";
+                CalibrationUnitsText.Text = GetString(calibration, "physical_unit") ?? "";
+                CalibrationSourceText.Text = GetString(calibration, "source") ?? "";
+            }
+        }
+        finally { _configurationReady = true; }
+        try
+        {
+            var draft = ReadConfiguration();
+            _workspace.SetPreviewDraft(new AnalysisDraft(
+                draft.RegionX, draft.RegionY, draft.RegionWidth, draft.RegionHeight,
+                draft.BackgroundX, draft.BackgroundY, draft.BackgroundWidth, draft.BackgroundHeight,
+                draft.CalibrationStatus, draft.CalibrationX, draft.CalibrationY,
+                draft.CalibrationUnits, draft.CalibrationSource, draft.AdvancedSettings));
+        }
+        catch (ConfigurationValidationException) { _workspace.StageInvalidDraft(); }
+    }
+
+    private async Task RunPreviewAsync(AnalysisRequest request, string workspaceRequestId)
+    {
+        _analysisCancellation?.Dispose();
+        _analysisCancellation = new CancellationTokenSource();
+        _flowStatus = "preview_processing";
+        StatusText.Text = "Preview processing";
+        UpdateRunAvailability();
+        try
+        {
+            var outcome = await _workerClient.RunAsync(request, _analysisCancellation.Token, TimeSpan.FromSeconds(30));
+            _lastOutcome = outcome;
+            WorkspaceWorkerEvent workerEvent = outcome.Status switch
+            {
+                "success" => new WorkspaceWorkerEvent.Completed(workspaceRequestId, outcome),
+                "cancelled" => new WorkspaceWorkerEvent.Cancelled(workspaceRequestId, outcome),
+                _ => new WorkspaceWorkerEvent.Failed(workspaceRequestId, outcome),
+            };
+            if (!_workspace.Apply(workerEvent)) return;
+            _flowStatus = outcome.Status == "success" ? "preview" : outcome.Status;
+            if (outcome.Status == "success")
+            {
+                ApplyPreviewConfiguration(outcome);
+                _lastSuccessfulOutcome = outcome;
+                _hasResult = true;
+                _resultStale = false;
+                StatusText.Text = "Preview available — review ROI, then confirm formal result";
+                RecordText.Text = FormatRecordSummary(outcome);
+                MetricsText.Text = FormatMetrics(outcome);
+                RenderCurves(outcome, stale: false);
+                ExportResultButton.IsEnabled = false;
+            }
+            else
+            {
+                StatusText.Text = outcome.Status == "cancelled" ? "Preview cancelled" : $"Preview failed ({outcome.FailureCode})";
+            }
+            RefreshDiagnosticsSummary();
+        }
+        finally
+        {
+            _analysisCancellation?.Dispose();
+            _analysisCancellation = null;
+            UpdateRunAvailability();
+        }
+    }
+
     private async void OpenPng_Click(object sender, RoutedEventArgs e)
     {
         if (_workspace.IsProcessing)
@@ -371,7 +459,13 @@ public partial class MainWindow : Window
         {
             var input = await PngInput.ReadAsync(dialog.FileName);
             _selectedInput = input;
-            _workspace.LoadInput(new WorkspaceInput(input.Path, input.Sha256, input.Width, input.Height, input.BitDepth, input.Summary));
+            var workspaceInput = new WorkspaceInput(input.Path, input.Sha256, input.Width, input.Height, input.BitDepth, input.Summary);
+            var previewRequest = AnalysisRequest.CreatePreview(
+                input.Path, input.Sha256,
+                Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived"));
+            if (!_workspace.LoadInput(workspaceInput, previewRequest)) return;
+            var previewRequestId = _workspace.State.ActiveRequestId;
+            if (previewRequestId is null) return;
             InputSummaryText.Text = input.Summary;
             InputPreview.Source = input.Preview;
             ImageEmptyState.Visibility = Visibility.Collapsed;
@@ -380,10 +474,11 @@ public partial class MainWindow : Window
             _failureCode = null;
             _failureDetails = null;
             DiagnosticLog.Write("input_loaded", new { input.Summary, input.Sha256 });
-            StatusText.Text = "Input loaded; confirm configuration";
+            StatusText.Text = "Input loaded; generating preview";
             MarkResultStale();
             RefreshDraftSummary();
             UpdateRunAvailability();
+            await RunPreviewAsync(previewRequest, previewRequestId);
         }
         catch (InputValidationException exception)
         {
@@ -627,16 +722,25 @@ public partial class MainWindow : Window
         if (WorkflowStatusBadge is null || StatusText is null)
             return;
 
-        var status = StatusText.Text.ToLowerInvariant();
-        var (surface, border, foreground) = status.Contains("fail") || status.Contains("invalid") || status.Contains("unavailable")
-            ? ("ColorInvalidSurface", "ColorInvalid", "ColorInvalid")
-            : status.Contains("caution") || status.Contains("stale") || status.Contains("recompute") || status.Contains("timeout")
-                ? ("ColorCautionSurface", "ColorCaution", "ColorCaution")
-                : status.Contains("complete") || status.Contains("export")
-                    ? ("ColorSuccessSurface", "ColorSuccess", "ColorSuccess")
-                    : status.Contains("process") || status.Contains("cancel")
-                        ? ("ColorInfoSurface", "ColorInfo", "ColorInfo")
-                        : ("ColorPanelSubtle", "ColorBorder", "ColorInk");
+        var status = _workspace.State.WorkflowStatus;
+        var (surface, border, foreground) = status switch
+        {
+            WorkspaceWorkflowStatus.InputInvalid or WorkspaceWorkflowStatus.ConfigurationInvalid
+                or WorkspaceWorkflowStatus.Failed or WorkspaceWorkflowStatus.AnalysisFailed
+                or WorkspaceWorkflowStatus.WorkerError or WorkspaceWorkflowStatus.ProtocolError
+                => ("ColorInvalidSurface", "ColorInvalid", "ColorInvalid"),
+            WorkspaceWorkflowStatus.NeedsRecalculation or WorkspaceWorkflowStatus.Stale
+                or WorkspaceWorkflowStatus.TimedOut
+                => ("ColorCautionSurface", "ColorCaution", "ColorCaution"),
+            WorkspaceWorkflowStatus.Completed or WorkspaceWorkflowStatus.Exported
+                or WorkspaceWorkflowStatus.PreviewAvailable
+                => ("ColorSuccessSurface", "ColorSuccess", "ColorSuccess"),
+            WorkspaceWorkflowStatus.Processing or WorkspaceWorkflowStatus.PreviewProcessing
+                or WorkspaceWorkflowStatus.Formalizing or WorkspaceWorkflowStatus.Cancelling
+                or WorkspaceWorkflowStatus.Cancelled
+                => ("ColorInfoSurface", "ColorInfo", "ColorInfo"),
+            _ => ("ColorPanelSubtle", "ColorBorder", "ColorInk"),
+        };
         WorkflowStatusBadge.Background = (Brush)FindResource(surface);
         WorkflowStatusBadge.BorderBrush = (Brush)FindResource(border);
         StatusText.Foreground = (Brush)FindResource(foreground);
@@ -666,8 +770,10 @@ public partial class MainWindow : Window
             WorkspaceWorkflowStatus.Failed or WorkspaceWorkflowStatus.AnalysisFailed or WorkspaceWorkflowStatus.WorkerError or WorkspaceWorkflowStatus.ProtocolError => "Analysis failed; inspect diagnostics and try again.",
             WorkspaceWorkflowStatus.Cancelled or WorkspaceWorkflowStatus.TimedOut => "Run ended without a new record; the prior record is retained.",
             WorkspaceWorkflowStatus.ExportFailed => "Export failed; the current record remains available for retry.",
-            WorkspaceWorkflowStatus.Completed or WorkspaceWorkflowStatus.Exported => "Current analysis record is ready.",
-            _ => "Confirm the configuration to continue.",
+            WorkspaceWorkflowStatus.Completed or WorkspaceWorkflowStatus.Exported => "Current formal analysis record is ready.",
+            WorkspaceWorkflowStatus.PreviewAvailable => "Preview is ready; review ROI and confirm the formal result.",
+            WorkspaceWorkflowStatus.PreviewProcessing => "Generating a non-exportable preview.",
+            _ => "Review the configuration to continue.",
         };
     }
 
@@ -735,8 +841,28 @@ public partial class MainWindow : Window
         _flowStatus = _hasResult ? "needs_recalculation" : "configuration_changed";
         MarkResultStale();
         if (_inFlightRequest is null)
+        {
             RefreshDraftSummary();
+            StartPreviewForCurrentDraft();
+        }
         UpdateRunAvailability();
+    }
+
+    private async void StartPreviewForCurrentDraft()
+    {
+        if (_selectedInput is null || _workspace.IsProcessing) return;
+        try
+        {
+            var draft = ReadConfiguration();
+            var formal = BuildRequestForDisplay(draft);
+            var preview = formal.AsPreview();
+            var requestId = _workspace.StartPreview(preview);
+            if (requestId is null) return;
+            _inFlightRequest = preview;
+            await RunPreviewAsync(preview, requestId);
+        }
+        catch (ConfigurationValidationException) { }
+        finally { _inFlightRequest = null; }
     }
 
     private void CurveCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -851,6 +977,8 @@ public partial class MainWindow : Window
             : _selectedInput?.Summary ?? outcome.InputSummary ?? "unknown";
         var flowStatus = GetString(record, "flow_status") ?? "unknown";
         var summaryStatus = GetString(record, "summary_status") ?? "unknown";
+        var recordKind = GetString(record, "record_kind") ?? "formal";
+        var semantics = GetString(record, "measurement_semantics") ?? "relative_intensity_code";
         var configuration = record.TryGetProperty("configuration", out var configurationNode) ? configurationNode : default;
         var region = configuration.ValueKind == JsonValueKind.Object && configuration.TryGetProperty("region", out var regionNode)
             ? $"({GetNumber(regionNode, "x")}, {GetNumber(regionNode, "y")}, {GetNumber(regionNode, "width")}, {GetNumber(regionNode, "height")})"
@@ -858,7 +986,7 @@ public partial class MainWindow : Window
         var calibration = configuration.ValueKind == JsonValueKind.Object && configuration.TryGetProperty("calibration", out var calibrationNode)
             ? $"{GetNumber(calibrationNode, "x_unit_per_pixel")} × {GetNumber(calibrationNode, "y_unit_per_pixel")} {GetString(calibrationNode, "physical_unit") ?? ""} ({GetString(calibrationNode, "confirmation") ?? "missing"})"
             : "unknown";
-        return $"Input: {inputIdentity}\nRecord: {GetString(record, "record_id") ?? outcome.RecordId}\nFingerprint: {GetString(record, "analysis_fingerprint") ?? outcome.AnalysisFingerprint}\nFlow status: {flowStatus}; measurement validity: {summaryStatus}\nCalibration: {calibration}\nAnalysis region: {region}";
+        return $"Input: {inputIdentity}\nRecord: {GetString(record, "record_id") ?? outcome.RecordId}\nKind: {recordKind}; semantics: {semantics}\nFingerprint: {GetString(record, "analysis_fingerprint") ?? outcome.AnalysisFingerprint}\nFlow status: {flowStatus}; measurement validity: {summaryStatus}\nCalibration: {calibration}\nAnalysis region: {region}";
     }
 
     private string FormatMetrics(WorkerOutcome outcome)

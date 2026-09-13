@@ -27,6 +27,7 @@ from .profiles import (
 from .models import (
     AnalysisConfiguration,
     AnalysisModel,
+    AnalysisRecordKind,
     AnalysisRegion,
     FlowStatus,
     InputImage,
@@ -105,7 +106,8 @@ def _configuration(payload: dict[str, Any]) -> AnalysisConfiguration:
         "rref_pixels", "analysis_contract", "standard_profile", "quality_profile",
         "profile_validation", "algorithm_version", "bad_pixel_coordinates",
         "bad_pixel_mask_version", "detection_profile_version",
-        "detection_profile_parameters", "automatic_background",
+        "detection_profile_parameters", "automatic_background", "record_kind",
+        "measurement_semantics", "measurement_semantics_confirmed",
     }
     options = {key: value for key, value in payload.items() if key in allowed}
     options.setdefault("standard_profile", profile["standard_profile"])
@@ -116,6 +118,9 @@ def _configuration(payload: dict[str, Any]) -> AnalysisConfiguration:
     options.setdefault("rref_pixels", None)
     options.setdefault("bad_pixel_coordinates", ())
     options.setdefault("bad_pixel_mask_version", "bad-pixel-mask-v1")
+    options.setdefault("record_kind", "preview" if region is None else "formal")
+    options.setdefault("measurement_semantics", "relative_intensity_code")
+    options.setdefault("measurement_semantics_confirmed", options["record_kind"] == "formal")
     return AnalysisConfiguration(
         region=region, background_region=background, calibration=calibration,
         preprocessing=preprocessing, model=model, **options,
@@ -161,12 +166,16 @@ def _decode_asset(
     return decoded.image, decoded.flow_status, decoded.diagnostics
 
 
-def _input_image(payload: dict[str, Any]) -> tuple[InputImage | None, FlowStatus, tuple[dict[str, Any], ...]]:
+def _input_image(payload: dict[str, Any], *, preview: bool = False) -> tuple[InputImage | None, FlowStatus, tuple[dict[str, Any], ...]]:
     if "asset" not in payload:
         return None, FlowStatus.PARAMETER_INVALID, ({"code": "input_asset_required"},)
+    # Supported PNG decoding establishes the known relative-intensity-code
+    # interpretation for an automatic preview.  Formal requests still carry
+    # an explicit confirmation in the request snapshot.
+    semantic_confirmed = preview or payload.get("confirm_relative_intensity", False) is True
     image, status, diagnostics = _decode_asset(
         payload["asset"],
-        confirm_relative_intensity=payload.get("confirm_relative_intensity", False) is True,
+        confirm_relative_intensity=semantic_confirmed,
     )
     if image is None or status != FlowStatus.COMPUTED:
         return image, status, diagnostics
@@ -175,7 +184,7 @@ def _input_image(payload: dict[str, Any]) -> tuple[InputImage | None, FlowStatus
         return image, status, diagnostics
     background, background_status, background_diagnostics = _decode_asset(
         background_asset,
-        confirm_relative_intensity=payload.get("confirm_relative_intensity", False) is True,
+        confirm_relative_intensity=semantic_confirmed,
     )
     if background is None or background_status != FlowStatus.COMPUTED:
         return None, background_status, diagnostics + background_diagnostics
@@ -283,6 +292,12 @@ def _record_payload(record: Any, derived_assets: list[dict[str, Any]]) -> dict[s
     return {
         "record_id": record.record_id,
         "analysis_fingerprint": record.analysis_fingerprint,
+        "record_kind": record.record_kind.value,
+        "is_preview": record.is_preview,
+        "is_formal": record.is_formal,
+        "measurement_semantics": record.measurement_semantics,
+        "measurement_semantics_confirmed": record.measurement_semantics_confirmed,
+        "workflow_contract": "workflow-contract-v1",
         "flow_status": record.flow_status.value,
         "summary_status": record.summary_status.value,
         "input": dict(record.input_metadata),
@@ -321,10 +336,11 @@ def _record_payload(record: Any, derived_assets: list[dict[str, Any]]) -> dict[s
     }
 
 
-def _failure(flow_status: FlowStatus, diagnostics: tuple[dict[str, Any], ...] | list[dict[str, Any]]) -> dict[str, Any]:
+def _failure(flow_status: FlowStatus, diagnostics: tuple[dict[str, Any], ...] | list[dict[str, Any]], request_id: str | None = None) -> dict[str, Any]:
     return {
         "schema": RESULT_SCHEMA,
         "kind": "failed",
+        "request_id": request_id,
         "flow_status": flow_status.value,
         "summary_status": None,
         "record": None,
@@ -334,36 +350,48 @@ def _failure(flow_status: FlowStatus, diagnostics: tuple[dict[str, Any], ...] | 
 
 
 def handle_request(request: dict[str, Any]) -> list[dict[str, Any]]:
+    request_id = request.get("request_id") if isinstance(request.get("request_id"), str) else None
     if request.get("schema") != SCHEMA:
-        return [_failure(FlowStatus.PARAMETER_INVALID, ({"code": "schema_unsupported"},))]
-    started = {"schema": EVENT_SCHEMA, "kind": "started", "flow_status": "processing"}
+        return [_failure(FlowStatus.PARAMETER_INVALID, ({"code": "schema_unsupported"},), request_id)]
+    workflow = request.get("workflow", {})
+    workflow_kind = request.get("record_kind", request.get("analysis_kind", request.get("purpose")))
+    if isinstance(workflow, dict):
+        workflow_kind = workflow.get("kind", workflow.get("record_kind", workflow_kind))
+    if workflow_kind not in {"preview", "formal"}:
+        configuration_hint = request.get("configuration")
+        workflow_kind = "preview" if isinstance(configuration_hint, dict) and configuration_hint.get("region") is None else "formal"
+    preview = workflow_kind == "preview"
+    started = {"schema": EVENT_SCHEMA, "kind": "started", "request_id": request_id, "record_kind": workflow_kind, "flow_status": "processing"}
     lifecycle = request.get("lifecycle", {})
     if lifecycle is None:
         lifecycle = {}
     if not isinstance(lifecycle, dict):
-        return [started, _failure(FlowStatus.PARAMETER_INVALID, ({"code": "lifecycle_invalid"},))]
+        return [started, _failure(FlowStatus.PARAMETER_INVALID, ({"code": "lifecycle_invalid"},), request_id)]
     if lifecycle.get("cancel_requested") is True:
-        return [started, _failure(FlowStatus.CANCELLED, ({"code": "cancelled_by_caller"},))]
+        return [started, _failure(FlowStatus.CANCELLED, ({"code": "cancelled_by_caller"},), request_id)]
     timeout_ms = lifecycle.get("timeout_ms")
     deadline = None
     if timeout_ms is not None:
         if not isinstance(timeout_ms, (int, float)) or timeout_ms < 0:
-            return [started, _failure(FlowStatus.PARAMETER_INVALID, ({"code": "timeout_invalid"},))]
+            return [started, _failure(FlowStatus.PARAMETER_INVALID, ({"code": "timeout_invalid"},), request_id)]
         deadline = time.monotonic() + float(timeout_ms) / 1000.0
     try:
         input_payload = request["input"]
         if not isinstance(input_payload, dict):
             raise TypeError("input must be an object")
     except (KeyError, TypeError) as error:
-        return [started, _failure(FlowStatus.PARAMETER_INVALID, ({"code": "request_invalid", "message": str(error)},))]
+        return [started, _failure(FlowStatus.PARAMETER_INVALID, ({"code": "request_invalid", "message": str(error)},), request_id)]
 
-    image, input_status, input_diagnostics = _input_image(input_payload)
+    image, input_status, input_diagnostics = _input_image(input_payload, preview=preview)
     if image is None:
-        return [started, _failure(input_status, input_diagnostics)]
+        return [started, _failure(input_status, input_diagnostics, request_id)]
     try:
         configuration_payload = request["configuration"]
         if not isinstance(configuration_payload, dict):
             raise TypeError("configuration must be an object")
+        configuration_payload = dict(configuration_payload)
+        configuration_payload.setdefault("record_kind", workflow_kind)
+        configuration_payload.setdefault("measurement_semantics_confirmed", not preview)
         configuration = _configuration(configuration_payload)
         output_strategy = request["output_strategy"]
         if not isinstance(output_strategy, dict):
@@ -373,15 +401,15 @@ def handle_request(request: dict[str, Any]) -> list[dict[str, Any]]:
         if output_strategy.get("derived_format") != "npy":
             raise ValueError("output_strategy.derived_format must be npy")
     except (KeyError, TypeError, ValueError) as error:
-        return [started, _failure(FlowStatus.PARAMETER_INVALID, ({"code": "request_invalid", "message": str(error)},))]
+        return [started, _failure(FlowStatus.PARAMETER_INVALID, ({"code": "request_invalid", "message": str(error)},), request_id)]
 
     if deadline is not None and time.monotonic() >= deadline:
-        return [started, _failure(FlowStatus.TIMEOUT, ({"code": "analysis_timeout"},))]
+        return [started, _failure(FlowStatus.TIMEOUT, ({"code": "analysis_timeout"},), request_id)]
     outcome = analyze(image, configuration)
     if deadline is not None and time.monotonic() >= deadline:
-        return [started, _failure(FlowStatus.TIMEOUT, ({"code": "analysis_timeout"},))]
+        return [started, _failure(FlowStatus.TIMEOUT, ({"code": "analysis_timeout"},), request_id)]
     if outcome.record is None:
-        return [started, _failure(outcome.flow_status, list(outcome.diagnostics))]
+        return [started, _failure(outcome.flow_status, list(outcome.diagnostics), request_id)]
     try:
         derived_assets = _write_derived_assets(outcome.record, output_strategy)
     except (OSError, ValueError) as error:
@@ -389,12 +417,14 @@ def handle_request(request: dict[str, Any]) -> list[dict[str, Any]]:
             started,
             _failure(
                 FlowStatus.EXPORT_FAILED,
-                ({"code": "derived_asset_write_failed", "message": str(error)},),
+                ({"code": "derived_asset_write_failed", "message": str(error)},), request_id,
             ),
         ]
     result = {
         "schema": RESULT_SCHEMA,
         "kind": "completed",
+        "request_id": request_id,
+        "record_kind": workflow_kind,
         "flow_status": outcome.flow_status.value,
         "record": _record_payload(outcome.record, derived_assets),
     }

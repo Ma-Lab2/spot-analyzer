@@ -40,9 +40,9 @@
       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" IsTabStop="False">
         <StackPanel Margin="{DynamicResource SpacingPanelContent}">
           <TextBlock Style="{DynamicResource SectionHeading}" Text="01 · 输入与配置" />
-          <TextBlock Style="{DynamicResource SupportingText}" Margin="{DynamicResource SpacingSectionIntro}" Text="Choose an input, confirm analysis choices, then run." />
-          <Button x:Name="OpenInputButton" AutomationProperties.AutomationId="OpenInputButton" AutomationProperties.Name="Open grayscale PNG input"
-                  AutomationProperties.HelpText="Open a supported grayscale PNG file" Width="230" HorizontalAlignment="Left" Click="OpenPng_Click" Content="_Open grayscale PNG" TabIndex="0" />
+          <TextBlock Style="{DynamicResource SupportingText}" Margin="{DynamicResource SpacingSectionIntro}" Text="打开图片后自动生成预览；复核 ROI 后一次确认正式结果。" />
+          <Button x:Name="OpenInputButton" AutomationProperties.AutomationId="OpenInputButton" AutomationProperties.Name="打开受支持的 PNG 图片"
+                  AutomationProperties.HelpText="打开受支持的灰度或等通道 RGB PNG 图片" Width="230" HorizontalAlignment="Left" Click="OpenPng_Click" Content="_打开 PNG 图片" TabIndex="0" />
           <TextBlock Style="{DynamicResource FieldLabel}" Text="Selected input" />
           <TextBlock x:Name="InputSummaryText" Text="No input selected" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
 
@@ -97,14 +97,14 @@
             </StackPanel>
           </Expander>
 
-          <Button x:Name="ConfirmConfigurationButton" AutomationProperties.AutomationId="ConfirmConfigurationButton" AutomationProperties.Name="Confirm analysis configuration"
-                  Margin="0,16,0,0" Width="230" HorizontalAlignment="Left" Click="ConfirmConfiguration_Click" Content="_Confirm configuration" TabIndex="14" />
+          <Button x:Name="ConfirmConfigurationButton" AutomationProperties.AutomationId="ConfirmConfigurationButton" AutomationProperties.Name="确认分析区域并生成正式结果"
+                  Margin="0,16,0,0" Width="230" HorizontalAlignment="Left" Click="ConfirmConfiguration_Click" Content="_确认分析区域并生成正式结果" TabIndex="14" />
           <TextBlock Style="{DynamicResource FieldLabel}" Text="Pending request snapshot" />
           <TextBox x:Name="SummaryText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72"
                    VerticalScrollBarVisibility="Auto" Text="No pending request" AutomationProperties.Name="Pending request snapshot" IsTabStop="False" />
           <TextBlock Style="{DynamicResource FieldLabel}" Text="05 · 执行分析" />
           <StackPanel Orientation="Horizontal">
-            <Button x:Name="RunAnalysisButton" AutomationProperties.Name="Run analysis" Width="140" Click="RunAnalysis_Click" Content="_Run analysis" IsEnabled="False" TabIndex="15" />
+            <Button x:Name="RunAnalysisButton" AutomationProperties.Name="生成正式结果（兼容入口）" Width="140" Click="RunAnalysis_Click" Content="_生成正式结果" IsEnabled="False" Visibility="Collapsed" TabIndex="15" />
             <Button x:Name="CancelAnalysisButton" Style="{DynamicResource SecondaryButton}" AutomationProperties.Name="Cancel analysis" Margin="6,0,0,0" Width="82" Click="CancelAnalysis_Click" Content="_Cancel" TabIndex="16" />
           </StackPanel>
         </StackPanel>

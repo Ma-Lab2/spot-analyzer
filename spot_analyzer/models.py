@@ -11,6 +11,18 @@ from typing import Any, Mapping
 import numpy as np
 
 
+class _FrozenDict(dict):
+    """Dict-compatible immutable snapshot that remains dataclasses.asdict-safe."""
+
+    def _blocked(self, *args: Any, **kwargs: Any) -> None:
+        raise TypeError("immutable analysis snapshot")
+
+    __setitem__ = __delitem__ = clear = pop = popitem = setdefault = update = _blocked
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> dict[Any, Any]:
+        return {key: value for key, value in self.items()}
+
+
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
         return MappingProxyType({key: _freeze(item) for key, item in value.items()})
@@ -37,6 +49,16 @@ class MeasurementStatus(str, Enum):
     CAUTION = "caution"
     INVALID = "invalid"
     UNAVAILABLE = "unavailable"
+
+
+class AnalysisRecordKind(str, Enum):
+    """Workflow identity of an immutable analysis attempt."""
+
+    PREVIEW = "preview"
+    FORMAL = "formal"
+
+
+MEASUREMENT_SEMANTICS = "relative_intensity_code"
 
 
 @dataclass(frozen=True)
@@ -350,8 +372,18 @@ class AnalysisConfiguration:
     detection_profile_version: str = "focal-spot-detection-v1"
     detection_profile_parameters: Mapping[str, Any] = field(default_factory=_default_detection_profile_parameters)
     automatic_background: bool = False
+    record_kind: AnalysisRecordKind = AnalysisRecordKind.FORMAL
+    measurement_semantics: str = MEASUREMENT_SEMANTICS
+    measurement_semantics_confirmed: bool = False
 
     def __post_init__(self) -> None:
+        if isinstance(self.record_kind, str):
+            try:
+                object.__setattr__(self, "record_kind", AnalysisRecordKind(self.record_kind))
+            except ValueError as error:
+                raise ValueError("record_kind is not supported") from error
+        if self.measurement_semantics != MEASUREMENT_SEMANTICS:
+            raise ValueError("only relative_intensity_code measurement semantics are supported")
         if self.profile_validation != "provisional":
             raise ValueError("profile validation is locked to provisional until Issue #11 acceptance")
         raw_coordinates = tuple(tuple(coordinate) for coordinate in self.bad_pixel_coordinates)
@@ -368,7 +400,7 @@ class AnalysisConfiguration:
         object.__setattr__(self, "bad_pixel_coordinates", coordinates)
         # Keep a plain copied mapping so dataclasses.asdict remains usable by
         # the versioned worker snapshot seam.
-        object.__setattr__(self, "detection_profile_parameters", dict(self.detection_profile_parameters))
+        object.__setattr__(self, "detection_profile_parameters", _FrozenDict(dict(self.detection_profile_parameters)))
 
 
 @dataclass(frozen=True)
@@ -411,8 +443,15 @@ class AnalysisRecord:
     core_mask: np.ndarray
     input_metadata: Mapping[str, Any] = field(default_factory=dict)
     standard_corrected_intensity: np.ndarray | None = None
+    record_kind: AnalysisRecordKind = AnalysisRecordKind.FORMAL
+    measurement_semantics: str = MEASUREMENT_SEMANTICS
+    measurement_semantics_confirmed: bool = True
 
     def __post_init__(self) -> None:
+        if isinstance(self.record_kind, str):
+            object.__setattr__(self, "record_kind", AnalysisRecordKind(self.record_kind))
+        if self.measurement_semantics != MEASUREMENT_SEMANTICS:
+            raise ValueError("only relative_intensity_code measurement semantics are supported")
         for name in (
             "input_intensity",
             "corrected_intensity",
@@ -434,6 +473,14 @@ class AnalysisRecord:
         object.__setattr__(self, "metrics", MappingProxyType(dict(self.metrics)))
         object.__setattr__(self, "diagnostics", _freeze(self.diagnostics))
         object.__setattr__(self, "input_metadata", _freeze(self.input_metadata))
+
+    @property
+    def is_preview(self) -> bool:
+        return self.record_kind == AnalysisRecordKind.PREVIEW
+
+    @property
+    def is_formal(self) -> bool:
+        return self.record_kind == AnalysisRecordKind.FORMAL
 
     def reportable_metrics(self) -> dict[str, Any]:
         length_metrics = {

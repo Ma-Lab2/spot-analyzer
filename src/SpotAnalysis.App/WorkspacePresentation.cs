@@ -22,6 +22,11 @@ public enum WorkspaceWorkflowStatus
     InputInvalid,
     ConfigurationInvalid,
     NeedsRecalculation,
+    PreviewProcessing,
+    PreviewAvailable,
+    Formalizing,
+    Formal,
+    Stale,
 }
 
 public enum MetricValidityStatus
@@ -31,6 +36,12 @@ public enum MetricValidityStatus
     Caution,
     Invalid,
     Unavailable,
+}
+
+public enum AnalysisRecordKind
+{
+    Preview,
+    Formal,
 }
 
 public sealed record WorkspaceInput(
@@ -105,9 +116,14 @@ public sealed record AnalysisRecordSnapshot(
     string? FlowStatus = null,
     IReadOnlyList<MetricPresentation>? Metrics = null,
     IReadOnlyList<string>? QualityReasonCodes = null,
-    IReadOnlyList<DiagnosticPresentation>? Diagnostics = null)
+    IReadOnlyList<DiagnosticPresentation>? Diagnostics = null,
+    AnalysisRecordKind RecordKind = AnalysisRecordKind.Formal,
+    string MeasurementSemantics = "relative_intensity_code",
+    bool MeasurementSemanticsConfirmed = true)
 {
-    public bool IsReportEligible => !IsStale
+    public bool IsPreview => RecordKind == AnalysisRecordKind.Preview;
+    public bool IsFormal => RecordKind == AnalysisRecordKind.Formal;
+    public bool IsReportEligible => IsFormal && !IsPreview && !IsStale
         && Outcome.Status == "success"
         && string.Equals(FlowStatus, "computed", StringComparison.Ordinal);
 }
@@ -132,6 +148,7 @@ public sealed class WorkspacePresentationModel
     private long _nextRequestNumber;
     private string? _activeRequestId;
     private bool _draftChangedDuringRun;
+    private AnalysisRecordKind _activeRecordKind = AnalysisRecordKind.Formal;
 
     public WorkspacePresentationState State { get; private set; } = WorkspacePresentationState.Empty;
 
@@ -142,6 +159,8 @@ public sealed class WorkspacePresentationModel
     public AnalysisRequest? ConfirmedRequest => State.ConfirmedRequest;
     public AnalysisRecordSnapshot? CurrentRecord => State.CurrentRecord;
     public DisplaySettings Display => State.Display;
+    public IReadOnlyList<AnalysisRecordSnapshot> Records => State.Records;
+    public bool CanConfirmFormal => State.CurrentRecord is { IsPreview: true, IsStale: false } && !IsProcessing;
     public bool CanRun => State.Input is not null && State.ConfirmedRequest is not null
         && State.WorkflowStatus is WorkspaceWorkflowStatus.ConfigurationConfirmed or WorkspaceWorkflowStatus.NeedsRecalculation;
     public bool CanExportReport => !IsProcessing
@@ -150,7 +169,9 @@ public sealed class WorkspacePresentationModel
             or WorkspaceWorkflowStatus.ExportFailed)
         && State.CurrentRecord is { IsStale: false } record
         && record.IsReportEligible;
-    public bool IsProcessing => State.WorkflowStatus is WorkspaceWorkflowStatus.Processing or WorkspaceWorkflowStatus.Cancelling;
+    public bool IsProcessing => State.WorkflowStatus is WorkspaceWorkflowStatus.Processing
+        or WorkspaceWorkflowStatus.PreviewProcessing or WorkspaceWorkflowStatus.Formalizing
+        or WorkspaceWorkflowStatus.Cancelling;
     public bool CanEditConfiguration => !IsProcessing;
 
     public bool LoadInput(WorkspaceInput input)
@@ -173,11 +194,20 @@ public sealed class WorkspacePresentationModel
             Input = input,
             ConfirmedRequest = null,
             WorkflowStatus = WorkspaceWorkflowStatus.InputLoaded,
-            NeedsRecalculation = State.CurrentRecord is not null,
+            NeedsRecalculation = false,
             FailureCode = null,
             FailureMessage = null,
+            CurrentRecord = null,
+            History = Array.Empty<AnalysisRecordSnapshot>(),
         };
-        MarkRecordStale();
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    public bool LoadInput(WorkspaceInput input, AnalysisRequest previewRequest)
+    {
+        if (!LoadInput(input)) return false;
+        StartPreview(previewRequest);
         return true;
     }
 
@@ -201,6 +231,12 @@ public sealed class WorkspacePresentationModel
             FailureCode = code,
             FailureMessage = message,
         };
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetPreviewDraft(AnalysisDraft draft)
+    {
+        State = State with { Draft = draft };
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -348,14 +384,28 @@ public sealed class WorkspacePresentationModel
         return false;
     }
 
+    public string? StartPreview(AnalysisRequest request)
+    {
+        if (IsProcessing || State.Input is null || !request.IsValid)
+            return null;
+        _activeRecordKind = AnalysisRecordKind.Preview;
+        return StartInternal(request, WorkspaceWorkflowStatus.PreviewProcessing);
+    }
+
     public string? Start()
     {
         if (!CanRun || State.ConfirmedRequest is null)
             return null;
+        _activeRecordKind = AnalysisRecordKind.Formal;
+        return StartInternal(State.ConfirmedRequest, WorkspaceWorkflowStatus.Processing);
+    }
+
+    private string StartInternal(AnalysisRequest request, WorkspaceWorkflowStatus status)
+    {
         var id = $"workspace-{++_nextRequestNumber}";
         _activeRequestId = id;
         _draftChangedDuringRun = false;
-        State = State with { WorkflowStatus = WorkspaceWorkflowStatus.Processing, ActiveRequestId = id, FailureCode = null, FailureMessage = null };
+        State = State with { WorkflowStatus = status, ActiveRequestId = id, FailureCode = null, FailureMessage = null };
         Changed?.Invoke(this, EventArgs.Empty);
         return id;
     }
@@ -378,7 +428,7 @@ public sealed class WorkspacePresentationModel
         {
             case WorkspaceWorkerEvent.Started:
                 if (State.WorkflowStatus != WorkspaceWorkflowStatus.Cancelling)
-                    State = State with { WorkflowStatus = WorkspaceWorkflowStatus.Processing };
+                    State = State with { WorkflowStatus = _activeRecordKind == AnalysisRecordKind.Preview ? WorkspaceWorkflowStatus.PreviewProcessing : WorkspaceWorkflowStatus.Formalizing };
                 break;
             case WorkspaceWorkerEvent.Progress progress:
                 State = State with { ProgressMessage = progress.Message, ProgressFraction = progress.Fraction };
@@ -402,14 +452,21 @@ public sealed class WorkspacePresentationModel
                     Changed?.Invoke(this, EventArgs.Empty);
                     return true;
                 }
+                var records = State.Records.Where(item => !string.Equals(item.RecordId, completedRecord!.RecordId, StringComparison.Ordinal)).ToList();
+                records.Add(completedRecord!);
+                var superseded = _draftChangedDuringRun;
+                var resultingKind = completedRecord!.RecordKind;
                 State = State with
                 {
-                    WorkflowStatus = _draftChangedDuringRun ? WorkspaceWorkflowStatus.NeedsRecalculation : WorkspaceWorkflowStatus.Completed,
-                    CurrentRecord = completedRecord,
-                    NeedsRecalculation = _draftChangedDuringRun,
-                    ConfirmedRequest = _draftChangedDuringRun ? null : State.ConfirmedRequest,
+                    WorkflowStatus = superseded ? WorkspaceWorkflowStatus.NeedsRecalculation
+                        : resultingKind == AnalysisRecordKind.Preview ? WorkspaceWorkflowStatus.PreviewAvailable
+                        : WorkspaceWorkflowStatus.Completed,
+                    CurrentRecord = completedRecord with { IsStale = superseded },
+                    History = Array.AsReadOnly(records.ToArray()),
+                    NeedsRecalculation = superseded,
+                    ConfirmedRequest = superseded || resultingKind == AnalysisRecordKind.Preview ? null : State.ConfirmedRequest,
                     FailureCode = null,
-                    FailureMessage = _draftChangedDuringRun ? "Configuration changed while this run was processing; recompute with the staged draft." : null,
+                    FailureMessage = superseded ? "Configuration changed while this run was processing; recompute with the staged draft." : null,
                     ActiveRequestId = null,
                 };
                 _activeRequestId = null;
@@ -505,12 +562,21 @@ public sealed class WorkspacePresentationModel
 
     private void MarkRecordStale()
     {
+        if (State.CurrentRecord is not { } current)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+        var stale = current with { IsStale = true };
+        var history = State.Records.Where(item => !string.Equals(item.RecordId, stale.RecordId, StringComparison.Ordinal)).ToList();
+        history.Add(stale);
         State = State with
         {
             ConfirmedRequest = null,
-            WorkflowStatus = State.CurrentRecord is null ? State.WorkflowStatus : WorkspaceWorkflowStatus.NeedsRecalculation,
-            NeedsRecalculation = State.CurrentRecord is not null,
-            CurrentRecord = State.CurrentRecord is null ? null : State.CurrentRecord with { IsStale = true },
+            WorkflowStatus = WorkspaceWorkflowStatus.NeedsRecalculation,
+            NeedsRecalculation = true,
+            CurrentRecord = stale,
+            History = Array.AsReadOnly(history.ToArray()),
         };
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -654,6 +720,12 @@ public sealed class WorkspacePresentationModel
         var validity = ParseValidity(value);
         var metrics = ReadMetrics(record, out var qualityReasons);
         var diagnostics = ReadDiagnostics(record);
+        var kind = StringValue(record, "record_kind") ?? (bool.TryParse(StringValue(record, "is_preview"), out var previewFlag) && previewFlag ? "preview" : "formal");
+        var recordKind = string.Equals(kind, "preview", StringComparison.OrdinalIgnoreCase)
+            ? AnalysisRecordKind.Preview : AnalysisRecordKind.Formal;
+        var semantics = StringValue(record, "measurement_semantics") ?? "relative_intensity_code";
+        var semanticsConfirmed = StringValue(record, "measurement_semantics_confirmed") is { } confirmed
+            && bool.TryParse(confirmed, out var parsed) ? parsed : recordKind == AnalysisRecordKind.Formal;
         snapshot = new AnalysisRecordSnapshot(
             requestId,
             outcome,
@@ -664,7 +736,10 @@ public sealed class WorkspacePresentationModel
             StringValue(record, "flow_status") ?? outcome.FlowStatus ?? "computed",
             metrics,
             qualityReasons,
-            diagnostics);
+            diagnostics,
+            recordKind,
+            semantics,
+            semanticsConfirmed);
         return true;
     }
 }
@@ -681,9 +756,12 @@ public sealed record WorkspacePresentationState(
     string? ProgressMessage,
     double? ProgressFraction,
     string? FailureCode,
-    string? FailureMessage)
+    string? FailureMessage,
+    IReadOnlyList<AnalysisRecordSnapshot>? History = null)
 {
+    public IReadOnlyList<AnalysisRecordSnapshot> Records => History ?? Array.Empty<AnalysisRecordSnapshot>();
+
     public static WorkspacePresentationState Empty { get; } = new(
         null, null, null, null, new DisplaySettings(), WorkspaceWorkflowStatus.Ready,
-        false, null, null, null, null, null);
+        false, null, null, null, null, null, Array.Empty<AnalysisRecordSnapshot>());
 }
