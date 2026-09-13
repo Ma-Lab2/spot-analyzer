@@ -68,7 +68,7 @@
             <TextBox x:Name="RoiHeightText" Width="62" Margin="0,0,0,5" AutomationProperties.Name="Analysis region height" ToolTip="Set a confirmed ROI after opening the input" TextChanged="ConfigurationChanged" TabIndex="9" />
           </WrapPanel>
 
-          <TextBlock Style="{DynamicResource FieldLabel}" Margin="{DynamicResource SpacingSectionLabel}" Text="Background / preprocessing (optional)" />
+          <TextBlock Style="{DynamicResource FieldLabel}" Margin="{DynamicResource SpacingSectionLabel}" Text="Background / preprocessing (profile-controlled)" />
           <WrapPanel>
             <TextBox x:Name="BackgroundXText" Width="50" Margin="0,0,4,5" AutomationProperties.Name="Background region X" TextChanged="ConfigurationChanged" TabIndex="10" />
             <TextBox x:Name="BackgroundYText" Width="50" Margin="0,0,4,5" AutomationProperties.Name="Background region Y" TextChanged="ConfigurationChanged" TabIndex="11" />
