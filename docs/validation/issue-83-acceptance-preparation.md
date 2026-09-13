@@ -30,6 +30,33 @@ its stderr rather than rerunning until it disappears.
 The report's `human_acceptance` field intentionally remains `NOT RUN`. The validator must
 not be used to mark clean-machine or interactive rows PASS.
 
+## Repeatable preparation commands
+
+Use the issue-61 staged workflow rather than a second validation implementation. Build a
+fresh package with `packaging/build-alpha.ps1`, then validate and extract it into a new
+stage-specific directory:
+
+```powershell
+$zip = "artifacts/spot-analysis-0.1.0-alpha.1-win-x64.zip"
+.\packaging\invoke-alpha-validation.ps1 -Stage PackagedSmoke `
+  -PackagePath $zip -ExpectedVersion "0.1.0-alpha.1" `
+  -EvidenceRoot "artifacts/validation/issue-83-packagedsmoke"
+```
+
+The smoke stage deletes and recreates its extraction directory, verifies the required
+client, worker, manifest, and bundled example, and records ZIP/manifest hashes. Inventory
+human-supplied fixtures without copying or modifying them:
+
+```powershell
+.\packaging\prepare-issue83-evidence.ps1 `
+  -FixturePath "C:\\trial\\principal", "C:\\trial\\edge-cases" `
+  -EvidenceRoot "artifacts/validation/issue-83"
+```
+
+This writes only fixture names, sizes, read-only flags, and SHA-256 values plus a
+`NOT RUN` boundary. Use the companion [performance and DPI matrix](issue-83-performance-dpi-matrix.md)
+for timing, resolution, scaling, and reachability observations.
+
 ## Preparation matrix
 
 The following statuses describe what can be prepared or checked repeatably in the
