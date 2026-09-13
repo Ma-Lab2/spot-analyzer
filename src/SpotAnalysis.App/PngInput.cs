@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace SpotAnalysis.App;
@@ -21,7 +22,7 @@ public sealed record PngInputInfo(
     string EncodingSemantics,
     string? ByteOrder,
     IReadOnlyDictionary<string, object?> Metadata,
-    BitmapImage Preview)
+    BitmapSource Preview)
 {
     public string Summary => Channels == 3
         ? $"{Width}×{Height}, {BitDepth}-bit RGB (R=G=B), SHA-256 {Sha256}"
@@ -53,7 +54,7 @@ public static class PngInput
             var digest = Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
             var decoded = DecodePixels(data);
             cancellationToken.ThrowIfCancellationRequested();
-            var preview = DecodePreview(data);
+            var preview = BuildPreview(decoded);
             var uriHint = new Uri(System.IO.Path.GetFullPath(path)).AbsoluteUri;
             decoded.Metadata["uri_hint"] = uriHint;
             return new PngInputInfo(
@@ -280,23 +281,31 @@ public static class PngInput
         return crc;
     }
 
-    private static BitmapImage DecodePreview(byte[] data)
+    private static BitmapSource BuildPreview(Decoded decoded)
     {
-        var preview = new BitmapImage();
-        using var stream = new MemoryStream(data, writable: false);
-        try
+        // The measurement decoder above is the source of truth for supported PNGs.
+        // Do not run the input through a second WPF PNG codec: codec support varies
+        // by bit depth, metadata, and OS imaging components, which could reject an
+        // otherwise valid measurement input immediately on import. Build a frozen
+        // display-only bitmap from the already decoded intensity samples instead.
+        var pixels = new byte[checked(decoded.Width * decoded.Height * 4)];
+        for (var index = 0; index < decoded.Samples.Length; index++)
         {
-            preview.BeginInit();
-            preview.CacheOption = BitmapCacheOption.OnLoad;
-            preview.StreamSource = stream;
-            preview.EndInit();
-            preview.Freeze();
-            return preview;
+            var value = decoded.BitDepth == 16
+                ? (byte)Math.Round(decoded.Samples[index] / 257.0, MidpointRounding.ToEven)
+                : (byte)decoded.Samples[index];
+            var destination = index * 4;
+            pixels[destination] = value;
+            pixels[destination + 1] = value;
+            pixels[destination + 2] = value;
+            pixels[destination + 3] = 255;
         }
-        catch (Exception exception) when (exception is NotSupportedException or InvalidOperationException or System.IO.FileFormatException or System.Runtime.InteropServices.COMException)
-        {
-            throw new InputValidationException("png_decode_failed", "PNG 预览无法解码；请使用有效的 8/16 位灰度或等通道 RGB PNG。");
-        }
+
+        var source = BitmapSource.Create(
+            decoded.Width, decoded.Height, 96, 96,
+            PixelFormats.Bgra32, null, pixels, decoded.Width * 4);
+        source.Freeze();
+        return source;
     }
 }
 
