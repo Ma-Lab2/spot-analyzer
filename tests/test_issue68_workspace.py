@@ -31,11 +31,11 @@ def test_prototype_a_layout_has_four_connected_regions() -> None:
 
     code = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
     for connection in (
-        "_workspace.LoadInput",
+        "_workspaceItems.Add",
         "_workspace.Confirm",
-        "_workspace.Start",
-        "_workspace.RequestCancel",
-        "_workspace.Apply",
+        "item.Item.Presentation.Start",
+        "_scheduler.Cancel",
+        "_workspaceItems.Apply",
         "ExportResult_Click",
     ):
         assert connection in code

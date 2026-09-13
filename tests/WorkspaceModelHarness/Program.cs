@@ -127,6 +127,26 @@ catch (InputValidationException exception)
 Assert(File.GetLastWriteTimeUtc(issue76GrayPath) == grayBefore.Item1 && File.ReadAllBytes(issue76GrayPath).SequenceEqual(grayBefore.Item2), "WPF input read must not mutate source");
 Directory.Delete(issue76Directory, recursive: true);
 
+var wpfConnections = RunOnSta(() =>
+{
+    var app = new SpotAnalysis.App.App();
+    app.InitializeComponent();
+    var window = new MainWindow();
+    var list = (System.Windows.Controls.ListBox)window.FindName("ImageItemsList");
+    var cancel = (System.Windows.Controls.Button)window.FindName("CancelAnalysisButton");
+    var roiLock = (System.Windows.Controls.CheckBox)window.FindName("LockRoiCheck");
+    var batchCalibration = (System.Windows.Controls.Button)window.FindName("ApplyCalibrationBatchButton");
+    list.ItemsSource = new[] { "first", "second" };
+    list.SelectedIndex = 1;
+    cancel.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+    roiLock.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+    batchCalibration.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+    window.Close();
+    return (list.SelectedIndex, cancel is not null, roiLock is not null, batchCalibration is not null);
+});
+Assert(wpfConnections.SelectedIndex == 1 && wpfConnections.Item2 && wpfConnections.Item3 && wpfConnections.Item4,
+    "real WPF controls for list selection, cancellation, ROI lock, and batch calibration should load with connected handlers");
+
 var model = new WorkspacePresentationModel();
 var input = new WorkspaceInput("sample.png", "abc", 32, 32, 8, "32×32, 8-bit grayscale PNG, SHA-256 abc");
 var draft = new AnalysisDraft(0, 0, 16, 16, null, null, null, null, "confirmed", 1, 1, "mm", "fixture");
@@ -249,6 +269,110 @@ Assert(exportStateModel.CanExportReport, "a current record should remain retryab
 exportStateModel.ReportExported();
 Assert(exportStateModel.State.WorkflowStatus == WorkspaceWorkflowStatus.Exported,
     "successful report export should be visible in workflow state");
+
+var multi = new MultiImageWorkspaceModel();
+var firstItem = multi.Add(new WorkspaceInput("first.png", "sha-first", 32, 32, 8, "first"));
+var secondItem = multi.Add(new WorkspaceInput("second.png", "sha-second", 32, 32, 8, "second"));
+Assert(multi.Items.Count == 2 && multi.SelectedItem?.Id == firstItem.Id, "multi-image workspace should retain all inputs and select the first");
+var firstDraft = draft with { RegionX = 2, RegionY = 3, RegionWidth = 12, RegionHeight = 13 };
+var secondDraft = draft with { RegionX = 7, RegionY = 8, RegionWidth = 9, RegionHeight = 10, CalibrationStatus = "missing", CalibrationX = null, CalibrationY = null, CalibrationUnits = "", CalibrationSource = "" };
+multi.SetAutomaticDraft(firstItem.Id, firstDraft);
+multi.SetAutomaticDraft(secondItem.Id, secondDraft);
+multi.Select(secondItem.Id);
+Assert(multi.SelectedItem?.Presentation.Draft == secondDraft, "selection should restore the selected image draft without cross-image state");
+multi.Select(firstItem.Id);
+Assert(multi.SelectedItem?.Presentation.Draft == firstDraft, "switching back should restore the first image draft");
+multi.LockRoiForSubsequent(firstItem.Id);
+var thirdItem = multi.Add(new WorkspaceInput("third.png", "sha-third", 32, 32, 8, "third"));
+var thirdAutomatic = secondDraft with { RegionX = 1, RegionY = 1, RegionWidth = 5, RegionHeight = 5 };
+multi.SetAutomaticDraft(thirdItem.Id, thirdAutomatic);
+Assert(thirdItem.Presentation.Draft is { RegionX: 2, RegionY: 3, RegionWidth: 12, RegionHeight: 13 }, "ROI should apply to later images only after explicit locking");
+var fourthItem = multi.Add(new WorkspaceInput("fourth.png", "sha-fourth", 32, 32, 8, "fourth"));
+multi.UnlockRoi();
+multi.SetAutomaticDraft(fourthItem.Id, thirdAutomatic);
+Assert(fourthItem.Presentation.Draft is { RegionX: 1, RegionY: 1, RegionWidth: 5, RegionHeight: 5 }, "unlocked ROI must not inherit from the prior image");
+
+var firstRequest = AnalysisRequest.Create(firstItem.Input.Path, firstItem.Input.Sha256, 2, 3, 12, 13, null, null, null, null,
+    firstDraft.CalibrationStatus, firstDraft.CalibrationX, firstDraft.CalibrationY, firstDraft.CalibrationUnits, firstDraft.CalibrationSource, "derived");
+Assert(firstItem.Presentation.Confirm(firstRequest), "first multi-image item should confirm independently");
+var firstMultiRequestId = firstItem.Presentation.Start();
+Assert(firstMultiRequestId is not null, "first multi-image item should start independently");
+Assert(!multi.Apply(secondItem.Id, new WorkspaceWorkerEvent.Completed(firstMultiRequestId!, Success("wrong-item"))), "an event routed to another item must not overwrite it");
+Assert(multi.Apply(firstItem.Id, new WorkspaceWorkerEvent.Completed(firstMultiRequestId!, Success("first-multi"))), "matching item and request identities should apply");
+Assert(firstItem.Presentation.CurrentRecord?.RecordId == "first-multi" && secondItem.Presentation.CurrentRecord is null, "records must remain isolated by image");
+var secondRequest = AnalysisRequest.Create(secondItem.Input.Path, secondItem.Input.Sha256, 7, 8, 9, 10, null, null, null, null,
+    secondDraft.CalibrationStatus, secondDraft.CalibrationX, secondDraft.CalibrationY, secondDraft.CalibrationUnits, secondDraft.CalibrationSource, "derived");
+Assert(secondItem.Presentation.Confirm(secondRequest), "second item should confirm its own calibration and ROI");
+var secondMultiRequestId = secondItem.Presentation.Start();
+Assert(secondMultiRequestId is not null && multi.Apply(secondItem.Id, new WorkspaceWorkerEvent.Completed(secondMultiRequestId!, Success("second-multi"))), "second item should complete independently");
+
+multi.ApplyCalibrationToBatch(firstItem.Id);
+Assert(secondItem.Presentation.Draft is { CalibrationStatus: "confirmed", CalibrationX: 1, CalibrationY: 1, CalibrationUnits: "mm", CalibrationSource: "fixture" }, "explicit batch calibration should update other image drafts");
+Assert(secondItem.Presentation.CurrentRecord is { IsStale: true } && secondItem.Presentation.State.NeedsRecalculation, "batch calibration should stale affected formal records");
+Assert(firstItem.Presentation.CurrentRecord is { IsStale: false }, "batch calibration should not stale an unchanged source record");
+
+var executionOrder = new List<string>();
+var gates = new Dictionary<string, TaskCompletionSource<WorkerOutcome>>();
+var scheduler = new WorkspaceAnalysisScheduler(async (job, cancellationToken) =>
+{
+    executionOrder.Add(job.ItemId);
+    var gate = new TaskCompletionSource<WorkerOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+    gates[job.ItemId] = gate;
+    using var registration = cancellationToken.Register(() => gate.TrySetResult(new WorkerOutcome("cancelled", "cancelled", FailureCode: "cancelled", FlowStatus: "cancelled")));
+    return await gate.Task;
+}, maxConcurrency: 1);
+var currentTask = scheduler.Schedule(new WorkspaceAnalysisJob(firstItem.Id, "request-current", firstRequest, WorkspaceAnalysisPriority.Current));
+var backgroundFailure = scheduler.Schedule(new WorkspaceAnalysisJob(secondItem.Id, "request-background-failure", firstRequest, WorkspaceAnalysisPriority.Background));
+var backgroundSuccess = scheduler.Schedule(new WorkspaceAnalysisJob(thirdItem.Id, "request-background-success", firstRequest, WorkspaceAnalysisPriority.Background));
+await Task.Yield();
+Assert(executionOrder.SequenceEqual(new[] { firstItem.Id }), "current image work should start before queued background preparation");
+gates[firstItem.Id].SetResult(Success("scheduled-current"));
+var currentResult = await currentTask;
+await Task.Yield();
+Assert(executionOrder.SequenceEqual(new[] { firstItem.Id, secondItem.Id }), "background work should start after current work without blocking the caller");
+gates[secondItem.Id].SetResult(new WorkerOutcome("failure", "fixture failure", FailureCode: "analysis_failed", FlowStatus: "analysis_failed"));
+var failedResult = await backgroundFailure;
+await Task.Yield();
+Assert(executionOrder.SequenceEqual(new[] { firstItem.Id, secondItem.Id, thirdItem.Id }), "one image failure must not stop later work items");
+Assert(failedResult.Outcome.Status == "failure", "scheduler should preserve per-image failure outcomes");
+Assert(scheduler.Cancel(thirdItem.Id), "an individual running work item should be cancellable");
+var cancelledResult = await backgroundSuccess;
+Assert(cancelledResult.Outcome.Status == "cancelled" && currentResult.Outcome.Status == "success", "per-image cancellation must not alter another completed item");
+
+var timeoutSequence = new Queue<WorkerOutcome>([
+    new WorkerOutcome("timeout", "fixture timeout", FailureCode: "worker_timeout", FlowStatus: "timeout"),
+    Success("after-timeout"),
+]);
+var timeoutScheduler = new WorkspaceAnalysisScheduler((job, cancellationToken) => Task.FromResult(timeoutSequence.Dequeue()), maxConcurrency: 1);
+var timeoutTask = timeoutScheduler.Schedule(new WorkspaceAnalysisJob(secondItem.Id, "timeout-item", firstRequest, WorkspaceAnalysisPriority.Background));
+var afterTimeoutTask = timeoutScheduler.Schedule(new WorkspaceAnalysisJob(thirdItem.Id, "after-timeout-item", firstRequest, WorkspaceAnalysisPriority.Background));
+Assert((await timeoutTask).Outcome.Status == "timeout" && (await afterTimeoutTask).Outcome.Status == "success",
+    "one item timeout must not stop later background work");
+
+var preemptOrder = new List<string>();
+var preemptGates = new List<TaskCompletionSource<WorkerOutcome>>();
+var secondExecutionStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+var thirdExecutionStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+var preemptScheduler = new WorkspaceAnalysisScheduler(async (job, cancellationToken) =>
+{
+    preemptOrder.Add(job.ItemId);
+    var gate = new TaskCompletionSource<WorkerOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+    preemptGates.Add(gate);
+    if (preemptOrder.Count == 2) secondExecutionStarted.TrySetResult();
+    if (preemptOrder.Count == 3) thirdExecutionStarted.TrySetResult();
+    using var registration = cancellationToken.Register(() => gate.TrySetResult(new WorkerOutcome("cancelled", "preempted", FailureCode: "cancelled", FlowStatus: "cancelled")));
+    return await gate.Task;
+}, maxConcurrency: 1);
+var preemptedBackground = preemptScheduler.Schedule(new WorkspaceAnalysisJob(secondItem.Id, "background-preempted", firstRequest, WorkspaceAnalysisPriority.Background));
+var promotedCurrent = preemptScheduler.Schedule(new WorkspaceAnalysisJob(firstItem.Id, "current-promoted", firstRequest, WorkspaceAnalysisPriority.Current));
+await secondExecutionStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+Assert(preemptOrder.SequenceEqual(new[] { secondItem.Id, firstItem.Id }), "promoted current work should preempt a running background preparation");
+preemptGates[1].SetResult(Success("promoted-current"));
+Assert((await promotedCurrent).Outcome.Status == "success", "promoted current work should complete normally");
+await thirdExecutionStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+Assert(preemptOrder.SequenceEqual(new[] { secondItem.Id, firstItem.Id, secondItem.Id }), "preempted background preparation should resume after current work");
+preemptGates[2].SetResult(Success("resumed-background"));
+Assert((await preemptedBackground).Outcome.Status == "success", "preemption must not turn background preparation into a user-visible cancellation");
 
 var reportDirectory = Path.Combine(Path.GetTempPath(), "SpotAnalysis-WorkspaceHarness-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(reportDirectory);
