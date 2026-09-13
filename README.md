@@ -39,12 +39,20 @@ never writes to the input image.
 The WPF client writes newline-delimited JSON logs under
 `%LOCALAPPDATA%\\SpotAnalysis\\logs\\app.log`, so the extracted application
 folder does not need to be writable. The Diagnostics and about section shows the
-client, worker, analysis-core, profile, and output identities. **Export
-diagnostics** writes a JSON package containing the input summary and SHA-256,
-configuration, workflow status, metric validity, reason codes, record identity,
-fingerprint, diagnostics, and failure details. The original image is excluded
-unless **Attach original image explicitly** is selected; that explicit option
-creates a ZIP containing the JSON package and image.
+client, worker, analysis-core, profile, workflow-contract and output identities.
+**Export diagnostics** writes a JSON package containing the input summary and
+SHA-256, configuration, preview/formal and workflow status, metric validity,
+reason codes, record identity, fingerprint, diagnostics, and failure details.
+The original image is excluded unless **Attach original image explicitly** is
+selected; that explicit option creates a ZIP containing the JSON package and
+image. Machine keys and protocol values remain stable English; translated labels
+are presentation only.
+
+The repository companion documents `packaging/USER-GUIDE.zh-CN.md` and
+`packaging/SUPPORTED-INPUTS.md` contain the complete Chinese operation and input
+rules; the portable package's `QUICKSTART.md` contains the shipped essentials.
+These are procedures and product contract references, not run evidence. See
+`issue-82-spec.md` for the versioned workflow and verification boundary.
 
 The package records that `standard-profile-v1` and `quality-profile-v1` remain
 provisional and does not establish physical-accuracy validation.
