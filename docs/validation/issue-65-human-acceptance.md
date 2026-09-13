@@ -16,6 +16,17 @@ This checklist is a preparation aid for the human-owned interactive acceptance. 
 
 ## Before opening the client
 
+Run the staged development preparation once, if the development environment is available.
+This captures repeatable environment, test, .NET, and build output in the stage-specific
+record; it does not perform interactive acceptance or change any result row here. Follow
+[`issue-62-development.md`](issue-62-development.md) for the output locations and
+limitations, and use [`issue-61-staged-validation.md`](issue-61-staged-validation.md) for
+the stage boundary.
+
+```powershell
+.\packaging\invoke-alpha-validation.ps1 -Stage Development
+```
+
 Record command output and preserve the original input assets. Use copies for testing.
 
 ```powershell
@@ -26,7 +37,9 @@ Get-FileHash .\examples\alpha-example.png -Algorithm SHA256 *> artifacts/validat
 ```
 
 Record the WPF client/build identity and worker path from the client or diagnostics. Do
-not substitute Python tests or source inspection for observing the UI.
+not substitute Python tests, source inspection, or staged command output for observing the
+UI. Preserve missing-tool or failed-command output as a limitation; never turn it into an
+interactive `PASS`.
 
 ## Interactive checklist
 

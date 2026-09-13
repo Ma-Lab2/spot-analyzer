@@ -11,6 +11,9 @@ def test_human_acceptance_record_is_explicitly_unrun_until_observed() -> None:
     assert "never convert it to PASS from automated tests" in text
     assert "Human sign-off" in text
     assert "development or packaged-client evidence only" in text
+    assert ".\\packaging\\invoke-alpha-validation.ps1 -Stage Development" in text
+    assert "issue-62-development.md" in text
+    assert "issue-61-staged-validation.md" in text
 
 
 def test_human_acceptance_record_covers_required_interactive_scenarios() -> None:
