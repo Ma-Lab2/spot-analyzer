@@ -31,17 +31,21 @@ public static class ReportExporter
     {
         var format = specification.Format.Trim().TrimStart('.').ToLowerInvariant();
         if (format is not ("png" or "pdf"))
-            throw new ArgumentException("Report format must be PDF or PNG.", nameof(specification));
+            return new ReportExportOutcome(null, "", "export_failed", "report_format_invalid", "Report format must be PDF or PNG.");
 
         var reportName = specification.ReportName.Trim();
         if (reportName.Length == 0)
-            throw new ArgumentException("Report name must not be empty.", nameof(specification));
+            return new ReportExportOutcome(null, "", "export_failed", "report_name_empty", "Report name must not be empty.");
 
         if (!terminalResult.TryGetProperty("record", out var record) || record.ValueKind != JsonValueKind.Object)
             return new ReportExportOutcome(null, "", "export_failed", "report_record_missing", "The analysis result has no reportable record.");
 
-        var recordId = StringValue(record, "record_id") ?? "unknown-record";
+        var recordId = StringValue(record, "record_id") ?? "";
         var flowStatus = StringValue(record, "flow_status") ?? "unknown";
+        if (recordId.Length == 0)
+            return new ReportExportOutcome(null, "", "export_failed", "report_record_identity_missing", "The analysis record has no record identity.");
+        if (flowStatus is not ("computed" or "success"))
+            return new ReportExportOutcome(null, recordId, "export_failed", "report_record_not_current", $"The record flow status is '{flowStatus}', not computed.");
         var generatedAt = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
         var lines = BuildReportLines(record, reportName, generatedAt);
         var payload = format == "png" ? RenderPng(lines) : RenderPdf(lines);
@@ -73,6 +77,8 @@ public static class ReportExporter
             $"generated_at: {generatedAt}",
             $"flow_status: {StringValue(record, "flow_status") ?? "unknown"}",
             $"summary_status: {StringValue(record, "summary_status") ?? "unknown"}",
+            $"measurement_validity: {StringValue(record, "measurement_validity") ?? StringValue(record, "summary_status") ?? "unknown"}",
+            $"quality_reason_codes: {Display(record, "quality_reason_codes")}",
         };
         if (record.TryGetProperty("input", out var input) && input.ValueKind == JsonValueKind.Object)
         {
@@ -140,16 +146,23 @@ public static class ReportExporter
 
     private static void AppendMetric(List<string> lines, string name, JsonElement metric, string indent)
     {
-        var value = metric.ValueKind == JsonValueKind.Object && metric.TryGetProperty("value", out var valueNode)
+        var status = StringValue(metric, "status") ?? "unknown";
+        var value = status is "valid" or "caution" or "warning"
+            && metric.ValueKind == JsonValueKind.Object && metric.TryGetProperty("value", out var valueNode)
+            && valueNode.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
             ? Display(valueNode)
             : "N/A";
-        var status = StringValue(metric, "status") ?? "unknown";
         var unit = StringValue(metric, "unit") ?? "";
         var reasons = metric.ValueKind == JsonValueKind.Object && metric.TryGetProperty("reason_codes", out var reasonNode)
             ? Display(reasonNode)
             : "[]";
         lines.Add($"{indent}{name}: {value} {unit}; validity={status}; reasons={reasons}");
     }
+
+    private static string Display(JsonElement value, string property) =>
+        value.ValueKind == JsonValueKind.Object && value.TryGetProperty(property, out var child)
+            ? Display(child)
+            : "N/A";
 
     private static string Display(JsonElement value) => value.ValueKind switch
     {

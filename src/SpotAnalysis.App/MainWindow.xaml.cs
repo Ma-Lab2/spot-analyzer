@@ -33,7 +33,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _configurationReady = true;
-        _workspace.Changed += (_, _) => UpdateConfigurationAvailability();
+        _workspace.Changed += (_, _) => WorkspaceChanged();
         RefreshDraftSummary();
         UpdateConfigurationAvailability();
         ImageEmptyState.Visibility = Visibility.Visible;
@@ -243,6 +243,7 @@ public partial class MainWindow : Window
         {
             var outcome = await operation();
             _lastOutcome = outcome;
+            RefreshDiagnosticsSummary();
             _failureCode = outcome.FailureCode;
             _failureDetails = outcome.ErrorMessage;
             _flowStatus = outcome.Status switch
@@ -595,6 +596,33 @@ public partial class MainWindow : Window
             && _selectedInput is not null
             && _workspace.CanRun;
 
+    private void WorkspaceChanged()
+    {
+        UpdateConfigurationAvailability();
+        RefreshDiagnosticsSummary();
+    }
+
+    private void RefreshDiagnosticsSummary()
+    {
+        var lines = new List<string> { DiagnosticPackage.BuildAboutText() };
+        if (_workspace.CurrentRecord is { } record)
+        {
+            var state = record.IsStale ? "stale / recompute required" : "current";
+            lines.Add($"\nRecord {record.RecordId ?? record.Outcome.RecordId ?? "unknown"} · {state}");
+            lines.Add($"Metric validity: {record.MeasurementValidity.ToString().ToLowerInvariant()}");
+            if (record.QualityReasonCodes is { Count: > 0 })
+                lines.Add("Quality reasons: " + string.Join(", ", record.QualityReasonCodes));
+            if (record.Diagnostics is { Count: > 0 })
+                lines.Add("Diagnostics: " + string.Join("; ", record.Diagnostics.Select(item => $"{item.Code}: {item.Message}")));
+        }
+        else if (_lastOutcome?.Diagnostics is { Count: > 0 } diagnostics)
+        {
+            lines.Add("\nCurrent run diagnostics: " + string.Join("; ", diagnostics.Select(item =>
+                $"{GetString(item, "code") ?? "diagnostic"}: {GetString(item, "message") ?? item.ToString()}")));
+        }
+        DiagnosticsText.Text = string.Join(Environment.NewLine, lines);
+    }
+
     private void UpdateConfigurationAvailability()
     {
         var enabled = _workspace.CanEditConfiguration;
@@ -787,11 +815,13 @@ public partial class MainWindow : Window
 
     private static void AppendMetric(StringBuilder lines, string name, string domain, JsonElement metric)
     {
-        var value = metric.TryGetProperty("value", out var valueNode) && valueNode.ValueKind != JsonValueKind.Null
+        var status = GetString(metric, "status") ?? "unknown";
+        var value = status is "valid" or "caution" or "warning"
+            && metric.TryGetProperty("value", out var valueNode)
+            && valueNode.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
             ? valueNode.ToString()
             : "N/A";
         var unit = GetString(metric, "unit") ?? "";
-        var status = GetString(metric, "status") ?? "unknown";
         var reasons = metric.TryGetProperty("reason_codes", out var reasonNode) && reasonNode.ValueKind == JsonValueKind.Array
             ? string.Join(", ", reasonNode.EnumerateArray().Select(item => item.ToString()))
             : "none";
@@ -824,6 +854,7 @@ public partial class MainWindow : Window
         var requestedName = ReportNameText.Text.Trim();
         if (requestedName.Length == 0)
         {
+            _workspace.ReportExportFailed("report_name_empty", "Enter a report name.");
             StatusText.Text = "Report export failed: enter a report name.";
             return;
         }
@@ -849,13 +880,18 @@ public partial class MainWindow : Window
                     ReportTimestampCheck.IsChecked == true));
             if (outcome.FlowStatus != "exported")
             {
+                _workspace.ReportExportFailed(
+                    outcome.ErrorCode ?? "report_write_failed",
+                    outcome.ErrorMessage ?? "The report could not be written.");
                 StatusText.Text = $"Export failed ({outcome.ErrorCode ?? "report_write_failed"}): {outcome.ErrorMessage}";
                 return;
             }
+            _workspace.ReportExported();
             StatusText.Text = $"Report exported: {outcome.Path}";
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
+            _workspace.ReportExportFailed("report_write_failed", exception.Message);
             StatusText.Text = $"Export failed (report_write_failed): {exception.Message}";
         }
     }

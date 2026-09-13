@@ -12,7 +12,8 @@ public sealed record WorkerOutcome(
     string? InputSummary = null,
     string? FailureCode = null,
     JsonElement? Result = null,
-    IReadOnlyList<JsonElement>? Diagnostics = null);
+    IReadOnlyList<JsonElement>? Diagnostics = null,
+    string? FlowStatus = null);
 
 public sealed class WorkerClient
 {
@@ -197,7 +198,7 @@ public sealed class WorkerClient
         }
         catch (Exception exception)
         {
-            return new WorkerOutcome("failure", exception.Message, FailureCode: "worker_start_failed");
+            return new WorkerOutcome("failure", exception.Message, FailureCode: "worker_start_failed", FlowStatus: "worker_error");
         }
         var startInfo = new ProcessStartInfo
         {
@@ -216,7 +217,7 @@ public sealed class WorkerClient
         }
         catch (Exception exception)
         {
-            return new WorkerOutcome("failure", exception.Message, FailureCode: "worker_start_failed");
+            return new WorkerOutcome("failure", exception.Message, FailureCode: "worker_start_failed", FlowStatus: "worker_error");
         }
 
         using (process)
@@ -247,25 +248,25 @@ public sealed class WorkerClient
                 await process.WaitForExitAsync(stopToken);
                 var stderr = await process.StandardError.ReadToEndAsync(stopToken);
                 if (process.ExitCode != 0)
-                    return new WorkerOutcome("failure", stderr.Trim(), FailureCode: "worker_crashed");
+                    return new WorkerOutcome("failure", stderr.Trim(), FailureCode: "worker_crashed", FlowStatus: "worker_error");
                 return ParseOutcome(messages);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || timeoutSource?.IsCancellationRequested == true)
             {
                 StopProcess(process);
                 return cancellationToken.IsCancellationRequested
-                    ? new WorkerOutcome("cancelled", "analysis cancelled", FailureCode: "worker_terminated_cancelled")
-                    : new WorkerOutcome("timeout", "analysis timed out", FailureCode: "worker_terminated_timeout");
+                    ? new WorkerOutcome("cancelled", "analysis cancelled", FailureCode: "worker_terminated_cancelled", FlowStatus: "cancelled")
+                    : new WorkerOutcome("timeout", "analysis timed out", FailureCode: "worker_terminated_timeout", FlowStatus: "timeout");
             }
             catch (JsonException exception)
             {
                 StopProcess(process);
-                return new WorkerOutcome("failure", exception.Message, FailureCode: "worker_protocol_invalid");
+                return new WorkerOutcome("failure", exception.Message, FailureCode: "worker_protocol_invalid", FlowStatus: "protocol_error");
             }
             catch (Exception exception)
             {
                 StopProcess(process);
-                return new WorkerOutcome("failure", exception.Message, FailureCode: "worker_io_failed");
+                return new WorkerOutcome("failure", exception.Message, FailureCode: "worker_io_failed", FlowStatus: "worker_error");
             }
         }
     }
@@ -285,7 +286,7 @@ public sealed class WorkerClient
     private static WorkerOutcome ParseOutcome(IReadOnlyList<JsonElement> messages)
     {
         if (messages.Count == 0)
-            return new WorkerOutcome("failure", "worker did not return an analysis event", FailureCode: "worker_no_result");
+            return new WorkerOutcome("failure", "worker did not return an analysis event", FailureCode: "worker_no_result", FlowStatus: "protocol_error");
 
         var terminal = messages[^1];
         if (terminal.TryGetProperty("kind", out var kind) && kind.GetString() == "completed")
@@ -297,7 +298,10 @@ public sealed class WorkerClient
                 && image.ValueKind == JsonValueKind.Object
                 ? $"{GetShapeDimension(record, 1)}×{GetShapeDimension(record, 0)}, {GetInt(image, "bit_depth")}-bit"
                 : null;
-            return new WorkerOutcome("success", null, recordId, fingerprint, summary, Result: terminal.Clone());
+            var completedFlow = record.ValueKind == JsonValueKind.Object && ReadString(record, "flow_status") is { } recordFlow
+                ? recordFlow
+                : "computed";
+            return new WorkerOutcome("success", null, recordId, fingerprint, summary, Result: terminal.Clone(), FlowStatus: completedFlow);
         }
 
         var diagnostics = ReadFailureDiagnostics(terminal);
@@ -312,7 +316,7 @@ public sealed class WorkerClient
         var errorMessage = ReadFailureMessage(diagnostics)
             ?? ReadFailureCodeFromTerminal(terminal)
             ?? "worker analysis failed";
-        return new WorkerOutcome(status, errorMessage, FailureCode: failureCode, Result: terminal.Clone(), Diagnostics: diagnostics);
+        return new WorkerOutcome(status, errorMessage, FailureCode: failureCode, Result: terminal.Clone(), Diagnostics: diagnostics, FlowStatus: flowStatus ?? "analysis_failed");
     }
 
     private static IReadOnlyList<JsonElement> ReadFailureDiagnostics(JsonElement terminal)

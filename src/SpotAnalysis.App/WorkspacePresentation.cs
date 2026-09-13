@@ -11,8 +11,13 @@ public enum WorkspaceWorkflowStatus
     Processing,
     Cancelling,
     Completed,
+    Exported,
     Cancelled,
     Failed,
+    AnalysisFailed,
+    WorkerError,
+    ProtocolError,
+    ExportFailed,
     TimedOut,
     InputInvalid,
     ConfigurationInvalid,
@@ -80,11 +85,31 @@ public sealed record DisplaySettings(
     };
 }
 
+public sealed record MetricPresentation(
+    string Name,
+    string? Value,
+    string Unit,
+    MetricValidityStatus Validity,
+    IReadOnlyList<string> QualityReasonCodes);
+
+public sealed record DiagnosticPresentation(string Code, string Message);
+
 public sealed record AnalysisRecordSnapshot(
     string RequestId,
     WorkerOutcome Outcome,
     MetricValidityStatus MeasurementValidity,
-    bool IsStale);
+    bool IsStale,
+    string? RecordId = null,
+    string? AnalysisFingerprint = null,
+    string? FlowStatus = null,
+    IReadOnlyList<MetricPresentation>? Metrics = null,
+    IReadOnlyList<string>? QualityReasonCodes = null,
+    IReadOnlyList<DiagnosticPresentation>? Diagnostics = null)
+{
+    public bool IsReportEligible => !IsStale
+        && Outcome.Status == "success"
+        && string.Equals(FlowStatus, "computed", StringComparison.Ordinal);
+}
 
 public abstract record WorkspaceWorkerEvent(string RequestId)
 {
@@ -118,7 +143,12 @@ public sealed class WorkspacePresentationModel
     public DisplaySettings Display => State.Display;
     public bool CanRun => State.Input is not null && State.ConfirmedRequest is not null
         && State.WorkflowStatus is WorkspaceWorkflowStatus.ConfigurationConfirmed or WorkspaceWorkflowStatus.NeedsRecalculation;
-    public bool CanExportReport => !IsProcessing && State.CurrentRecord is { IsStale: false };
+    public bool CanExportReport => !IsProcessing
+        && State.WorkflowStatus is (WorkspaceWorkflowStatus.Completed
+            or WorkspaceWorkflowStatus.Exported
+            or WorkspaceWorkflowStatus.ExportFailed)
+        && State.CurrentRecord is { IsStale: false } record
+        && record.IsReportEligible;
     public bool IsProcessing => State.WorkflowStatus is WorkspaceWorkflowStatus.Processing or WorkspaceWorkflowStatus.Cancelling;
     public bool CanEditConfiguration => !IsProcessing;
 
@@ -340,8 +370,8 @@ public sealed class WorkspacePresentationModel
                 if (!TryCreateRecord(completed.RequestId, completed.Outcome, _draftChangedDuringRun, out var completedRecord))
                 {
                     FinishWithoutReplacingRecord(
-                        new WorkerOutcome("failure", "The worker completed without a complete analysis record.", FailureCode: "worker_protocol_invalid"),
-                        WorkspaceWorkflowStatus.Failed);
+                        new WorkerOutcome("failure", "The worker completed without a complete analysis record.", FailureCode: "worker_protocol_invalid", FlowStatus: "protocol_error"),
+                        WorkspaceWorkflowStatus.ProtocolError);
                     Changed?.Invoke(this, EventArgs.Empty);
                     return true;
                 }
@@ -350,8 +380,8 @@ public sealed class WorkspacePresentationModel
                     && string.Equals(priorId, completedId, StringComparison.Ordinal))
                 {
                     FinishWithoutReplacingRecord(
-                        new WorkerOutcome("failure", "The worker reused an existing analysis record identity.", FailureCode: "record_identity_reused"),
-                        WorkspaceWorkflowStatus.Failed);
+                        new WorkerOutcome("failure", "The worker reused an existing analysis record identity.", FailureCode: "record_identity_reused", FlowStatus: "protocol_error"),
+                        WorkspaceWorkflowStatus.ProtocolError);
                     Changed?.Invoke(this, EventArgs.Empty);
                     return true;
                 }
@@ -377,10 +407,10 @@ public sealed class WorkspacePresentationModel
                 FinishWithoutReplacingRecord(cancelled.Outcome, WorkspaceWorkflowStatus.Cancelled);
                 break;
             case WorkspaceWorkerEvent.Failed failed:
-                FinishWithoutReplacingRecord(failed.Outcome, failed.Outcome.Status == "timeout" ? WorkspaceWorkflowStatus.TimedOut : WorkspaceWorkflowStatus.Failed);
+                FinishWithoutReplacingRecord(failed.Outcome, WorkflowStatusFor(failed.Outcome));
                 break;
             case WorkspaceWorkerEvent.ProtocolError protocol:
-                FinishWithoutReplacingRecord(new WorkerOutcome("failure", protocol.Message, FailureCode: "worker_protocol_invalid"), WorkspaceWorkflowStatus.Failed);
+                FinishWithoutReplacingRecord(new WorkerOutcome("failure", protocol.Message, FailureCode: "worker_protocol_invalid", FlowStatus: "protocol_error"), WorkspaceWorkflowStatus.ProtocolError);
                 break;
             default:
                 return false;
@@ -393,6 +423,52 @@ public sealed class WorkspacePresentationModel
     {
         State = State with { Display = settings };
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ReportExported()
+    {
+        if (State.CurrentRecord is null || State.CurrentRecord.IsStale)
+            return;
+        State = State with
+        {
+            WorkflowStatus = WorkspaceWorkflowStatus.Exported,
+            FailureCode = null,
+            FailureMessage = null,
+        };
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ReportExportFailed(string code, string message)
+    {
+        State = State with
+        {
+            WorkflowStatus = WorkspaceWorkflowStatus.ExportFailed,
+            FailureCode = code,
+            FailureMessage = message,
+        };
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static WorkspaceWorkflowStatus WorkflowStatusFor(WorkerOutcome outcome)
+    {
+        if (outcome.Status == "timeout" || outcome.FlowStatus == "timeout")
+            return WorkspaceWorkflowStatus.TimedOut;
+        if (outcome.Status == "cancelled" || outcome.FlowStatus == "cancelled")
+            return WorkspaceWorkflowStatus.Cancelled;
+        return outcome.FlowStatus?.ToLowerInvariant() switch
+        {
+            "input_invalid" or "input_decode_failed" => WorkspaceWorkflowStatus.InputInvalid,
+            "parameter_invalid" => WorkspaceWorkflowStatus.ConfigurationInvalid,
+            "export_failed" => WorkspaceWorkflowStatus.ExportFailed,
+            "protocol_error" => WorkspaceWorkflowStatus.ProtocolError,
+            "worker_error" => WorkspaceWorkflowStatus.WorkerError,
+            "analysis_failed" => WorkspaceWorkflowStatus.AnalysisFailed,
+            _ when outcome.FailureCode is "worker_crashed" or "worker_start_failed" or "worker_io_failed"
+                => WorkspaceWorkflowStatus.WorkerError,
+            _ when outcome.FailureCode is "worker_protocol_invalid" or "worker_no_result"
+                => WorkspaceWorkflowStatus.ProtocolError,
+            _ => WorkspaceWorkflowStatus.Failed,
+        };
     }
 
     private void FinishWithoutReplacingRecord(WorkerOutcome outcome, WorkspaceWorkflowStatus status)
@@ -422,6 +498,125 @@ public sealed class WorkspacePresentationModel
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    private static MetricValidityStatus ParseValidity(string? value) => value?.ToLowerInvariant() switch
+    {
+        "valid" => MetricValidityStatus.Valid,
+        "caution" or "warning" => MetricValidityStatus.Caution,
+        "invalid" => MetricValidityStatus.Invalid,
+        "unavailable" or "not_applicable" => MetricValidityStatus.Unavailable,
+        _ => MetricValidityStatus.Unknown,
+    };
+
+    private static string? StringValue(JsonElement node, string property) =>
+        node.ValueKind == JsonValueKind.Object && node.TryGetProperty(property, out var child)
+            && child.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
+            ? child.ToString()
+            : null;
+
+    private static IReadOnlyList<MetricPresentation> ReadMetrics(
+        JsonElement record,
+        out IReadOnlyList<string> qualityReasons)
+    {
+        var metrics = new List<MetricPresentation>();
+        var reasons = new HashSet<string>(StringComparer.Ordinal);
+        AddReasons(record, reasons);
+        if (record.TryGetProperty("metrics", out var metricNode) && metricNode.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var metric in metricNode.EnumerateObject())
+            {
+                if (metric.Value.ValueKind == JsonValueKind.Object
+                    && metric.Value.TryGetProperty("domains", out var domains)
+                    && domains.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var domain in domains.EnumerateObject())
+                        AddMetric(metrics, reasons, $"{metric.Name} ({domain.Name})", domain.Value);
+                }
+                else
+                {
+                    AddMetric(metrics, reasons, metric.Name, metric.Value);
+                }
+            }
+        }
+        qualityReasons = reasons.OrderBy(reason => reason, StringComparer.Ordinal).ToArray();
+        return metrics;
+    }
+
+    private static void AddMetric(
+        List<MetricPresentation> metrics,
+        HashSet<string> reasons,
+        string name,
+        JsonElement metric)
+    {
+        var validity = ParseValidity(StringValue(metric, "status"));
+        var metricReasons = ReadStringArray(metric, "reason_codes");
+        foreach (var reason in metricReasons) reasons.Add(reason);
+        var value = validity is MetricValidityStatus.Valid or MetricValidityStatus.Caution
+            && metric.TryGetProperty("value", out var valueNode)
+            && valueNode.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
+            ? valueNode.ToString()
+            : null;
+        metrics.Add(new MetricPresentation(
+            name,
+            value,
+            StringValue(metric, "unit") ?? "",
+            validity,
+            metricReasons));
+    }
+
+    private static void AddReasons(JsonElement node, HashSet<string> reasons)
+    {
+        foreach (var reason in ReadStringArray(node, "quality_reason_codes")) reasons.Add(reason);
+        foreach (var reason in ReadStringArray(node, "reason_codes")) reasons.Add(reason);
+        if (node.TryGetProperty("diagnostics", out var diagnostics))
+        {
+            if (diagnostics.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var diagnostic in diagnostics.EnumerateArray())
+                    AddDiagnosticReasons(diagnostic, reasons);
+            }
+            else
+            {
+                AddDiagnosticReasons(diagnostics, reasons);
+            }
+        }
+    }
+
+    private static void AddDiagnosticReasons(JsonElement diagnostic, HashSet<string> reasons)
+    {
+        foreach (var property in new[] { "quality_reason_codes", "reason_codes", "reasons" })
+            foreach (var reason in ReadStringArray(diagnostic, property)) reasons.Add(reason);
+        if (StringValue(diagnostic, "reason_code") is { } code) reasons.Add(code);
+        if (diagnostic.ValueKind != JsonValueKind.Object) return;
+        foreach (var child in diagnostic.EnumerateObject())
+        {
+            if (child.Value.ValueKind == JsonValueKind.Object)
+                AddDiagnosticReasons(child.Value, reasons);
+        }
+    }
+
+    private static IReadOnlyList<string> ReadStringArray(JsonElement node, string property) =>
+        node.ValueKind == JsonValueKind.Object && node.TryGetProperty(property, out var values)
+            && values.ValueKind == JsonValueKind.Array
+            ? values.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString()!).Distinct(StringComparer.Ordinal).ToArray()
+            : Array.Empty<string>();
+
+    private static IReadOnlyList<DiagnosticPresentation> ReadDiagnostics(JsonElement record)
+    {
+        if (!record.TryGetProperty("diagnostics", out var diagnostics))
+            return Array.Empty<DiagnosticPresentation>();
+        var nodes = diagnostics.ValueKind switch
+        {
+            JsonValueKind.Array => diagnostics.EnumerateArray(),
+            JsonValueKind.Object => new[] { diagnostics }.AsEnumerable(),
+            _ => Enumerable.Empty<JsonElement>(),
+        };
+        return nodes.Select(item => new DiagnosticPresentation(
+                StringValue(item, "code") ?? "diagnostic",
+                StringValue(item, "message") ?? item.ToString()))
+            .ToArray();
+    }
+
     private static bool TryCreateRecord(
         string requestId,
         WorkerOutcome outcome,
@@ -435,18 +630,24 @@ public sealed class WorkspacePresentationModel
             || string.IsNullOrWhiteSpace(outcome.RecordId))
             return false;
 
-        var value = record.TryGetProperty("measurement_validity", out var validityNode)
-            ? validityNode.ToString()
-            : record.TryGetProperty("summary_status", out var summaryNode) ? summaryNode.ToString() : null;
-        var validity = value?.ToLowerInvariant() switch
-        {
-            "valid" => MetricValidityStatus.Valid,
-            "caution" or "warning" => MetricValidityStatus.Caution,
-            "invalid" => MetricValidityStatus.Invalid,
-            "unavailable" or "not_applicable" => MetricValidityStatus.Unavailable,
-            _ => MetricValidityStatus.Unknown,
-        };
-        snapshot = new AnalysisRecordSnapshot(requestId, outcome, validity, isStale);
+        var recordId = StringValue(record, "record_id");
+        if (!string.Equals(recordId, outcome.RecordId, StringComparison.Ordinal))
+            return false;
+        var value = StringValue(record, "measurement_validity") ?? StringValue(record, "summary_status");
+        var validity = ParseValidity(value);
+        var metrics = ReadMetrics(record, out var qualityReasons);
+        var diagnostics = ReadDiagnostics(record);
+        snapshot = new AnalysisRecordSnapshot(
+            requestId,
+            outcome,
+            validity,
+            isStale,
+            recordId,
+            StringValue(record, "analysis_fingerprint") ?? outcome.AnalysisFingerprint,
+            StringValue(record, "flow_status") ?? outcome.FlowStatus ?? "computed",
+            metrics,
+            qualityReasons,
+            diagnostics);
         return true;
     }
 }
