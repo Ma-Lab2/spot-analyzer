@@ -126,8 +126,8 @@
           </Border>
           <Separator Margin="{DynamicResource SpacingSeparator}" />
           <TextBlock FontWeight="SemiBold" Text="Report export" />
-          <TextBox x:Name="ReportNameText" Margin="0,6,0,0" Text="spot-analysis-report" AutomationProperties.Name="Report name" TabIndex="17" />
-          <CheckBox x:Name="ReportTimestampCheck" Content="Append UTC timestamp" AutomationProperties.Name="Append UTC timestamp" TabIndex="18" />
+          <TextBox x:Name="ReportNameText" Margin="0,6,0,0" Text="" AutomationProperties.Name="Report name (optional)" TabIndex="17" />
+          <CheckBox x:Name="ReportTimestampCheck" Content="Append UTC timestamp" IsChecked="True" AutomationProperties.Name="Append UTC timestamp" TabIndex="18" />
           <Button x:Name="ExportResultButton" Style="{DynamicResource SecondaryButton}" Margin="0,10,0,0" Width="210" HorizontalAlignment="Left" Click="ExportResult_Click" Content="Export PDF/PNG report" IsEnabled="False" AutomationProperties.Name="Export PDF or PNG report" TabIndex="19" />
           <Separator Margin="0,18,0,12" />
           <TextBlock FontWeight="SemiBold" Text="Diagnostics &amp; about" />

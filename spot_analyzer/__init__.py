@@ -19,6 +19,20 @@ from .validation import (
     run_report_validation,
     run_validation,
 )
+from .report import (
+    BatchExportSummary,
+    ExportOutcome,
+    ReportPackage,
+    ReportSpecification,
+    ReportWorkItem,
+    batch_export_reports,
+    export_batch_reports,
+    export_reports_batch,
+    is_report_eligible,
+    prepare_report,
+    report_text,
+    write_report,
+)
 from .models import (
     AnalysisConfiguration,
     AnalysisModel,
@@ -61,4 +75,16 @@ __all__ = [
     "run_real_fixture_validation",
     "run_report_validation",
     "run_validation",
+    "BatchExportSummary",
+    "ExportOutcome",
+    "ReportPackage",
+    "ReportSpecification",
+    "ReportWorkItem",
+    "batch_export_reports",
+    "export_batch_reports",
+    "export_reports_batch",
+    "is_report_eligible",
+    "prepare_report",
+    "report_text",
+    "write_report",
 ]

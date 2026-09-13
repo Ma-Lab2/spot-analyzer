@@ -639,7 +639,7 @@ def run_report_validation(output_directory: str | Path | None = None) -> dict[st
         with tempfile.TemporaryDirectory(prefix="report-contract-", dir=destination) as auxiliary_name:
             auxiliary = Path(auxiliary_name)
             user_name = "  operator/run: sample  "
-            plain_specification = ReportSpecification("png", user_name, auxiliary)
+            plain_specification = ReportSpecification("png", user_name, auxiliary, append_timestamp=False)
             plain_package = prepare_report(record, plain_specification)
             plain_outcome = write_report(plain_package, plain_specification)
             timestamp_specification = ReportSpecification(

@@ -908,19 +908,13 @@ public partial class MainWindow : Window
         }
 
         var requestedName = ReportNameText.Text.Trim();
-        if (requestedName.Length == 0)
-        {
-            _workspace.ReportExportFailed("report_name_empty", "Enter a report name.");
-            StatusText.Text = "Report export failed: enter a report name.";
-            return;
-        }
         var dialog = new SaveFileDialog
         {
-            Filter = "PDF report (*.pdf)|*.pdf|PNG report (*.png)|*.png",
-            DefaultExt = ".pdf",
+            Filter = "PNG report (*.png)|*.png|PDF report (*.pdf)|*.pdf",
+            DefaultExt = ".png",
             AddExtension = true,
             OverwritePrompt = false,
-            FileName = ReportExporter.SanitizeName(requestedName) + ".pdf",
+            FileName = (requestedName.Length == 0 ? "焦斑分析报告" : ReportExporter.SanitizeName(requestedName)) + ".png",
         };
         if (dialog.ShowDialog() != true) return;
         try
