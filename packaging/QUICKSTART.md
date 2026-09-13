@@ -1,28 +1,23 @@
-# Spot Analysis Alpha quick start
+# Spot Analysis Alpha 快速开始
 
-This package is `0.1.0-alpha.1` for Windows 11 x64. It is a one-folder portable
-client: extract the ZIP to a writable location and run `SpotAnalysis.App.exe`.
-No Python, .NET SDK, compiler, administrator rights, or network service is
-required on the target machine.
+本发布包为 Windows 11 x64 的 `0.1.0-alpha.1` Alpha 版本。将 ZIP 解压到可写目录，然后运行 `SpotAnalysis.App.exe`。目标机器无需预装 Python、.NET SDK、编译器、管理员权限或网络服务。
 
-1. Open `examples/alpha-example.png` first to verify the installation.
-2. Open a supported 8-bit or 16-bit grayscale PNG.
-3. Enter spatial calibration, choose **confirmed**, and select an analysis
-   region inside the image. Click **Confirm configuration**.
-4. Click **Run real analysis** and wait for the completed state. Review each
-   metric's value, unit, validity, and quality reason codes.
-5. Use **Export result report** to select an independent output destination.
-   Existing reports are never overwritten.
-6. Use **Export diagnostics** to save a JSON diagnostic package. The original
-   image is excluded by default. Check **Attach original image explicitly** only
-   when sharing the image is intended; that option creates a ZIP attachment.
+## 正常流程
 
-Normal logs are written to `%LOCALAPPDATA%\SpotAnalysis\logs\app.log`.
-For the clean-machine acceptance procedure and the complete feedback template, see
-`ALPHA-TRIAL-ACCEPTANCE.md`. Feedback should include the client version, input
-scenario, steps, expected and observed behavior, severity, package SHA-256, record
-identity, and the diagnostic package when available.
+1. 先打开 `examples/alpha-example.png`，确认客户端能够启动并显示输入图像。
+2. 选择一个或多个受支持的 `.png`/`.PNG` 文件。支持 8 位或 16 位单通道灰度 PNG，以及每个像素严格满足 `R=G=B` 的 8 位 RGB PNG。
+3. 图片载入后，客户端会自动解码、准备背景、定位主焦斑、提出分析区域（ROI）并生成预览结果。正常流程不要求逐项确认输入、背景、预处理或模型。
+4. 在图像上检查 ROI。可以框内拖动、单击重定位、拖动边角缩放、编辑坐标和尺寸，也可以使用方向键微调；ROI 始终保持在图像范围内。修改后预览会更新。
+5. 若没有可信空间标定，先按像素（`px`）检查结果即可；物理单位会显示“未标定”或不可用。只有在高级设置中提供并确认 x/y 标定、单位和来源后，才使用物理域结果。不得把演示值当作校准结果。
+6. 只在完成 ROI 复核后执行一次“确认分析区域并生成正式结果”。这一步同时确认按相对强度码值测量的语义。正式表示已确认配置，不表示测量一定有效。
+7. 查看每个指标的数值或 `N/A`、单位、有效性状态和质量原因码。`valid`、`caution`、`invalid`、`unavailable` 分别表示不同质量结论；计算成功不等于测量有效。
+8. 用“导出结果报告”选择独立输出目录。预览结果和“需要重新计算”的旧正式结果不能作为当前报告源；正式结果可逐图导出 PNG，PDF 仍可选择。已有文件不会被覆盖。
+9. 用“导出诊断”保存诊断包。默认不附带原始图像；只有明确勾选“明确附加原始图像”并确认分享意图时，才生成包含图像的 ZIP。机器字段、原因码、路径和哈希保持原样，便于排障。
 
-The Alpha exercises provisional `standard-profile-v1` and
-`quality-profile-v1`; it is not a production release and does not claim formal
-physical-accuracy validation.
+## 重要限制
+
+Alpha 使用 `standard-profile-v1` 和 `quality-profile-v1`，二者均为 `provisional`。本包不是生产发布，不宣称正式物理准确度验证，也不把真实图像缺少物理真值的观察当作科学金标准。质量警告、失败和不可用指标应如实保留。
+
+客户端日志写入 `%LOCALAPPDATA%\\SpotAnalysis\\logs\\app.log`，不会要求修改解压目录。仓库中的完整中文说明参阅 `packaging/USER-GUIDE.zh-CN.md` 和 `packaging/SUPPORTED-INPUTS.md`；当前便携包随附的 clean-machine 试用程序和反馈模板参阅 `ALPHA-TRIAL-ACCEPTANCE.md`。
+
+反馈请包含客户端版本、输入类型和哈希、操作步骤、预期与观察结果、流程状态、指标有效性、record ID（如有）、包 SHA-256 以及诊断包路径。未实际观察的验收项必须保留为 `NOT RUN`，不能用自动化测试或源代码检查代替。

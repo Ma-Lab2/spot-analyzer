@@ -6,6 +6,7 @@ This checklist is a preparation aid for the human-owned interactive acceptance. 
 
 - Issue: #65
 - Stage: development-machine interactive acceptance (repeat relevant rows for packaged-client smoke after #63)
+- Workflow contract: `workflow-contract-v1`; verification contract: `workflow-verification-contract-v1`
 - Tester: `<SphericalChicken or delegate>`
 - Date/time (local and UTC): `<record both>`
 - Client/build identity: `<version, commit/package identity>`
@@ -36,15 +37,19 @@ scenario was not observed; never convert it to PASS from automated tests.
 | --- | --- | --- | --- |
 | Build identity | Client, worker, analysis core, profile, and provisional status are identifiable | NOT RUN | `<screenshot/diagnostic>` |
 | Bundled example | `examples/alpha-example.png` opens and real analysis can be started | NOT RUN | `<screenshot/report>` |
-| Supported input | Representative 8-bit or 16-bit grayscale PNG opens and analyzes | NOT RUN | `<input hash, screenshot/report>` |
-| Calibration | Valid x/y calibration, units, source, and confirmed state are accepted | NOT RUN | `<screenshot>` |
-| Invalid calibration | Missing/invalid values are rejected before analysis with actionable feedback | NOT RUN | `<screenshot>` |
-| Analysis region | In-bounds region is accepted; invalid/out-of-bounds region is rejected | NOT RUN | `<screenshot>` |
-| Real analysis | Processing and completed states are distinct | NOT RUN | `<screenshot/video/report>` |
+| Supported input | Representative 8-bit/16-bit grayscale or strict equal-channel 8-bit RGB PNG opens and analyzes | NOT RUN | `<input hash, screenshot/report>` |
+| Automatic preview | Opening an input produces an automatic preview and candidate ROI without stepwise confirmation | NOT RUN | `<screenshot/video>` |
+| Calibration | Pixel-domain results remain available when calibration is missing; valid x/y calibration, units, source, and confirmed state are accepted when supplied | NOT RUN | `<screenshot>` |
+| Invalid calibration | Missing/invalid values are explained or rejected with actionable feedback; no placeholder physical value is shown | NOT RUN | `<screenshot>` |
+| Analysis region | Candidate ROI is in bounds; drag, resize, reposition, numeric edit, and keyboard movement remain in bounds | NOT RUN | `<screenshot/video>` |
+| Final confirmation | One final action confirms ROI and relative-intensity semantics and creates a formal result | NOT RUN | `<screenshot/video/report>` |
+| Real analysis | Processing, preview, formal, and completed states are distinct | NOT RUN | `<screenshot/video/report>` |
 | Result identity | Record ID and analysis fingerprint are displayed | NOT RUN | `<screenshot/report>` |
-| Measurements | Each metric shows value or N/A, unit, validity, and quality reason codes | NOT RUN | `<screenshot/report>` |
+| Measurements | Each metric shows value or N/A, unit, validity, and quality reason codes; formal does not imply valid | NOT RUN | `<screenshot/report>` |
 | Invalid/failure path | At least one invalid-input or failure path is readable and actionable | NOT RUN | `<screenshot/log>` |
-| Result export | Independent destination is used; repeated export gets a collision-safe name | NOT RUN | `<report paths>` |
+| Preview export gate | Preview and needs-recompute results cannot be exported as the current measurement report | NOT RUN | `<screenshot>` |
+| Multi-image isolation | Two or more images retain independent ROI, preview/formal state, warnings, and export status; one failure does not stop another | NOT RUN | `<screenshot/video/report>` |
+| Result export | Independent destination is used; repeated export gets a collision-safe name; each formal image gets its own report | NOT RUN | `<report paths>` |
 | Diagnostics privacy | Default diagnostics contain required fields and exclude original image | NOT RUN | `<diagnostic ZIP/inspection>` |
 | Explicit attachment | If tested, image appears only after deliberate attachment | NOT RUN | `<separate ZIP path>` |
 | Input immutability | Input hash and timestamp are unchanged after analysis/export | NOT RUN | `<before/after identity record>` |
@@ -53,20 +58,31 @@ scenario was not observed; never convert it to PASS from automated tests.
 ## Human procedure
 
 1. Open the bundled example and record its displayed identity.
-2. Open a representative supported grayscale PNG (8-bit or 16-bit) and record its hash
-   and timestamp before analysis.
-3. Enter valid spatial calibration and confirm it. Select an in-bounds region and
-   confirm configuration. Attempt invalid calibration and region values and record the
-   rejection before analysis starts.
-4. Run real analysis. Observe processing and completed states, then record record ID,
+2. Open representative supported grayscale and, if available, strict equal-channel RGB
+   PNGs; record each hash and timestamp before analysis.
+3. Observe that input loading automatically produces an input view and preview candidate
+   without stepwise confirmation. Check the automatic background/ROI explanation and
+   record any warning or fallback reason.
+4. Exercise ROI drag, resize, reposition, numeric edit, and keyboard movement. Verify the
+   rectangle remains in bounds and that the preview updates. Attempt invalid calibration
+   and region values and record the actionable feedback.
+5. If calibration is supplied, record x/y values, units, source, and confirmation state;
+   otherwise record that pixel-domain results remain available and physical values are
+   uncalibrated or unavailable.
+6. Perform the single final action that confirms the ROI and relative-intensity semantics.
+   Observe processing and completed states, then record preview/formal state, record ID,
    analysis fingerprint, every metric's value/N/A, unit, validity, and reason codes.
-5. Exercise one actionable invalid-input or failure path and record the displayed result.
-6. Export to an independent directory. Repeat an export to verify collision-safe naming.
-7. Export diagnostics with image attachment disabled and inspect the archive. If policy
-   permits, separately test explicit attachment and record that intentional action.
-8. Re-hash the input and compare timestamps. Collect the local log path.
-9. If the portable package is available, repeat relevant steps from its fresh extraction
-   and label those artifacts `packaged-client`, not `development-machine`.
+7. Exercise one actionable invalid-input or failure path and record the displayed result.
+8. Select at least two images when available. Switch between them and verify ROI, warnings,
+   preview/formal state, and export status do not leak across work items.
+9. Export only a current formal result to an independent directory. Verify preview and
+   needs-recompute results are blocked, then repeat an export to verify collision-safe
+   naming and per-image output.
+10. Export diagnostics with image attachment disabled and inspect the archive. If policy
+    permits, separately test explicit attachment and record that intentional action.
+11. Re-hash the input and compare timestamps. Collect the local log path.
+12. If the portable package is available, repeat relevant steps from its fresh extraction
+    and label those artifacts `packaged-client`, not `development-machine`.
 
 ## Evidence index
 

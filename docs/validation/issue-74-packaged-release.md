@@ -8,6 +8,13 @@ new portable ZIP, and a fresh extraction exercised with the executable shipped i
 ZIP. It does **not** claim human visual acceptance, clean-machine acceptance, or formal
 physical-accuracy validation.
 
+This is historical run evidence for the recorded Issue #74 head, not evidence that
+`workflow-contract-v1` or `workflow-verification-contract-v1` was observed. The automatic
+preview, final ROI confirmation, equal-channel RGB, multi-image and pixel-domain
+acceptance rows introduced by Issue #75/#82 remain a separate procedure/evidence gate.
+The package hashes, observed worker result, and NOT RUN boundaries below are preserved
+as originally recorded.
+
 - Issue: #74
 - Source branch: `worktree-agent-ae7263b165679aef8`
 - Source baseline: `f1611cc` (includes Issue #72 `37cf3f8` and Issue #73)
