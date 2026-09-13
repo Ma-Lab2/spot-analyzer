@@ -1,144 +1,169 @@
 <Window x:Class="SpotAnalysis.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Spot Analysis" Height="820" Width="1280" MinHeight="640" MinWidth="980">
-  <Grid Background="#FFF7F8FA">
+        Title="Spot Analysis" Height="820" Width="1280" MinHeight="640" MinWidth="980"
+        Background="{DynamicResource ColorWorkspace}"
+        FontFamily="{DynamicResource FontBody}" FontSize="14"
+        AutomationProperties.Name="Spot Analysis workspace"
+        KeyboardNavigation.TabNavigation="Local">
+  <Grid Background="{DynamicResource ColorWorkspace}" Margin="{DynamicResource SpacingWindow}">
     <Grid.RowDefinitions>
-      <RowDefinition Height="56" />
-      <RowDefinition Height="*" />
-      <RowDefinition Height="190" />
+      <RowDefinition Height="64" />
+      <RowDefinition Height="*" MinHeight="300" />
+      <RowDefinition Height="220" MinHeight="170" />
     </Grid.RowDefinitions>
     <Grid.ColumnDefinitions>
       <ColumnDefinition Width="300" MinWidth="260" />
       <ColumnDefinition Width="*" MinWidth="420" />
-      <ColumnDefinition Width="360" MinWidth="300" />
+      <ColumnDefinition Width="350" MinWidth="300" />
     </Grid.ColumnDefinitions>
 
-    <Border Grid.Row="0" Grid.ColumnSpan="3" Background="#FF1F2937" Padding="20,0">
+    <!-- Header: light workspace chrome; black is reserved for the image surface. -->
+    <Border Grid.Row="0" Grid.ColumnSpan="3" Background="{DynamicResource ColorPanel}" BorderBrush="{DynamicResource ColorBorder}" BorderThickness="1" CornerRadius="8" Padding="20,0">
       <DockPanel LastChildFill="True">
-        <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Foreground="White"
-                   FontSize="22" FontWeight="SemiBold" Text="Spot Analysis · Prototype A workspace" />
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+          <Border Background="{DynamicResource ColorAccent}" CornerRadius="5" Padding="8,4" Margin="0,0,12,0">
+            <TextBlock Foreground="White" FontWeight="Bold" Text="SA" />
+          </Border>
+          <StackPanel>
+            <TextBlock Style="{DynamicResource PageTitle}" Text="Spot Analysis" />
+            <TextBlock Style="{DynamicResource SupportingText}" FontSize="12" Text="Prototype A · traceable workspace" />
+          </StackPanel>
+        </StackPanel>
         <TextBlock x:Name="WorkspaceIdentityText" VerticalAlignment="Center" HorizontalAlignment="Right"
-                   Foreground="#FFD1D5DB" Text="Input workflow · analysis record" />
+                   Foreground="{DynamicResource ColorMuted}" Text="Input workflow · analysis record" />
       </DockPanel>
     </Border>
 
-    <Border Grid.Row="1" Grid.Column="0" BorderBrush="#FFE5E7EB" BorderThickness="0,0,1,0" Background="White">
-      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="18,16,16,18">
-          <TextBlock FontSize="15" FontWeight="SemiBold" Text="01 · 输入与配置" />
-          <TextBlock Margin="0,5,0,12" Foreground="#FF6B7280" Text="Choose an input, confirm analysis choices, then run." TextWrapping="Wrap" />
-          <Button x:Name="OpenInputButton" AutomationProperties.AutomationId="OpenInputButton"
-                  Width="230" HorizontalAlignment="Left" Click="OpenPng_Click" Content="Open grayscale PNG" />
-          <TextBlock Margin="0,12,0,4" FontWeight="SemiBold" Text="Selected input" />
-          <TextBlock x:Name="InputSummaryText" Text="No input selected" TextWrapping="Wrap" />
+    <!-- Region 1: configuration. Its own scroll surface keeps the main path usable at small heights. -->
+    <Border x:Name="ConfigurationRegion" Grid.Row="1" Grid.Column="0" Style="{DynamicResource PanelBorder}" Margin="0,12,8,12">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" IsTabStop="False">
+        <StackPanel Margin="{DynamicResource SpacingPanelContent}">
+          <TextBlock Style="{DynamicResource SectionHeading}" Text="01 · 输入与配置" />
+          <TextBlock Style="{DynamicResource SupportingText}" Margin="{DynamicResource SpacingSectionIntro}" Text="Choose an input, confirm analysis choices, then run." />
+          <Button x:Name="OpenInputButton" AutomationProperties.AutomationId="OpenInputButton" AutomationProperties.Name="Open grayscale PNG input"
+                  AutomationProperties.HelpText="Open a supported grayscale PNG file" Width="230" HorizontalAlignment="Left" Click="OpenPng_Click" Content="_Open grayscale PNG" TabIndex="0" />
+          <TextBlock Style="{DynamicResource FieldLabel}" Text="Selected input" />
+          <TextBlock x:Name="InputSummaryText" Text="No input selected" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
 
-          <Separator Margin="0,16,0,12" />
-          <TextBlock FontWeight="SemiBold" Text="Spatial calibration (units per pixel)" />
-          <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-            <TextBox x:Name="CalibrationXText" Width="55" Text="1" Margin="0,0,5,0" TextChanged="ConfigurationChanged" />
-            <TextBox x:Name="CalibrationYText" Width="55" Text="1" Margin="0,0,5,0" TextChanged="ConfigurationChanged" />
-            <TextBox x:Name="CalibrationUnitsText" Width="55" Text="mm" Margin="0,0,5,0" TextChanged="ConfigurationChanged" />
-            <TextBox x:Name="CalibrationSourceText" Width="75" Text="user" TextChanged="ConfigurationChanged" />
-          </StackPanel>
-          <ComboBox x:Name="CalibrationStatus" Width="130" HorizontalAlignment="Left" Margin="0,6,0,0" SelectionChanged="ConfigurationSelectionChanged">
+          <Separator Margin="{DynamicResource SpacingSeparator}" />
+          <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,0,0,4" Text="Spatial calibration (units per pixel)" />
+          <WrapPanel Margin="0,2,0,0">
+            <TextBox x:Name="CalibrationXText" Width="58" Text="1" Margin="0,0,5,5" ToolTip="X length per pixel" AutomationProperties.Name="X calibration" TextChanged="ConfigurationChanged" TabIndex="1" />
+            <TextBox x:Name="CalibrationYText" Width="58" Text="1" Margin="0,0,5,5" ToolTip="Y length per pixel" AutomationProperties.Name="Y calibration" TextChanged="ConfigurationChanged" TabIndex="2" />
+            <TextBox x:Name="CalibrationUnitsText" Width="62" Text="mm" Margin="0,0,5,5" ToolTip="Physical unit" AutomationProperties.Name="Calibration physical unit" TextChanged="ConfigurationChanged" TabIndex="3" />
+            <TextBox x:Name="CalibrationSourceText" Width="84" Text="user" Margin="0,0,5,5" ToolTip="Calibration provenance" AutomationProperties.Name="Calibration source" TextChanged="ConfigurationChanged" TabIndex="4" />
+          </WrapPanel>
+          <ComboBox x:Name="CalibrationStatus" Width="140" HorizontalAlignment="Left" Margin="0,2,0,0" AutomationProperties.Name="Calibration confirmation status" ToolTip="Calibration must be confirmed before analysis" SelectionChanged="ConfigurationSelectionChanged" TabIndex="5">
             <ComboBoxItem Content="missing" IsSelected="True" />
             <ComboBoxItem Content="provisional" />
             <ComboBoxItem Content="confirmed" />
           </ComboBox>
 
-          <TextBlock Margin="0,14,0,4" FontWeight="SemiBold" Text="Analysis region x, y, width, height" />
-          <StackPanel Orientation="Horizontal">
-            <TextBox x:Name="RoiXText" Width="48" Text="0" Margin="0,0,4,0" TextChanged="ConfigurationChanged" />
-            <TextBox x:Name="RoiYText" Width="48" Text="0" Margin="0,0,4,0" TextChanged="ConfigurationChanged" />
-            <TextBox x:Name="RoiWidthText" Width="58" Text="1" Margin="0,0,4,0" TextChanged="ConfigurationChanged" />
-            <TextBox x:Name="RoiHeightText" Width="58" Text="1" TextChanged="ConfigurationChanged" />
-          </StackPanel>
-          <TextBlock Margin="0,12,0,4" FontWeight="SemiBold" Text="Background / preprocessing (optional)" TextWrapping="Wrap" />
-          <StackPanel Orientation="Horizontal">
-            <TextBox x:Name="BackgroundXText" Width="48" Margin="0,0,4,0" TextChanged="ConfigurationChanged" />
-            <TextBox x:Name="BackgroundYText" Width="48" Margin="0,0,4,0" TextChanged="ConfigurationChanged" />
-            <TextBox x:Name="BackgroundWidthText" Width="58" Margin="0,0,4,0" TextChanged="ConfigurationChanged" />
-            <TextBox x:Name="BackgroundHeightText" Width="58" TextChanged="ConfigurationChanged" />
-          </StackPanel>
-          <TextBlock Margin="0,4,0,0" Foreground="#FF6B7280" Text="Background correction is recorded only when all four values are provided." TextWrapping="Wrap" />
+          <TextBlock Style="{DynamicResource FieldLabel}" Margin="{DynamicResource SpacingSectionLabel}" Text="Analysis region x, y, width, height" />
+          <WrapPanel>
+            <TextBox x:Name="RoiXText" Width="50" Text="0" Margin="0,0,4,5" AutomationProperties.Name="Analysis region X" TextChanged="ConfigurationChanged" TabIndex="6" />
+            <TextBox x:Name="RoiYText" Width="50" Text="0" Margin="0,0,4,5" AutomationProperties.Name="Analysis region Y" TextChanged="ConfigurationChanged" TabIndex="7" />
+            <TextBox x:Name="RoiWidthText" Width="62" Text="1" Margin="0,0,4,5" AutomationProperties.Name="Analysis region width" TextChanged="ConfigurationChanged" TabIndex="8" />
+            <TextBox x:Name="RoiHeightText" Width="62" Text="1" Margin="0,0,0,5" AutomationProperties.Name="Analysis region height" TextChanged="ConfigurationChanged" TabIndex="9" />
+          </WrapPanel>
 
-          <Button x:Name="ConfirmConfigurationButton" AutomationProperties.AutomationId="ConfirmConfigurationButton"
-                  Margin="0,16,0,0" Width="230" HorizontalAlignment="Left" Click="ConfirmConfiguration_Click" Content="Confirm configuration" />
-          <TextBlock Margin="0,10,0,4" FontWeight="SemiBold" Text="Pending request" />
+          <TextBlock Style="{DynamicResource FieldLabel}" Margin="{DynamicResource SpacingSectionLabel}" Text="Background / preprocessing (optional)" />
+          <WrapPanel>
+            <TextBox x:Name="BackgroundXText" Width="50" Margin="0,0,4,5" AutomationProperties.Name="Background region X" TextChanged="ConfigurationChanged" TabIndex="10" />
+            <TextBox x:Name="BackgroundYText" Width="50" Margin="0,0,4,5" AutomationProperties.Name="Background region Y" TextChanged="ConfigurationChanged" TabIndex="11" />
+            <TextBox x:Name="BackgroundWidthText" Width="62" Margin="0,0,4,5" AutomationProperties.Name="Background region width" TextChanged="ConfigurationChanged" TabIndex="12" />
+            <TextBox x:Name="BackgroundHeightText" Width="62" Margin="0,0,0,5" AutomationProperties.Name="Background region height" TextChanged="ConfigurationChanged" TabIndex="13" />
+          </WrapPanel>
+          <TextBlock Style="{DynamicResource SupportingText}" FontSize="12" Text="Background correction is recorded only when all four values are provided." />
+
+          <Button x:Name="ConfirmConfigurationButton" AutomationProperties.AutomationId="ConfirmConfigurationButton" AutomationProperties.Name="Confirm analysis configuration"
+                  Margin="0,16,0,0" Width="230" HorizontalAlignment="Left" Click="ConfirmConfiguration_Click" Content="_Confirm configuration" TabIndex="14" />
+          <TextBlock Style="{DynamicResource FieldLabel}" Text="Pending request snapshot" />
           <TextBox x:Name="SummaryText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72"
-                   VerticalScrollBarVisibility="Auto" Text="No pending request" />
-          <TextBlock Margin="0,16,0,4" FontWeight="SemiBold" Text="05 · 执行分析" />
+                   VerticalScrollBarVisibility="Auto" Text="No pending request" AutomationProperties.Name="Pending request snapshot" IsTabStop="False" />
+          <TextBlock Style="{DynamicResource FieldLabel}" Text="05 · 执行分析" />
           <StackPanel Orientation="Horizontal">
-            <Button x:Name="RunAnalysisButton" Width="140" Click="RunAnalysis_Click" Content="Run real analysis" IsEnabled="False" />
-            <Button Margin="6,0,0,0" Width="70" Click="CancelAnalysis_Click" Content="Cancel" />
+            <Button x:Name="RunAnalysisButton" AutomationProperties.Name="Run analysis" Width="140" Click="RunAnalysis_Click" Content="_Run analysis" IsEnabled="False" TabIndex="15" />
+            <Button x:Name="CancelAnalysisButton" Style="{DynamicResource SecondaryButton}" AutomationProperties.Name="Cancel analysis" Margin="6,0,0,0" Width="82" Click="CancelAnalysis_Click" Content="_Cancel" TabIndex="16" />
           </StackPanel>
         </StackPanel>
       </ScrollViewer>
     </Border>
 
-    <Border Grid.Row="1" Grid.Column="1" Margin="12" BorderBrush="#FFD1D5DB" BorderThickness="1" CornerRadius="4" Background="#FF111827">
+    <!-- Region 2: central display gets the star-sized column and no competing scroll surface. -->
+    <Border x:Name="ImageRegion" Grid.Row="1" Grid.Column="1" Style="{DynamicResource PanelBorder}" Margin="4,12,4,12" Background="{DynamicResource ColorImageBackground}">
       <Grid>
-        <Image x:Name="InputPreview" Margin="18" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
-        <StackPanel x:Name="ImageEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center">
-          <TextBlock Foreground="#FFD1D5DB" FontSize="20" HorizontalAlignment="Center" Text="No input image" />
-          <TextBlock Margin="0,6,0,0" Foreground="#FF9CA3AF" HorizontalAlignment="Center" Text="Open a grayscale PNG to view the display image." />
+        <Image x:Name="InputPreview" Margin="18" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" AutomationProperties.Name="Input display image" />
+        <StackPanel x:Name="ImageEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="340">
+          <TextBlock Foreground="White" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" Text="No input image" />
+          <TextBlock Margin="0,6,0,0" Foreground="{DynamicResource ColorImageText}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Text="Open a grayscale PNG to view the display image." />
         </StackPanel>
-        <Border VerticalAlignment="Top" HorizontalAlignment="Left" Margin="14" Padding="8,4" Background="#AA111827" CornerRadius="3">
+        <Border VerticalAlignment="Top" HorizontalAlignment="Left" Margin="14" Padding="9,5" Background="{DynamicResource ColorImageOverlay}" CornerRadius="4">
           <TextBlock Foreground="White" Text="Display image · input data" />
         </Border>
+        <GridSplitter Width="6" HorizontalAlignment="Left" VerticalAlignment="Stretch" Background="Transparent" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" ShowsPreview="True" ToolTip="Resize configuration and image regions" AutomationProperties.Name="Resize configuration and image regions" />
       </Grid>
     </Border>
 
-    <Border Grid.Row="1" Grid.Column="2" BorderBrush="#FFE5E7EB" BorderThickness="1,0,0,0" Background="White">
-      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="16">
-          <TextBlock FontSize="15" FontWeight="SemiBold" Text="Status &amp; results" />
-          <TextBlock Margin="0,4,0,0" Foreground="#FF6B7280" Text="Current workflow and immutable analysis record" TextWrapping="Wrap" />
-          <TextBlock Margin="0,16,0,4" FontWeight="SemiBold" Text="Workflow status" />
-          <TextBlock x:Name="StatusText" Text="Ready" TextWrapping="Wrap" />
+    <!-- Region 3: independent results/exports scroll separately from configuration. -->
+    <Border x:Name="ResultsRegion" Grid.Row="1" Grid.Column="2" Style="{DynamicResource PanelBorder}" Margin="8,12,0,12">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" IsTabStop="False">
+        <StackPanel Margin="{DynamicResource SpacingPanelContent}">
+          <TextBlock Style="{DynamicResource SectionHeading}" Text="Status &amp; results" />
+          <TextBlock Style="{DynamicResource SupportingText}" Margin="0,4,0,0" Text="Current workflow and immutable analysis record" />
+          <TextBlock Style="{DynamicResource FieldLabel}" Text="Workflow status" />
+          <Border x:Name="WorkflowStatusBadge" Style="{DynamicResource StatusBadge}" AutomationProperties.LiveSetting="Polite">
+            <TextBox x:Name="StatusText" Text="Ready" TextWrapping="Wrap" FontWeight="SemiBold" AutomationProperties.Name="Workflow status" TextChanged="StatusText_Changed" IsReadOnly="True" IsTabStop="False" BorderThickness="0" Background="Transparent" Padding="0" />
+          </Border>
+          <ProgressBar x:Name="AnalysisProgressBar" Margin="0,10,0,0" Minimum="0" Maximum="1" Value="0" IsHitTestVisible="False" AutomationProperties.Name="Analysis progress" />
+          <TextBlock x:Name="ProgressText" Margin="0,5,0,0" Style="{DynamicResource SupportingText}" Text="Ready for an input image." AutomationProperties.LiveSetting="Polite" />
           <TextBlock x:Name="RecordText" Margin="0,14,0,0" TextWrapping="Wrap" />
-          <TextBlock Margin="0,14,0,4" FontWeight="SemiBold" Text="Measured metrics &amp; validity" />
+          <TextBlock Style="{DynamicResource FieldLabel}" Text="Measured metrics &amp; validity" />
           <TextBlock x:Name="MetricsText" Text="No result available" TextWrapping="Wrap" />
-          <Separator Margin="0,16,0,12" />
+          <Border Margin="0,12,0,0" Padding="8" Background="{DynamicResource ColorPanelSubtle}" BorderBrush="{DynamicResource ColorBorder}" BorderThickness="1" CornerRadius="4">
+            <TextBlock Style="{DynamicResource SupportingText}" FontSize="12" Text="Validity legend: ✓ valid · ! caution / review · × invalid · — unavailable. Text labels remain visible without relying on color." />
+          </Border>
+          <Separator Margin="{DynamicResource SpacingSeparator}" />
           <TextBlock FontWeight="SemiBold" Text="Report export" />
-          <TextBox x:Name="ReportNameText" Margin="0,6,0,0" Text="spot-analysis-report" />
-          <CheckBox x:Name="ReportTimestampCheck" Margin="0,6,0,0" Content="Append UTC timestamp" />
-          <Button x:Name="ExportResultButton" Margin="0,10,0,0" Width="210" HorizontalAlignment="Left" Click="ExportResult_Click" Content="Export PDF/PNG report" IsEnabled="False" />
+          <TextBox x:Name="ReportNameText" Margin="0,6,0,0" Text="spot-analysis-report" AutomationProperties.Name="Report name" TabIndex="17" />
+          <CheckBox x:Name="ReportTimestampCheck" Content="Append UTC timestamp" AutomationProperties.Name="Append UTC timestamp" TabIndex="18" />
+          <Button x:Name="ExportResultButton" Style="{DynamicResource SecondaryButton}" Margin="0,10,0,0" Width="210" HorizontalAlignment="Left" Click="ExportResult_Click" Content="Export PDF/PNG report" IsEnabled="False" AutomationProperties.Name="Export PDF or PNG report" TabIndex="19" />
           <Separator Margin="0,18,0,12" />
           <TextBlock FontWeight="SemiBold" Text="Diagnostics &amp; about" />
           <TextBlock x:Name="DiagnosticsText" Margin="0,5,0,0" TextWrapping="Wrap" />
-          <Button Margin="0,8,0,0" Width="180" HorizontalAlignment="Left" Click="ExportDiagnostics_Click" Content="Export diagnostics" />
-          <CheckBox x:Name="IncludeOriginalImageCheck" Margin="0,6,0,0" Content="Attach original image explicitly" />
+          <Button x:Name="ExportDiagnosticsButton" Style="{DynamicResource SecondaryButton}" Margin="0,8,0,0" Width="180" HorizontalAlignment="Left" Click="ExportDiagnostics_Click" Content="Export diagnostics" AutomationProperties.Name="Export diagnostics" TabIndex="20" />
+          <CheckBox x:Name="IncludeOriginalImageCheck" Content="Attach original image explicitly" AutomationProperties.Name="Attach original image explicitly" TabIndex="21" />
         </StackPanel>
       </ScrollViewer>
     </Border>
 
-    <Border Grid.Row="2" Grid.ColumnSpan="3" Margin="12,0,12,12" Padding="12" BorderBrush="#FFD1D5DB" BorderThickness="1" CornerRadius="4" Background="White">
+    <!-- Region 4: simultaneous X/Y profiles and energy explanation. -->
+    <Border x:Name="CurvesRegion" Grid.Row="2" Grid.ColumnSpan="3" Style="{DynamicResource PanelBorder}" Margin="0,0,0,0" Padding="14">
       <Grid>
-        <Grid.RowDefinitions><RowDefinition Height="24"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="32"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <DockPanel Grid.Row="0">
-          <TextBlock FontSize="15" FontWeight="SemiBold" Text="Explanation curves" />
-          <TextBlock x:Name="CurveIdentityText" Margin="14,2,0,0" Foreground="#FF6B7280" />
-          <TextBlock x:Name="CurveStatusText" Margin="14,2,0,0" Foreground="#FFB45309" />
+          <TextBlock Style="{DynamicResource SectionHeading}" Text="Explanation curves" />
+          <TextBlock x:Name="CurveIdentityText" Margin="14,3,0,0" Style="{DynamicResource SupportingText}" />
+          <TextBlock x:Name="CurveStatusText" Margin="14,3,0,0" Style="{DynamicResource SupportingText}" FontWeight="SemiBold" />
         </DockPanel>
         <Grid Grid.Row="1">
           <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-          <Border Grid.Column="0" BorderBrush="#FFE5E7EB" BorderThickness="0,0,1,0" Margin="0,0,8,0">
-            <Grid><Canvas x:Name="XProfileCanvas" SizeChanged="CurveCanvas_SizeChanged" />
-              <TextBlock VerticalAlignment="Top" Foreground="#FF6B7280" Text="X center profile · position (px), intensity (code)" />
-              <TextBlock VerticalAlignment="Bottom" Foreground="#FF6B7280" Text="actual — solid   fitted — dashed" /></Grid>
+          <Border Grid.Column="0" BorderBrush="{DynamicResource ColorBorder}" BorderThickness="0,0,1,0" Margin="0,0,8,0">
+            <Grid><Canvas x:Name="XProfileCanvas" SizeChanged="CurveCanvas_SizeChanged" AutomationProperties.Name="X center profile curve" />
+              <TextBlock VerticalAlignment="Top" Style="{DynamicResource SupportingText}" FontSize="12" Text="X center profile · position (px), intensity (code)" />
+              <TextBlock VerticalAlignment="Bottom" Style="{DynamicResource SupportingText}" FontSize="12" Text="actual — solid   fitted — dashed" /></Grid>
           </Border>
-          <Border Grid.Column="1" BorderBrush="#FFE5E7EB" BorderThickness="0,0,1,0" Margin="8,0,8,0">
-            <Grid><Canvas x:Name="YProfileCanvas" SizeChanged="CurveCanvas_SizeChanged" />
-              <TextBlock VerticalAlignment="Top" Foreground="#FF6B7280" Text="Y center profile · position (px), intensity (code)" />
-              <TextBlock VerticalAlignment="Bottom" Foreground="#FF6B7280" Text="actual — solid   fitted — dashed" /></Grid>
+          <Border Grid.Column="1" BorderBrush="{DynamicResource ColorBorder}" BorderThickness="0,0,1,0" Margin="8,0,8,0">
+            <Grid><Canvas x:Name="YProfileCanvas" SizeChanged="CurveCanvas_SizeChanged" AutomationProperties.Name="Y center profile curve" />
+              <TextBlock VerticalAlignment="Top" Style="{DynamicResource SupportingText}" FontSize="12" Text="Y center profile · position (px), intensity (code)" />
+              <TextBlock VerticalAlignment="Bottom" Style="{DynamicResource SupportingText}" FontSize="12" Text="actual — solid   fitted — dashed" /></Grid>
           </Border>
-          <Grid Grid.Column="2" Margin="8,0,0,0"><Canvas x:Name="EnergyCanvas" SizeChanged="CurveCanvas_SizeChanged" />
-            <TextBlock VerticalAlignment="Top" Foreground="#FF6B7280" Text="Radius–cumulative energy · radius (record unit), fraction" />
-            <TextBlock x:Name="EnergyMarkerText" VerticalAlignment="Bottom" Foreground="#FF6B7280" /></Grid>
-          <StackPanel x:Name="CurvesEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
-            <TextBlock x:Name="CurvesEmptyStateText" Foreground="#FF6B7280" FontSize="14" HorizontalAlignment="Center" Text="No analysis result yet — curves will appear here after a successful run." />
+          <Grid Grid.Column="2" Margin="8,0,0,0"><Canvas x:Name="EnergyCanvas" SizeChanged="CurveCanvas_SizeChanged" AutomationProperties.Name="Cumulative energy curve" />
+            <TextBlock VerticalAlignment="Top" Style="{DynamicResource SupportingText}" FontSize="12" Text="Radius–cumulative energy · radius (record unit), fraction" />
+            <TextBlock x:Name="EnergyMarkerText" VerticalAlignment="Bottom" Style="{DynamicResource SupportingText}" FontSize="12" /></Grid>
+          <StackPanel x:Name="CurvesEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" MaxWidth="650">
+            <TextBlock x:Name="CurvesEmptyStateText" Style="{DynamicResource SupportingText}" FontSize="14" HorizontalAlignment="Center" TextAlignment="Center" Text="No analysis result yet — curves will appear here after a successful run." AutomationProperties.LiveSetting="Polite" />
           </StackPanel>
         </Grid>
       </Grid>

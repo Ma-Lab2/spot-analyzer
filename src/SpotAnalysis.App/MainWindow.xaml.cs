@@ -36,6 +36,8 @@ public partial class MainWindow : Window
         _workspace.Changed += (_, _) => WorkspaceChanged();
         RefreshDraftSummary();
         UpdateConfigurationAvailability();
+        UpdateProgressVisual();
+        UpdateStatusVisual();
         ImageEmptyState.Visibility = Visibility.Visible;
         CurvesEmptyStateText.Text = "No analysis result yet — curves will appear here after a successful run.";
         DiagnosticsText.Text = DiagnosticPackage.BuildAboutText();
@@ -599,7 +601,60 @@ public partial class MainWindow : Window
     private void WorkspaceChanged()
     {
         UpdateConfigurationAvailability();
+        UpdateProgressVisual();
+        UpdateStatusVisual();
         RefreshDiagnosticsSummary();
+    }
+
+    private void StatusText_Changed(object sender, TextChangedEventArgs e) => UpdateStatusVisual();
+
+    private void UpdateStatusVisual()
+    {
+        if (WorkflowStatusBadge is null || StatusText is null)
+            return;
+
+        var status = StatusText.Text.ToLowerInvariant();
+        var (surface, border, foreground) = status.Contains("fail") || status.Contains("invalid") || status.Contains("unavailable")
+            ? ("ColorInvalidSurface", "ColorInvalid", "ColorInvalid")
+            : status.Contains("caution") || status.Contains("stale") || status.Contains("recompute") || status.Contains("timeout")
+                ? ("ColorCautionSurface", "ColorCaution", "ColorCaution")
+                : status.Contains("complete") || status.Contains("export")
+                    ? ("ColorSuccessSurface", "ColorSuccess", "ColorSuccess")
+                    : status.Contains("process") || status.Contains("cancel")
+                        ? ("ColorInfoSurface", "ColorInfo", "ColorInfo")
+                        : ("ColorPanelSubtle", "ColorBorder", "ColorInk");
+        WorkflowStatusBadge.Background = (Brush)FindResource(surface);
+        WorkflowStatusBadge.BorderBrush = (Brush)FindResource(border);
+        StatusText.Foreground = (Brush)FindResource(foreground);
+    }
+
+    private void UpdateProgressVisual()
+    {
+        var state = _workspace.State;
+        if (_workspace.IsProcessing)
+        {
+            AnalysisProgressBar.IsIndeterminate = !state.ProgressFraction.HasValue;
+            if (state.ProgressFraction is { } fraction)
+                AnalysisProgressBar.Value = Math.Clamp(fraction, 0, 1);
+            ProgressText.Text = string.IsNullOrWhiteSpace(state.ProgressMessage)
+                ? "Processing the current analysis request…"
+                : state.ProgressMessage;
+            return;
+        }
+
+        AnalysisProgressBar.IsIndeterminate = false;
+        AnalysisProgressBar.Value = state.WorkflowStatus is WorkspaceWorkflowStatus.Completed or WorkspaceWorkflowStatus.Exported ? 1 : 0;
+        ProgressText.Text = state.WorkflowStatus switch
+        {
+            WorkspaceWorkflowStatus.Ready => "Ready for an input image.",
+            WorkspaceWorkflowStatus.NeedsRecalculation => "Needs recalculation — the retained record is stale.",
+            WorkspaceWorkflowStatus.InputInvalid or WorkspaceWorkflowStatus.ConfigurationInvalid => "Resolve the highlighted input or configuration issue.",
+            WorkspaceWorkflowStatus.Failed or WorkspaceWorkflowStatus.AnalysisFailed or WorkspaceWorkflowStatus.WorkerError or WorkspaceWorkflowStatus.ProtocolError => "Analysis failed; inspect diagnostics and try again.",
+            WorkspaceWorkflowStatus.Cancelled or WorkspaceWorkflowStatus.TimedOut => "Run ended without a new record; the prior record is retained.",
+            WorkspaceWorkflowStatus.ExportFailed => "Export failed; the current record remains available for retry.",
+            WorkspaceWorkflowStatus.Completed or WorkspaceWorkflowStatus.Exported => "Current analysis record is ready.",
+            _ => "Confirm the configuration to continue.",
+        };
     }
 
     private void RefreshDiagnosticsSummary()
@@ -641,6 +696,7 @@ public partial class MainWindow : Window
         BackgroundWidthText.IsEnabled = enabled;
         BackgroundHeightText.IsEnabled = enabled;
         ConfirmConfigurationButton.IsEnabled = enabled;
+        CancelAnalysisButton.IsEnabled = _workspace.IsProcessing;
     }
 
     private void ConfigurationChanged(object sender, RoutedEventArgs e)
