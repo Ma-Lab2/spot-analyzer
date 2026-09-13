@@ -178,6 +178,24 @@ def _candidate_mask(
             neighbour_center = float(np.median(neighbour_values)) if neighbour_values.size else baseline
             if data[y, x] - neighbour_center >= profile.isolated_hot_pixel_sigma_threshold * max(noise, 1e-12):
                 isolated[y, x] = True
+    # Also remove a saturated-looking single-pixel spike embedded in a real
+    # component.  A genuine smooth focal-spot maximum is close to its local
+    # neighbours; a hot pixel is not.  This keeps integrated energy from being
+    # dominated by one sample without erasing the smooth peak itself.
+    ys, xs = np.nonzero(initial_signal & ~isolated)
+    for y, x in zip(ys, xs):
+        neighbours = data[max(0, y - 1):min(data.shape[0], y + 2), max(0, x - 1):min(data.shape[1], x + 2)]
+        neighbour_mask = np.ones(neighbours.shape, dtype=bool)
+        neighbour_mask[y - max(0, y - 1), x - max(0, x - 1)] = False
+        neighbour_values = neighbours[neighbour_mask & np.isfinite(neighbours)]
+        neighbour_center = float(np.median(neighbour_values)) if neighbour_values.size else baseline
+        local_excess = max(neighbour_center - baseline, 0.0)
+        if excess[y, x] >= 4.0 * max(local_excess, 1e-12) and excess[y, x] >= profile.isolated_hot_pixel_sigma_threshold * max(noise, 1e-12):
+            # Require a useful absolute contrast when the measured noise is
+            # exactly zero, otherwise every tiny floating-point shoulder would
+            # qualify as an outlier.
+            if excess[y, x] >= max(1.0, 0.01 * robust_peak):
+                isolated[y, x] = True
     signal = initial_signal & ~isolated
     peak = float(np.max(excess[signal])) if np.any(signal) else 0.0
     return signal, excess, {
