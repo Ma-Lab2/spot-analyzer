@@ -102,6 +102,8 @@ var grayBefore = (File.GetLastWriteTimeUtc(issue76GrayPath), File.ReadAllBytes(i
 var grayInfo = RunOnSta(() => PngInput.ReadAsync(issue76GrayPath).GetAwaiter().GetResult());
 Assert(grayInfo.Width == 2 && grayInfo.Height == 1 && grayInfo.BitDepth == 16, "WPF must preserve 16-bit dimensions");
 Assert(grayInfo.Channels == 1 && grayInfo.IntensitySamples.SequenceEqual(new ushort[] { 1, 65535 }), "WPF must preserve 16-bit samples");
+Assert(grayInfo.Preview.PixelWidth == 2 && grayInfo.Preview.PixelHeight == 1 && grayInfo.Preview.IsFrozen,
+    "WPF preview must be created from the decoded samples and be cross-thread safe");
 Assert(grayInfo.ByteOrder == "big" && grayInfo.Sha256 == Convert.ToHexString(SHA256.HashData(grayBefore.Item2)).ToLowerInvariant(), "WPF input identity must be deterministic");
 Assert(grayInfo.UriHint.Contains("gray%20with%20spaces.PNG", StringComparison.Ordinal), "WPF input URI must preserve path identity safely");
 var rgbInfo = RunOnSta(() => PngInput.ReadAsync(issue76RgbPath).GetAwaiter().GetResult());
