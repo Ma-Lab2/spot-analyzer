@@ -107,19 +107,19 @@ public static class PngInput
         {
             var length = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset, 4));
             if (length > int.MaxValue || offset > data.Length - 12 - (int)length)
-                throw new InputValidationException("invalid_png", "PNG 数据块已截断。");
+                throw new InputValidationException("png_decode_failed", "PNG 数据块已截断。");
             var kind = data.AsSpan(offset + 4, 4);
             var payloadOffset = offset + 8;
             var payload = data.AsSpan(payloadOffset, (int)length);
             var expectedCrc = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(payloadOffset + (int)length, 4));
             if (Crc32(kind, payload) != expectedCrc)
-                throw new InputValidationException("invalid_png", "PNG 数据块校验失败。");
+                throw new InputValidationException("png_decode_failed", "PNG 数据块校验失败。");
             offset = payloadOffset + (int)length + 4;
 
             if (kind.SequenceEqual("IHDR"u8))
             {
                 if (ihdr is not null || payload.Length != 13)
-                    throw new InputValidationException("invalid_png", "PNG IHDR 无效。");
+                    throw new InputValidationException("png_decode_failed", "PNG IHDR 无效。");
                 ihdr = payload.ToArray();
             }
             else if (kind.SequenceEqual("IDAT"u8))
@@ -146,9 +146,9 @@ public static class PngInput
         }
 
         if (ihdr is null)
-            throw new InputValidationException("invalid_png", "PNG 缺少 IHDR。");
+            throw new InputValidationException("png_decode_failed", "PNG 缺少 IHDR。");
         if (!ended)
-            throw new InputValidationException("invalid_png", "PNG 缺少 IEND。");
+            throw new InputValidationException("png_decode_failed", "PNG 缺少 IEND。");
 
         var width = BinaryPrimitives.ReadUInt32BigEndian(ihdr.AsSpan(0, 4));
         var height = BinaryPrimitives.ReadUInt32BigEndian(ihdr.AsSpan(4, 4));

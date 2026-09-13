@@ -92,9 +92,12 @@ Directory.CreateDirectory(issue76Directory);
 var issue76GrayPath = Path.Combine(issue76Directory, "gray with spaces.PNG");
 var issue76RgbPath = Path.Combine(issue76Directory, "equal-rgb.png");
 var issue76BadRgbPath = Path.Combine(issue76Directory, "different-rgb.png");
-File.WriteAllBytes(issue76GrayPath, PngBytes(2, 1, 16, 0, [[1, 65535]]));
+var issue76CorruptPath = Path.Combine(issue76Directory, "corrupt.png");
+var issue76GrayPayload = PngBytes(2, 1, 16, 0, [[1, 65535]]);
+File.WriteAllBytes(issue76GrayPath, issue76GrayPayload);
 File.WriteAllBytes(issue76RgbPath, PngBytes(2, 1, 8, 2, [[7, 251]]));
 File.WriteAllBytes(issue76BadRgbPath, PngBytes(1, 1, 8, 2, [[1]], differentRgb: true));
+File.WriteAllBytes(issue76CorruptPath, issue76GrayPayload[..^1]);
 var grayBefore = (File.GetLastWriteTimeUtc(issue76GrayPath), File.ReadAllBytes(issue76GrayPath));
 var grayInfo = RunOnSta(() => PngInput.ReadAsync(issue76GrayPath).GetAwaiter().GetResult());
 Assert(grayInfo.Width == 2 && grayInfo.Height == 1 && grayInfo.BitDepth == 16, "WPF must preserve 16-bit dimensions");
@@ -111,6 +114,15 @@ try
 catch (InputValidationException exception)
 {
     Assert(exception.Code == "rgb_channels_not_identical" && exception.Message.Contains("不完全一致"), "WPF RGB rejection must be structured and actionable");
+}
+try
+{
+    RunOnSta(() => PngInput.ReadAsync(issue76CorruptPath).GetAwaiter().GetResult());
+    throw new InvalidOperationException("WPF must reject corrupt PNG");
+}
+catch (InputValidationException exception)
+{
+    Assert(exception.Code == "png_decode_failed", "WPF corrupt PNG rejection must use the shared decode failure code");
 }
 Assert(File.GetLastWriteTimeUtc(issue76GrayPath) == grayBefore.Item1 && File.ReadAllBytes(issue76GrayPath).SequenceEqual(grayBefore.Item2), "WPF input read must not mutate source");
 Directory.Delete(issue76Directory, recursive: true);
