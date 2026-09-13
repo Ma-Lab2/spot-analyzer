@@ -4,7 +4,8 @@ param(
     [ValidateSet("Development", "PackagedSmoke", "CleanMachine")]
     [string]$Stage,
     [string]$EvidenceRoot = "",
-    [string]$PackagePath = ""
+    [string]$PackagePath = "",
+    [string]$ExpectedVersion = ""
 )
 
 Set-StrictMode -Version Latest
@@ -68,11 +69,16 @@ elseif ($Stage -eq "PackagedSmoke") {
     if ([string]::IsNullOrWhiteSpace($PackagePath)) { throw "-PackagePath is required for PackagedSmoke." }
     if (-not [System.IO.Path]::IsPathRooted($PackagePath)) { $PackagePath = Join-Path $repoRoot $PackagePath }
     $PackagePath = (Resolve-Path $PackagePath).Path
-    $results.Add((Write-CommandResult "Package contract validator" "python" @("packaging/validate_alpha_package.py", $PackagePath) (Join-Path $EvidenceRoot "package-validation.txt") { Push-Location $repoRoot; try { & python packaging/validate_alpha_package.py $PackagePath --output (Join-Path $EvidenceRoot "package-validation.json") } finally { Pop-Location } }))
+    $validatorArguments = @("packaging/validate_alpha_package.py", $PackagePath, "--output", (Join-Path $EvidenceRoot "package-validation.json"))
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedVersion)) { $validatorArguments += @("--expected-version", $ExpectedVersion) }
+    $results.Add((Write-CommandResult "Package contract validator" "python" $validatorArguments (Join-Path $EvidenceRoot "package-validation.txt") { Push-Location $repoRoot; try { & python @validatorArguments } finally { Pop-Location } }))
     Get-FileHash $PackagePath -Algorithm SHA256 | Out-File (Join-Path $EvidenceRoot "zip-sha256.txt") -Encoding utf8
     $extract = Join-Path $EvidenceRoot "extracted"
     if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
     Expand-Archive -LiteralPath $PackagePath -DestinationPath $extract
+    $requiredExtracted = @("SpotAnalysis.App.exe", "SpotAnalysis.Worker.exe", "manifest.json", "examples\alpha-example.png")
+    $missingExtracted = @($requiredExtracted | Where-Object { -not (Test-Path (Join-Path $extract $_)) })
+    if ($missingExtracted.Count -gt 0) { throw "Fresh extraction is missing required files: $($missingExtracted -join ', ')" }
     Get-ChildItem $extract -Recurse -File | Select-Object FullName, Length | Out-File (Join-Path $EvidenceRoot "extracted-files.txt") -Encoding utf8
     Get-FileHash (Join-Path $extract "manifest.json") -Algorithm SHA256 | Out-File (Join-Path $EvidenceRoot "manifest-sha256.txt") -Encoding utf8
     @{

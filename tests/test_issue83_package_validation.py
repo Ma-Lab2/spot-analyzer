@@ -53,6 +53,18 @@ def test_validator_records_package_and_manifest_identity(tmp_path: Path) -> None
     assert json.loads(result.stdout)["package_version"] == IDENTITY["package_version"]
 
 
+def test_issue83_preparation_materials_keep_human_rows_unrun() -> None:
+    matrix = (ROOT / "docs" / "validation" / "issue-83-performance-dpi-matrix.md").read_text(encoding="utf-8")
+    script = (ROOT / "packaging" / "prepare-issue83-evidence.ps1").read_text(encoding="utf-8")
+    invoke = (ROOT / "packaging" / "invoke-alpha-validation.ps1").read_text(encoding="utf-8")
+    for term in ("1600x1200", "1 second", "2 seconds", "1920x1080", "1366x768", "200%", "NOT RUN", "human tester"):
+        assert term in matrix
+    for term in ("fixture-inventory.json", "human_acceptance = \"NOT RUN\"", "required_fixture_inputs", "Get-FileHash"):
+        assert term in script
+    for term in ("ExpectedVersion", "--expected-version", "Fresh extraction is missing required files"):
+        assert term in invoke
+
+
 def test_validator_rejects_tampered_member(tmp_path: Path) -> None:
     package = make_package(tmp_path)
     tampered = tmp_path / "tampered.zip"
