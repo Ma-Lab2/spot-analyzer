@@ -354,7 +354,7 @@ def handle_request(request: dict[str, Any]) -> list[dict[str, Any]]:
     if request.get("schema") != SCHEMA:
         return [_failure(FlowStatus.PARAMETER_INVALID, ({"code": "schema_unsupported"},), request_id)]
     workflow = request.get("workflow", {})
-    workflow_kind = request.get("record_kind", request.get("analysis_kind"))
+    workflow_kind = request.get("record_kind", request.get("analysis_kind", request.get("purpose")))
     if isinstance(workflow, dict):
         workflow_kind = workflow.get("kind", workflow.get("record_kind", workflow_kind))
     if workflow_kind not in {"preview", "formal"}:
