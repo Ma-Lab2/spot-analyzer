@@ -1,3 +1,7 @@
+using System.Buffers.Binary;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using SpotAnalysis.App;
 
@@ -21,6 +25,95 @@ static T RunOnSta<T>(Func<T> action)
     if (failure is not null) throw failure;
     return result!;
 }
+
+static byte[] PngBytes(int width, int height, int bitDepth, int colorType, ushort[][] rows, bool differentRgb = false)
+{
+    var channels = colorType == 0 ? 1 : 3;
+    var sampleBytes = bitDepth / 8;
+    Span<byte> sample = stackalloc byte[2];
+    using var raw = new MemoryStream();
+    foreach (var row in rows)
+    {
+        raw.WriteByte(0);
+        foreach (var value in row)
+        {
+            for (var channel = 0; channel < channels; channel++)
+            {
+                var channelValue = differentRgb && channel == 1 ? (ushort)(value + 1) : value;
+                if (sampleBytes == 1) raw.WriteByte((byte)channelValue);
+                else
+                {
+                    BinaryPrimitives.WriteUInt16BigEndian(sample, channelValue);
+                    raw.Write(sample);
+                }
+            }
+        }
+    }
+
+    static byte[] Chunk(string kind, byte[] payload)
+    {
+        var kindBytes = Encoding.ASCII.GetBytes(kind);
+        var chunk = new byte[12 + payload.Length];
+        BinaryPrimitives.WriteUInt32BigEndian(chunk.AsSpan(0, 4), (uint)payload.Length);
+        kindBytes.CopyTo(chunk, 4);
+        payload.CopyTo(chunk, 8);
+        BinaryPrimitives.WriteUInt32BigEndian(chunk.AsSpan(8 + payload.Length, 4), Crc32(kindBytes, payload));
+        return chunk;
+    }
+
+    var ihdr = new byte[13];
+    BinaryPrimitives.WriteUInt32BigEndian(ihdr.AsSpan(0, 4), (uint)width);
+    BinaryPrimitives.WriteUInt32BigEndian(ihdr.AsSpan(4, 4), (uint)height);
+    ihdr[8] = (byte)bitDepth; ihdr[9] = (byte)colorType;
+    using var compressed = new MemoryStream();
+    using (var zlib = new ZLibStream(compressed, CompressionMode.Compress, leaveOpen: true))
+        zlib.Write(raw.ToArray());
+    using var png = new MemoryStream();
+    png.Write([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    png.Write(Chunk("IHDR", ihdr));
+    png.Write(Chunk("IDAT", compressed.ToArray()));
+    png.Write(Chunk("IEND", []));
+    return png.ToArray();
+}
+
+static uint Crc32(byte[] kind, byte[] payload)
+{
+    uint crc = 0xffffffff;
+    foreach (var value in kind.Concat(payload))
+    {
+        crc ^= value;
+        for (var bit = 0; bit < 8; bit++) crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xedb88320 : crc >> 1;
+    }
+    return ~crc;
+}
+
+var issue76Directory = Path.Combine(Path.GetTempPath(), "SpotAnalysis-issue76-中文 folder");
+Directory.CreateDirectory(issue76Directory);
+var issue76GrayPath = Path.Combine(issue76Directory, "gray with spaces.PNG");
+var issue76RgbPath = Path.Combine(issue76Directory, "equal-rgb.png");
+var issue76BadRgbPath = Path.Combine(issue76Directory, "different-rgb.png");
+File.WriteAllBytes(issue76GrayPath, PngBytes(2, 1, 16, 0, [[1, 65535]]));
+File.WriteAllBytes(issue76RgbPath, PngBytes(2, 1, 8, 2, [[7, 251]]));
+File.WriteAllBytes(issue76BadRgbPath, PngBytes(1, 1, 8, 2, [[1]], differentRgb: true));
+var grayBefore = (File.GetLastWriteTimeUtc(issue76GrayPath), File.ReadAllBytes(issue76GrayPath));
+var grayInfo = RunOnSta(() => PngInput.ReadAsync(issue76GrayPath).GetAwaiter().GetResult());
+Assert(grayInfo.Width == 2 && grayInfo.Height == 1 && grayInfo.BitDepth == 16, "WPF must preserve 16-bit dimensions");
+Assert(grayInfo.Channels == 1 && grayInfo.IntensitySamples.SequenceEqual(new ushort[] { 1, 65535 }), "WPF must preserve 16-bit samples");
+Assert(grayInfo.ByteOrder == "big" && grayInfo.Sha256 == Convert.ToHexString(SHA256.HashData(grayBefore.Item2)).ToLowerInvariant(), "WPF input identity must be deterministic");
+Assert(grayInfo.UriHint.Contains("gray%20with%20spaces.PNG", StringComparison.Ordinal), "WPF input URI must preserve path identity safely");
+var rgbInfo = RunOnSta(() => PngInput.ReadAsync(issue76RgbPath).GetAwaiter().GetResult());
+Assert(rgbInfo.Channels == 3 && rgbInfo.ChannelsIdentical && rgbInfo.IntensitySamples.SequenceEqual(new ushort[] { 7, 251 }), "WPF must extract strict equal-channel RGB");
+try
+{
+    RunOnSta(() => PngInput.ReadAsync(issue76BadRgbPath).GetAwaiter().GetResult());
+    throw new InvalidOperationException("WPF must reject non-identical RGB");
+}
+catch (InputValidationException exception)
+{
+    Assert(exception.Code == "rgb_channels_not_identical" && exception.Message.Contains("不完全一致"), "WPF RGB rejection must be structured and actionable");
+}
+Assert(File.GetLastWriteTimeUtc(issue76GrayPath) == grayBefore.Item1 && File.ReadAllBytes(issue76GrayPath).SequenceEqual(grayBefore.Item2), "WPF input read must not mutate source");
+Directory.Delete(issue76Directory, recursive: true);
 
 var model = new WorkspacePresentationModel();
 var input = new WorkspaceInput("sample.png", "abc", 32, 32, 8, "32×32, 8-bit grayscale PNG, SHA-256 abc");

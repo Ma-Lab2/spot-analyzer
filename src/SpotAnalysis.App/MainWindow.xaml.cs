@@ -128,7 +128,7 @@ public partial class MainWindow : Window
     private AnalysisRequest BuildRequest(ConfigurationValues configuration)
     {
         if (_selectedInput is null)
-            throw new ConfigurationValidationException("input_required", "Open an 8-bit or 16-bit grayscale PNG before confirming configuration.");
+            throw new ConfigurationValidationException("input_required", "Open an 8-bit or 16-bit grayscale PNG, or an 8-bit RGB PNG with R=G=B, before confirming configuration.");
         if (configuration.CalibrationStatus != "confirmed")
             throw new ConfigurationValidationException("calibration_unconfirmed", "Calibration must be confirmed before analysis can start.");
 
