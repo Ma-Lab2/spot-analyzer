@@ -68,7 +68,9 @@ class InputImage:
         copied = np.array(array, dtype=np.float64, copy=True)
         copied.setflags(write=False)
         object.__setattr__(self, "data", copied)
-        object.__setattr__(self, "dtype", str(array.dtype))
+        # ``data`` is an immutable analysis-plane float array, while ``dtype``
+        # records the source sample representation when an adapter supplies it.
+        object.__setattr__(self, "dtype", self.dtype if self.dtype != "float64" else str(array.dtype))
         object.__setattr__(self, "metadata", _freeze(self.metadata))
         if self.read_status not in {"read", "unavailable", "hash_mismatch"}:
             raise ValueError("read_status is not supported")
