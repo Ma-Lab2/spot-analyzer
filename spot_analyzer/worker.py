@@ -59,6 +59,8 @@ def _configuration(payload: dict[str, Any]) -> AnalysisConfiguration:
         "algorithm_version",
         "bad_pixel_coordinates",
         "bad_pixel_mask_version",
+        "detection_profile_version",
+        "detection_profile_parameters",
     }
     missing = sorted(required - payload.keys())
     if missing:
@@ -77,7 +79,7 @@ def _configuration(payload: dict[str, Any]) -> AnalysisConfiguration:
                 f"configuration.{key} snapshot is incomplete: {', '.join(nested_missing)}"
             )
     region_payload = payload["region"]
-    region = AnalysisRegion(**region_payload)
+    region = AnalysisRegion(**region_payload) if region_payload else None
     background_payload = payload.get("background_region")
     background = AnalysisRegion(**background_payload) if background_payload else None
     calibration_payload = payload.get("calibration", {})
@@ -93,6 +95,8 @@ def _configuration(payload: dict[str, Any]) -> AnalysisConfiguration:
         "algorithm_version",
         "bad_pixel_coordinates",
         "bad_pixel_mask_version",
+        "detection_profile_version",
+        "detection_profile_parameters",
     }
     options = {key: value for key, value in payload.items() if key in allowed}
     return AnalysisConfiguration(

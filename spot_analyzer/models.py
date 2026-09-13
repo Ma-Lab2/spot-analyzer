@@ -296,9 +296,31 @@ class AnalysisModel:
             raise ValueError("analysis model parameters do not match gaussian-model-v1")
 
 
+def _default_detection_profile_parameters() -> dict[str, Any]:
+    # Kept as a plain mapping for worker snapshots; the authoritative typed
+    # validation and profile identity live in spot_analyzer.detection.
+    return {
+        "signal_sigma_threshold": 5.0,
+        "signal_peak_fraction": 0.05,
+        "isolated_hot_pixel_max_support": 1,
+        "isolated_hot_pixel_sigma_threshold": 8.0,
+        "minimum_candidate_support_pixels": 4,
+        "minimum_candidate_separation_pixels": 4.0,
+        "roi_safety_margin_pixels": 12,
+        "roi_min_width_pixels": 48,
+        "roi_min_height_pixels": 48,
+        "background_min_width_pixels": 16,
+        "background_min_height_pixels": 16,
+        "background_protection_dilation_pixels": 2,
+        "background_min_support_pixels": 30,
+    }
+
+
 @dataclass(frozen=True)
 class AnalysisConfiguration:
-    region: AnalysisRegion
+    # ``None`` is reserved for the core's automatic proposal entry point.  A
+    # resolved AnalysisRecord always contains a confirmed rectangular region.
+    region: AnalysisRegion | None
     calibration: SpatialCalibration = field(default_factory=SpatialCalibration)
     preprocessing: PreprocessingConfiguration = field(default_factory=PreprocessingConfiguration)
     model: AnalysisModel = field(default_factory=AnalysisModel)
@@ -311,6 +333,8 @@ class AnalysisConfiguration:
     algorithm_version: str = "analysis-core-v1"
     bad_pixel_coordinates: tuple[tuple[int, int], ...] = ()
     bad_pixel_mask_version: str = "bad-pixel-mask-v1"
+    detection_profile_version: str = "focal-spot-detection-v1"
+    detection_profile_parameters: Mapping[str, Any] = field(default_factory=_default_detection_profile_parameters)
 
     def __post_init__(self) -> None:
         if self.profile_validation != "provisional":
@@ -324,7 +348,12 @@ class AnalysisConfiguration:
             raise ValueError("bad_pixel_coordinates must not contain duplicates")
         if not self.bad_pixel_mask_version.strip():
             raise ValueError("bad_pixel_mask_version must not be empty")
+        if not self.detection_profile_version.strip():
+            raise ValueError("detection_profile_version must not be empty")
         object.__setattr__(self, "bad_pixel_coordinates", coordinates)
+        # Keep a plain copied mapping so dataclasses.asdict remains usable by
+        # the versioned worker snapshot seam.
+        object.__setattr__(self, "detection_profile_parameters", dict(self.detection_profile_parameters))
 
 
 @dataclass(frozen=True)
