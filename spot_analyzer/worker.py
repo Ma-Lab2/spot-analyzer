@@ -18,6 +18,12 @@ import numpy as np
 
 from .core import analyze
 from .input import decode_png
+from .profiles import (
+    ProfileValidationError,
+    get_analysis_profile,
+    resolve_model,
+    resolve_preprocessing,
+)
 from .models import (
     AnalysisConfiguration,
     AnalysisModel,
@@ -45,63 +51,73 @@ def _finite(value: Any) -> Any:
 
 
 def _configuration(payload: dict[str, Any]) -> AnalysisConfiguration:
-    required = {
-        "region",
-        "background_region",
-        "calibration",
-        "preprocessing",
-        "model",
-        "rref_pixels",
-        "analysis_contract",
-        "standard_profile",
-        "quality_profile",
-        "profile_validation",
-        "algorithm_version",
-        "bad_pixel_coordinates",
-        "bad_pixel_mask_version",
-    }
-    missing = sorted(required - payload.keys())
-    if missing:
-        raise ValueError(f"configuration snapshot is incomplete: {', '.join(missing)}")
-    for key, configuration_type in (
-        ("calibration", SpatialCalibration),
-        ("preprocessing", PreprocessingConfiguration),
-        ("model", AnalysisModel),
-    ):
-        nested = payload[key]
-        if not isinstance(nested, dict):
-            raise TypeError(f"configuration.{key} must be an object")
-        nested_missing = sorted({item.name for item in fields(configuration_type)} - nested.keys())
-        if nested_missing:
-            raise ValueError(
-                f"configuration.{key} snapshot is incomplete: {', '.join(nested_missing)}"
-            )
+    """Expand a profile request, while preserving complete historical snapshots.
+
+    New callers may provide only region/calibration and an advanced override
+    object.  A request containing a complete v1 configuration is never merged
+    with current defaults, so old records retain their original semantics.
+    """
+    if not isinstance(payload, dict):
+        raise TypeError("configuration must be an object")
+    if "region" not in payload:
+        raise ValueError("configuration.region is required")
+    profile_id = payload.get("standard_profile", "standard-profile-v1")
+    preprocessing_payload = payload.get("preprocessing")
+    model_payload = payload.get("model")
+    historical_snapshot = (
+        isinstance(preprocessing_payload, dict)
+        and set(item.name for item in fields(PreprocessingConfiguration)) <= set(preprocessing_payload)
+        and isinstance(model_payload, dict)
+        and set(item.name for item in fields(AnalysisModel)) <= set(model_payload)
+    )
+    try:
+        profile = get_analysis_profile(profile_id)
+    except ProfileValidationError:
+        if not historical_snapshot:
+            raise
+        # A complete historical snapshot owns its old profile identity. It is
+        # parsed without applying today's profile defaults.
+        profile = {
+            "standard_profile": profile_id,
+            "quality_profile": payload.get("quality_profile", "quality-profile-unknown"),
+            "profile_validation": payload.get("profile_validation", "provisional"),
+            "algorithm_version": payload.get("algorithm_version", "analysis-core-unknown"),
+        }
     region_payload = payload["region"]
+    if not isinstance(region_payload, dict):
+        raise TypeError("configuration.region must be an object")
     region = AnalysisRegion(**region_payload)
     background_payload = payload.get("background_region")
+    if background_payload is not None and not isinstance(background_payload, dict):
+        raise TypeError("configuration.background_region must be an object or null")
     background = AnalysisRegion(**background_payload) if background_payload else None
     calibration_payload = payload.get("calibration", {})
+    if not isinstance(calibration_payload, dict):
+        raise TypeError("configuration.calibration must be an object")
     calibration = SpatialCalibration(**calibration_payload)
-    preprocessing = PreprocessingConfiguration(**payload.get("preprocessing", {}))
-    model = AnalysisModel(**payload.get("model", {}))
+
+    # Explicit complete snapshots are the historical contract.  Otherwise the
+    # profile API supplies defaults and validates only the supported advanced
+    # branch, keeping science out of WPF/CLI request builders.
+    preprocessing = PreprocessingConfiguration(**resolve_preprocessing(preprocessing_payload))
+    model = AnalysisModel(**resolve_model(model_payload))
     allowed = {
-        "rref_pixels",
-        "analysis_contract",
-        "standard_profile",
-        "quality_profile",
-        "profile_validation",
-        "algorithm_version",
-        "bad_pixel_coordinates",
-        "bad_pixel_mask_version",
+        "rref_pixels", "analysis_contract", "standard_profile", "quality_profile",
+        "profile_validation", "algorithm_version", "bad_pixel_coordinates",
+        "bad_pixel_mask_version", "automatic_background",
     }
     options = {key: value for key, value in payload.items() if key in allowed}
+    options.setdefault("standard_profile", profile["standard_profile"])
+    options.setdefault("quality_profile", profile["quality_profile"])
+    options.setdefault("profile_validation", profile["profile_validation"])
+    options.setdefault("algorithm_version", profile["algorithm_version"])
+    options.setdefault("analysis_contract", "analysis-contract-v1")
+    options.setdefault("rref_pixels", None)
+    options.setdefault("bad_pixel_coordinates", ())
+    options.setdefault("bad_pixel_mask_version", "bad-pixel-mask-v1")
     return AnalysisConfiguration(
-        region=region,
-        background_region=background,
-        calibration=calibration,
-        preprocessing=preprocessing,
-        model=model,
-        **options,
+        region=region, background_region=background, calibration=calibration,
+        preprocessing=preprocessing, model=model, **options,
     )
 
 
@@ -220,6 +236,13 @@ def _write_derived_assets(record: Any, output_strategy: dict[str, Any]) -> list[
     return assets
 
 
+def _record_profile_snapshot(profile_id: str) -> dict[str, Any] | None:
+    try:
+        return get_analysis_profile(profile_id)
+    except ProfileValidationError:
+        return None
+
+
 def _record_payload(record: Any, derived_assets: list[dict[str, Any]]) -> dict[str, Any]:
     metric_semantics = {
         name: {
@@ -284,6 +307,15 @@ def _record_payload(record: Any, derived_assets: list[dict[str, Any]]) -> dict[s
             ],
         },
         "configuration": asdict(record.configuration),
+        # The snapshot is explicit in the record even when the request used
+        # profile defaults.  This is provenance, not a second defaults source.
+        "profile": {
+            "standard_profile": record.configuration.standard_profile,
+            "quality_profile": record.configuration.quality_profile,
+            "validation": record.configuration.profile_validation,
+            "algorithm_version": record.configuration.algorithm_version,
+            "snapshot": _record_profile_snapshot(record.configuration.standard_profile),
+        },
         "input_shape": list(record.input_shape),
     }
 

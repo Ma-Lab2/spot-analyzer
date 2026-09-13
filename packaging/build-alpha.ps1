@@ -128,6 +128,7 @@ Copy-Item (Join-Path $repoRoot "packaging\ALPHA-TRIAL-ACCEPTANCE.md") (Join-Path
 Copy-Item (Join-Path $repoRoot "packaging\THIRD-PARTY-NOTICES.txt") (Join-Path $stage "THIRD-PARTY-NOTICES.txt") -Force
 Copy-Item (Join-Path $repoRoot "README.md") (Join-Path $stage "README.md") -Force
 Copy-Item (Join-Path $repoRoot "profiles\profile-identities.json") (Join-Path $stage "profiles\profile-identities.json") -Force
+Copy-Item (Join-Path $repoRoot "profiles\standard-profile-v1.json") (Join-Path $stage "profiles\standard-profile-v1.json") -Force
 Copy-Item $identityPath (Join-Path $stage "build-identity.json") -Force
 
 $manifestPath = Join-Path $stage "manifest.json"

@@ -41,7 +41,8 @@ public sealed class WorkerClient
         string calibrationUnits,
         string calibrationSource,
         CancellationToken cancellationToken,
-        TimeSpan? timeout = null)
+        TimeSpan? timeout = null,
+        AdvancedAnalysisSettings? advancedSettings = null)
     {
         var input = new Dictionary<string, object?>
         {
@@ -55,7 +56,8 @@ public sealed class WorkerClient
         var configuration = CreateConfiguration(
             regionX, regionY, regionWidth, regionHeight,
             backgroundX, backgroundY, backgroundWidth, backgroundHeight,
-            calibrationStatus, calibrationX, calibrationY, calibrationUnits, calibrationSource);
+            calibrationStatus, calibrationX, calibrationY, calibrationUnits, calibrationSource,
+            advancedSettings);
         return RunAsync(input, configuration, cancellationToken, timeout);
     }
 
@@ -78,7 +80,8 @@ public sealed class WorkerClient
         double? calibrationX,
         double? calibrationY,
         string calibrationUnits,
-        string calibrationSource)
+        string calibrationSource,
+        AdvancedAnalysisSettings? advancedSettings)
     {
         Dictionary<string, object?>? background = null;
         if (backgroundX.HasValue && backgroundY.HasValue && backgroundWidth.HasValue && backgroundHeight.HasValue)
@@ -107,50 +110,9 @@ public sealed class WorkerClient
                 ["source"] = calibrationSource,
                 ["confirmation"] = calibrationStatus,
             },
-            ["preprocessing"] = new Dictionary<string, object?>
-            {
-                ["background_source"] = "confirmed_region_affine",
-                ["bad_pixel_policy"] = "mask_only",
-                ["negative_value_policy"] = "preserve_signed",
-                ["filtering"] = "none",
-                ["dpc"] = "none",
-                ["advanced_processing_enabled"] = false,
-                ["background_signal_sigma_threshold"] = 3.0,
-                ["background_signal_peak_fraction"] = 0.10,
-                ["background_mask_dilation_pixels"] = 1,
-                ["background_huber_delta"] = 1.345,
-                ["background_max_iterations"] = 50,
-                ["convergence_tolerance"] = 1e-8,
-                ["localization_sigma_pixels"] = 1.0,
-                ["localization_truncate_sigma"] = 3.0,
-                ["core_threshold_fraction"] = 0.5,
-                ["core_invalid_fraction"] = 0.8,
-                ["core_caution_fraction"] = 0.95,
-                ["snr_invalid_threshold"] = 5.0,
-                ["snr_caution_threshold"] = 10.0,
-                ["multiple_peak_relative_threshold"] = 0.20,
-                ["multiple_peak_noise_threshold"] = 5.0,
-                ["multiple_peak_min_support_pixels"] = 9,
-                ["multiple_peak_min_separation_pixels"] = 3.0,
-                ["advanced_interpolation_sigma_pixels"] = 1.0,
-                ["advanced_interpolation_radius_pixels"] = 2,
-                ["advanced_filter_sigma_pixels"] = 1.0,
-                ["advanced_filter_radius_pixels"] = 3,
-                ["advanced_dpc_sigma_pixels"] = 2.0,
-                ["advanced_dpc_radius_pixels"] = 6,
-                ["version"] = "preprocessing-v1",
-            },
-            ["model"] = new Dictionary<string, object?>
-            {
-                ["name"] = "rotated_elliptical_gaussian",
-                ["sigma_min_pixels"] = 0.5,
-                ["sigma_max_roi_fraction"] = 0.5,
-                ["fallback_sigma_roi_fraction"] = 1.0 / 6.0,
-                ["optimizer"] = "bounded-least-squares-trf",
-                ["optimizer_tolerance"] = 1e-12,
-                ["optimizer_max_evaluations"] = 1000,
-                ["version"] = "gaussian-model-v1",
-            },
+            // Scientific defaults are expanded by the Python profile API.
+            ["preprocessing"] = advancedSettings?.ToPayload(),
+            ["model"] = null,
             ["rref_pixels"] = null,
             ["analysis_contract"] = "analysis-contract-v1",
             ["standard_profile"] = "standard-profile-v1",
@@ -159,6 +121,7 @@ public sealed class WorkerClient
             ["algorithm_version"] = "analysis-core-v1",
             ["bad_pixel_coordinates"] = Array.Empty<object>(),
             ["bad_pixel_mask_version"] = "bad-pixel-mask-v1",
+            ["automatic_background"] = true,
         };
     }
 

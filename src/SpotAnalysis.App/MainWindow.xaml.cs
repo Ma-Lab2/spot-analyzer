@@ -57,7 +57,8 @@ public partial class MainWindow : Window
         double? CalibrationX,
         double? CalibrationY,
         string CalibrationUnits,
-        string CalibrationSource);
+        string CalibrationSource,
+        AdvancedAnalysisSettings? AdvancedSettings = null);
 
     private ConfigurationValues ReadConfiguration()
     {
@@ -92,11 +93,19 @@ public partial class MainWindow : Window
                 throw new ConfigurationValidationException("invalid_calibration", "Calibration source is required.");
         }
 
+        var filtering = (AdvancedFiltering.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "none";
+        var dpc = (AdvancedDpc.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "none";
+        var advanced = filtering == "none" && dpc == "none"
+            ? null
+            : new AdvancedAnalysisSettings(Filtering: filtering, Dpc: dpc);
+        if (AdvancedSettingsStatus is not null)
+            AdvancedSettingsStatus.Text = advanced is null ? "使用推荐默认值" : "已偏离推荐默认值";
+
         return new ConfigurationValues(
             region.x, region.y, region.width, region.height,
             background?.x, background?.y, background?.width, background?.height,
             status, calibrationX, calibrationY,
-            CalibrationUnitsText.Text.Trim(), CalibrationSourceText.Text.Trim());
+            CalibrationUnitsText.Text.Trim(), CalibrationSourceText.Text.Trim(), advanced);
     }
 
     private static (int x, int y, int width, int height) Rectangle(
@@ -129,9 +138,8 @@ public partial class MainWindow : Window
     {
         if (_selectedInput is null)
             throw new ConfigurationValidationException("input_required", "Open an 8-bit or 16-bit grayscale PNG before confirming configuration.");
-        if (configuration.CalibrationStatus != "confirmed")
-            throw new ConfigurationValidationException("calibration_unconfirmed", "Calibration must be confirmed before analysis can start.");
-
+        // Pixel-domain analysis is valid without calibration. Physical-domain
+        // metrics are gated by the Python core instead of a fake scale.
         return AnalysisRequest.Create(
             _selectedInput.Path,
             _selectedInput.Sha256,
@@ -148,7 +156,8 @@ public partial class MainWindow : Window
             configuration.CalibrationY,
             configuration.CalibrationUnits,
             configuration.CalibrationSource,
-            Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived"));
+            Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived"),
+            configuration.AdvancedSettings);
     }
 
     private void ConfirmConfiguration_Click(object sender, RoutedEventArgs e)
@@ -485,6 +494,10 @@ public partial class MainWindow : Window
                 source = configuration.CalibrationSource,
                 confirmation = configuration.CalibrationStatus,
             },
+            ["advanced_settings"] = configuration.AdvancedSettings?.ToPayload(),
+            ["advanced_settings_status"] = configuration.AdvancedSettings is null || configuration.AdvancedSettings.IsDefault
+                ? "using_recommended_defaults"
+                : "deviated_from_recommended_defaults",
         };
 
     private static string? ReadString(JsonElement? node, string property) =>
@@ -587,7 +600,8 @@ public partial class MainWindow : Window
             configuration.CalibrationY,
             configuration.CalibrationUnits,
             configuration.CalibrationSource,
-            Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived"));
+            Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived"),
+            configuration.AdvancedSettings);
     }
 
     private void UpdateRunAvailability() =>
@@ -712,7 +726,7 @@ public partial class MainWindow : Window
                 draft.RegionX, draft.RegionY, draft.RegionWidth, draft.RegionHeight,
                 draft.BackgroundX, draft.BackgroundY, draft.BackgroundWidth, draft.BackgroundHeight,
                 draft.CalibrationStatus, draft.CalibrationX, draft.CalibrationY,
-                draft.CalibrationUnits, draft.CalibrationSource));
+                draft.CalibrationUnits, draft.CalibrationSource, draft.AdvancedSettings));
         }
         catch (ConfigurationValidationException)
         {
@@ -954,6 +968,14 @@ public partial class MainWindow : Window
 
     private void ConfigurationSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) =>
         ConfigurationChanged(sender, e);
+
+    private void ResetAdvancedSettings_Click(object sender, RoutedEventArgs e)
+    {
+        AdvancedFiltering.SelectedValue = "none";
+        AdvancedDpc.SelectedValue = "none";
+        AdvancedSettingsStatus.Text = "Using recommended defaults";
+        ConfigurationChanged(sender, e);
+    }
 
     private void MarkResultStale()
     {

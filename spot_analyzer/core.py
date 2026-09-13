@@ -24,6 +24,7 @@ from .models import (
     Metric,
     PreprocessingConfiguration,
 )
+from .profiles import get_analysis_profile
 
 
 _METHOD = "analysis-core-v1"
@@ -190,6 +191,25 @@ def _regions_overlap(first: AnalysisRegion, second: AnalysisRegion) -> bool:
     )
 
 
+def _automatic_background_region(shape: tuple[int, int], region: AnalysisRegion) -> AnalysisRegion | None:
+    """Choose a deterministic ROI-external strip; never sample the signal ROI."""
+    height, width = shape
+    minimum_strip = int(get_analysis_profile()["background_selection"]["minimum_strip_pixels"])
+    strip = max(minimum_strip, min(region.width, region.height) // 8)
+    candidates = (
+        AnalysisRegion(0, region.y, min(strip, region.x), region.height),
+        AnalysisRegion(region.x + region.width, region.y, min(strip, width - region.x - region.width), region.height),
+        AnalysisRegion(region.x, 0, region.width, min(strip, region.y)),
+        AnalysisRegion(region.x, region.y + region.height, region.width, min(strip, height - region.y - region.height)),
+    )
+    usable = [candidate for candidate in candidates if candidate.width > 0 and candidate.height > 0]
+    # Prefer a lateral strip: it is less likely to contain the axial tail than
+    # a full-width strip immediately above/below the signal ROI.
+    lateral = [candidate for candidate in usable if candidate.height == region.height]
+    pool = lateral or usable
+    return max(pool, key=lambda candidate: (candidate.width * candidate.height, -candidate.x, -candidate.y), default=None)
+
+
 def _mask_hash(mask: np.ndarray) -> str:
     """Hash a canonical C-order boolean mask for audit and repeatability."""
 
@@ -213,7 +233,13 @@ def _bad_pixel_mask(
     return mask, tuple(out_of_bounds)
 
 
-def _subpixel_peak(image: np.ndarray, valid_mask: np.ndarray | None = None) -> tuple[float, float] | None:
+def _subpixel_peak(
+    image: np.ndarray,
+    valid_mask: np.ndarray | None = None,
+    *,
+    sigma: float = 1.0,
+    truncate_sigma: float = 3.0,
+) -> tuple[float, float] | None:
     """Find a deterministic smoothed maximum and fit a quadratic in each axis."""
 
     finite = np.isfinite(image)
@@ -224,7 +250,8 @@ def _subpixel_peak(image: np.ndarray, valid_mask: np.ndarray | None = None) -> t
     values = image[finite]
     floor = float(np.min(values)) - max(1.0, float(np.ptp(values)) + 1.0)
     safe = np.where(finite, image, floor)
-    smoothed = gaussian_filter(safe, sigma=1.0, radius=3, mode="nearest")
+    radius = max(1, int(round(float(truncate_sigma) * float(sigma))))
+    smoothed = gaussian_filter(safe, sigma=float(sigma), radius=radius, mode="nearest")
     peak_y, peak_x = np.unravel_index(int(np.argmax(smoothed)), smoothed.shape)
     x_offset = 0.0
     y_offset = 0.0
@@ -394,10 +421,15 @@ def _background(
     noise_threshold = preprocessing.background_signal_sigma_threshold * initial_scale
     relative_peak_threshold = preprocessing.background_signal_peak_fraction * max(roi_peak, 0.0)
     signal_threshold = min(noise_threshold, relative_peak_threshold)
-    signal_candidates = base_valid & (
-        (initial_residual > noise_threshold)
-        | (initial_residual > relative_peak_threshold)
-    )
+    if initial_scale <= 1e-12:
+        # A perfectly flat protected region has no noise threshold. Do not let
+        # floating-point roundoff classify every pixel as signal.
+        signal_candidates = base_valid & (initial_residual > relative_peak_threshold)
+    else:
+        signal_candidates = base_valid & (
+            (initial_residual > noise_threshold)
+            | (initial_residual > relative_peak_threshold)
+        )
     signal_excluded = binary_dilation(
         signal_candidates.reshape(sample.shape),
         structure=np.ones((2 * preprocessing.background_mask_dilation_pixels + 1,) * 2, dtype=bool),
@@ -1065,6 +1097,11 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     if region.x < 0 or region.y < 0 or region.x + region.width > shape[1] or region.y + region.height > shape[0]:
         return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "analysis_region_out_of_bounds"},))
     background_region = configuration.background_region
+    if background_region is None and configuration.automatic_background:
+        background_region = _automatic_background_region(shape, region)
+        if background_region is None:
+            return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "background_auto_selection_unavailable"},))
+        configuration = replace(configuration, background_region=background_region)
     matched_frame = image.background_frame if configuration.preprocessing.background_source == "matched_frame" else None
     if matched_frame is None and (background_region is None or not background_region.confirmed):
         return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "background_region_unconfirmed"},))
@@ -1144,8 +1181,14 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     roi_positive = positive[roi_slice]
     roi_positive_valid = np.where(roi_valid, roi_positive, 0.0)
     localization = np.where(measurement_valid, corrected, np.nan)
-    center_xy = _subpixel_peak(localization)
+    center_xy = _subpixel_peak(
+        localization,
+        sigma=preprocessing.localization_sigma_pixels,
+        truncate_sigma=preprocessing.localization_truncate_sigma,
+    )
     reasons: set[str] = set()
+    if configuration.automatic_background:
+        reasons.add("background_auto_selected")
     if background_diagnostics.get("background_match_status") == "unverified":
         reasons.add("background_match_unverified")
     bad_count = int(np.count_nonzero(bad_pixel_mask))

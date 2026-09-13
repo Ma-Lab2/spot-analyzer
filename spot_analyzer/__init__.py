@@ -11,6 +11,15 @@ from .validation import (
     run_report_validation,
     run_validation,
 )
+from .profiles import (
+    ProfileValidationError,
+    advanced_settings_status,
+    default_model_values,
+    default_preprocessing_values,
+    get_analysis_profile,
+    resolve_preprocessing,
+    validate_advanced_settings,
+)
 from .models import (
     AnalysisConfiguration,
     AnalysisModel,
@@ -38,6 +47,13 @@ __all__ = [
     "Metric",
     "PreprocessingConfiguration",
     "SpatialCalibration",
+    "ProfileValidationError",
+    "advanced_settings_status",
+    "default_model_values",
+    "default_preprocessing_values",
+    "get_analysis_profile",
+    "resolve_preprocessing",
+    "validate_advanced_settings",
     "analyze",
     "decode_png",
     "run_complete_validation",
