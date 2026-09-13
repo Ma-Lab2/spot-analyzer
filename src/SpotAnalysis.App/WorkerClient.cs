@@ -13,7 +13,10 @@ public sealed record WorkerOutcome(
     string? FailureCode = null,
     JsonElement? Result = null,
     IReadOnlyList<JsonElement>? Diagnostics = null,
-    string? FlowStatus = null);
+    string? FlowStatus = null,
+    string? RecordKind = null,
+    string? MeasurementSemantics = null,
+    bool? MeasurementSemanticsConfirmed = null);
 
 public sealed class WorkerClient
 {
@@ -60,6 +63,14 @@ public sealed class WorkerClient
             advancedSettings);
         return RunAsync(input, configuration, cancellationToken, timeout);
     }
+
+    public Task<WorkerOutcome> RunPngPreviewAsync(
+        string path,
+        string sha256,
+        CancellationToken cancellationToken,
+        TimeSpan? timeout = null) =>
+        RunAsync(AnalysisRequest.CreatePreview(path, sha256,
+            Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived")), cancellationToken, timeout);
 
     public Task<WorkerOutcome> RunAsync(
         AnalysisRequest request,
@@ -264,7 +275,14 @@ public sealed class WorkerClient
             var completedFlow = record.ValueKind == JsonValueKind.Object && ReadString(record, "flow_status") is { } recordFlow
                 ? recordFlow
                 : "computed";
-            return new WorkerOutcome("success", null, recordId, fingerprint, summary, Result: terminal.Clone(), FlowStatus: completedFlow);
+            var recordKind = record.ValueKind == JsonValueKind.Object ? ReadString(record, "record_kind") : null;
+            var semantics = record.ValueKind == JsonValueKind.Object ? ReadString(record, "measurement_semantics") : null;
+            bool? semanticsConfirmed = record.ValueKind == JsonValueKind.Object
+                && record.TryGetProperty("measurement_semantics_confirmed", out var confirmed)
+                && confirmed.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? confirmed.GetBoolean() : null;
+            return new WorkerOutcome("success", null, recordId, fingerprint, summary, Result: terminal.Clone(), FlowStatus: completedFlow,
+                RecordKind: recordKind, MeasurementSemantics: semantics, MeasurementSemanticsConfirmed: semanticsConfirmed);
         }
 
         var diagnostics = ReadFailureDiagnostics(terminal);

@@ -18,6 +18,7 @@ from .models import (
     AnalysisConfiguration,
     AnalysisOutcome,
     AnalysisRecord,
+    AnalysisRecordKind,
     AnalysisRegion,
     FlowStatus,
     InputImage,
@@ -1098,7 +1099,8 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
 
     shape = image.data.shape
     automatic_diagnostics: dict[str, Any] = {}
-    if configuration.region is None:
+    automatic_resolution = configuration.region is None
+    if automatic_resolution:
         try:
             proposal = propose_auto_analysis(
                 image,
@@ -1107,21 +1109,29 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
             )
         except ValueError as error:
             return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "detection_profile_invalid", "message": str(error)},))
-        if proposal.background_region is None:
-            return AnalysisOutcome(
-                FlowStatus.PARAMETER_INVALID,
-                None,
-                ({"code": "automatic_background_support_insufficient", **dict(proposal.diagnostics)},),
-            )
+        # A weak automatic background proposal is a quality limitation, not a
+        # workflow blocker.  Continue with the core's structured background
+        # diagnostics so a formal confirmation can still produce a reportable
+        # invalid/caution record.
         configuration = replace(
             configuration,
             region=proposal.region,
             background_region=proposal.background_region,
+            record_kind=AnalysisRecordKind.PREVIEW,
+            measurement_semantics_confirmed=False,
+            automatic_background=True,
             detection_profile_parameters={
                 key: value for key, value in dict(proposal.diagnostics["profile_parameters"]).items()
             },
         )
         automatic_diagnostics = dict(proposal.diagnostics)
+    elif configuration.record_kind == AnalysisRecordKind.FORMAL and not configuration.measurement_semantics_confirmed:
+        # Direct core callers historically conveyed this confirmation on the
+        # decoded InputImage.  Preserve that compatibility while making the
+        # formal snapshot explicit for new worker callers.
+        if image.encoding_semantic != "relative_intensity_code" or not image.encoding_semantic_confirmed:
+            return AnalysisOutcome(FlowStatus.INPUT_INVALID, None, ({"code": "input_semantic_invalid"},))
+        configuration = replace(configuration, measurement_semantics_confirmed=True)
     region = configuration.region
     # Automatic resolution above guarantees this; this guard keeps the
     # public entry point structured if a future resolver changes behavior.
@@ -1140,11 +1150,10 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     background_region = configuration.background_region
     if background_region is None and configuration.automatic_background:
         background_region = _automatic_background_region(shape, region)
-        if background_region is None:
-            return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "background_auto_selection_unavailable"},))
-        configuration = replace(configuration, background_region=background_region)
+        if background_region is not None:
+            configuration = replace(configuration, background_region=background_region)
     matched_frame = image.background_frame if configuration.preprocessing.background_source == "matched_frame" else None
-    if matched_frame is None and (background_region is None or not background_region.confirmed):
+    if matched_frame is None and (background_region is None or not background_region.confirmed) and not automatic_resolution:
         return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "background_region_unconfirmed"},))
     if background_region is not None:
         if (
@@ -1229,6 +1238,8 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     )
     reasons: set[str] = set()
     automatic_reasons = set(automatic_diagnostics.get("reasons", ()))
+    if "automatic_background_support_insufficient" in automatic_reasons:
+        reasons.add("background_support_insufficient")
     if "automatic_multiple_candidates" in automatic_reasons:
         reasons.add("multiple_peaks")
     if "automatic_candidate_touches_boundary" in automatic_reasons:
@@ -1849,5 +1860,8 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
             } if image.background_frame is not None else None,
             "background_match_unverified_requested": image.background_match_unverified,
         },
+        record_kind=configuration.record_kind,
+        measurement_semantics=configuration.measurement_semantics,
+        measurement_semantics_confirmed=configuration.measurement_semantics_confirmed,
     )
     return AnalysisOutcome(FlowStatus.COMPUTED, record)

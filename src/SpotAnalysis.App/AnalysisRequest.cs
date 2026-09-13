@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace SpotAnalysis.App;
 
@@ -95,6 +96,8 @@ public sealed record AnalysisRequest
 
         var payload = new Dictionary<string, object?>
         {
+            ["workflow"] = new Dictionary<string, object?> { ["kind"] = "formal" },
+            ["record_kind"] = "formal",
             ["input"] = new Dictionary<string, object?>
             {
                 ["asset"] = new Dictionary<string, object?>
@@ -132,6 +135,9 @@ public sealed record AnalysisRequest
                 ["bad_pixel_coordinates"] = Array.Empty<object>(),
                 ["bad_pixel_mask_version"] = "bad-pixel-mask-v1",
                 ["automatic_background"] = true,
+                ["record_kind"] = "formal",
+                ["measurement_semantics"] = "relative_intensity_code",
+                ["measurement_semantics_confirmed"] = true,
                 ["advanced_settings_status"] = advancedSettings is null
                     ? "using_recommended_defaults"
                     : advancedSettings.IsDefault ? "using_recommended_defaults" : "deviated_from_recommended_defaults",
@@ -145,6 +151,59 @@ public sealed record AnalysisRequest
 
         var json = JsonSerializer.Serialize(payload, JsonOptions);
         return new AnalysisRequest(json);
+    }
+
+    public static AnalysisRequest CreatePreview(
+        string path,
+        string sha256,
+        string outputDirectory)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["workflow"] = new Dictionary<string, object?> { ["kind"] = "preview" },
+            ["record_kind"] = "preview",
+            ["input"] = new Dictionary<string, object?>
+            {
+                ["asset"] = new Dictionary<string, object?> { ["path"] = path, ["expected_sha256"] = sha256 },
+                // The preview uses the adapter's supported PNG interpretation;
+                // the final request repeats this as an explicit confirmation.
+                ["confirm_relative_intensity"] = false,
+            },
+            ["configuration"] = new Dictionary<string, object?>
+            {
+                ["region"] = null,
+                ["background_region"] = null,
+                ["calibration"] = new Dictionary<string, object?>
+                {
+                    ["x_unit_per_pixel"] = null, ["y_unit_per_pixel"] = null,
+                    ["physical_unit"] = null, ["source"] = null, ["confirmation"] = "missing",
+                },
+                ["preprocessing"] = null, ["model"] = null, ["automatic_background"] = true,
+                ["record_kind"] = "preview", ["measurement_semantics"] = "relative_intensity_code",
+                ["measurement_semantics_confirmed"] = false,
+            },
+            ["output_strategy"] = new Dictionary<string, object?>
+            {
+                ["work_directory"] = outputDirectory, ["derived_format"] = "npy",
+            },
+        };
+        return new AnalysisRequest(JsonSerializer.Serialize(payload, JsonOptions));
+    }
+
+    public AnalysisRequest AsPreview()
+    {
+        var root = JsonNode.Parse(_payloadJson)?.AsObject()
+            ?? throw new InvalidOperationException("Analysis request snapshot could not be parsed.");
+        root["workflow"] = new JsonObject { ["kind"] = "preview" };
+        root["record_kind"] = "preview";
+        if (root["input"] is JsonObject input)
+            input["confirm_relative_intensity"] = false;
+        if (root["configuration"] is JsonObject configuration)
+        {
+            configuration["record_kind"] = "preview";
+            configuration["measurement_semantics_confirmed"] = false;
+        }
+        return new AnalysisRequest(root.ToJsonString(JsonOptions));
     }
 
     public Dictionary<string, object?> ToWorkerPayload()

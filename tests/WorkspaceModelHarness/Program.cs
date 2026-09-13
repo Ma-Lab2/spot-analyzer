@@ -189,6 +189,28 @@ Assert(model.Apply(new WorkspaceWorkerEvent.Completed(thirdId!, Success("third")
 Assert(model.CurrentRecord is { IsStale: true } && !model.CanExportReport,
     "a successful result for a superseded draft must remain stale and non-exportable");
 
+var previewModel = new WorkspacePresentationModel();
+previewModel.LoadInput(input);
+var previewRequest = AnalysisRequest.CreatePreview(input.Path, input.Sha256, "derived");
+var previewId = previewModel.StartPreview(previewRequest);
+Assert(previewId is not null, "automatic preview should start without configuration confirmation");
+Assert(previewModel.Apply(new WorkspaceWorkerEvent.Completed(previewId!, Success("preview-record", "preview"))), "preview completion should be accepted");
+Assert(previewModel.CurrentRecord is { IsPreview: true, IsFormal: false }, "preview must be explicitly identified");
+Assert(!previewModel.CanExportReport && previewModel.CanConfirmFormal, "preview must be non-exportable but confirmable");
+previewModel.SetPreviewDraft(draft);
+previewModel.EditDraft(draft with { RegionWidth = 15 });
+Assert(previewModel.CurrentRecord is { IsStale: true } && previewModel.Records.Count == 1, "preview configuration changes must retain the prior record");
+var freshPreviewId = previewModel.StartPreview(previewRequest);
+Assert(freshPreviewId is not null, "changed configuration should expose a fresh preview seam");
+Assert(previewModel.Apply(new WorkspaceWorkerEvent.Completed(freshPreviewId!, Success("preview-record-2", "preview"))), "fresh preview completion should be accepted");
+Assert(previewModel.CurrentRecord is { IsPreview: true, IsStale: false } && previewModel.Records.Count == 2, "fresh preview should replace current preview without deleting history");
+Assert(previewModel.Confirm(request2), "preview should support one final formal confirmation");
+var formalId = previewModel.Start();
+Assert(formalId is not null, "formal confirmation should start analysis");
+Assert(previewModel.Apply(new WorkspaceWorkerEvent.Completed(formalId!, Success("formal-record", "formal", "invalid"))), "invalid-but-structured formal record should complete");
+Assert(previewModel.CurrentRecord is { IsFormal: true, IsStale: false } && previewModel.Records.Count == 3, "formal record should be new and preserve old records");
+Assert(previewModel.CanExportReport, "formal record remains reportable even when measurement validity is invalid");
+
 var inputFailureModel = new WorkspacePresentationModel();
 inputFailureModel.LoadInput(input);
 inputFailureModel.EditDraft(draft);
@@ -280,8 +302,8 @@ finally
 
 Console.WriteLine("Workspace presentation behavior passed");
 
-static WorkerOutcome Success(string id)
+static WorkerOutcome Success(string id, string kind = "formal", string validity = "valid")
 {
-    using var document = JsonDocument.Parse($"{{\"record\":{{\"record_id\":\"{id}\",\"analysis_fingerprint\":\"fingerprint-{id}\",\"flow_status\":\"computed\",\"measurement_validity\":\"valid\",\"quality_reason_codes\":[\"low_snr\"],\"metrics\":{{\"valid_metric\":{{\"value\":3.2,\"unit\":\"mm\",\"status\":\"valid\",\"reason_codes\":[]}},\"invalid_metric\":{{\"value\":999,\"unit\":\"mm\",\"status\":\"invalid\",\"reason_codes\":[\"low_snr\"]}}}}}}}}");
-    return new WorkerOutcome("success", null, RecordId: id, Result: document.RootElement.Clone(), FlowStatus: "computed");
+    using var document = JsonDocument.Parse($"{{\"record\":{{\"record_id\":\"{id}\",\"analysis_fingerprint\":\"fingerprint-{id}\",\"record_kind\":\"{kind}\",\"is_preview\":{(kind == "preview" ? "true" : "false")},\"is_formal\":{(kind == "formal" ? "true" : "false")},\"measurement_semantics\":\"relative_intensity_code\",\"measurement_semantics_confirmed\":{(kind == "formal" ? "true" : "false")},\"flow_status\":\"computed\",\"measurement_validity\":\"{validity}\",\"quality_reason_codes\":[\"low_snr\"],\"metrics\":{{\"valid_metric\":{{\"value\":3.2,\"unit\":\"mm\",\"status\":\"valid\",\"reason_codes\":[]}},\"invalid_metric\":{{\"value\":999,\"unit\":\"mm\",\"status\":\"invalid\",\"reason_codes\":[\"low_snr\"]}}}}}}}}");
+    return new WorkerOutcome("success", null, RecordId: id, Result: document.RootElement.Clone(), FlowStatus: "computed", RecordKind: kind);
 }

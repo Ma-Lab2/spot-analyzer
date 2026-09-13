@@ -59,6 +59,9 @@ public static class ReportExporter
 
         var recordId = StringValue(record, "record_id") ?? "";
         var flowStatus = StringValue(record, "flow_status") ?? "unknown";
+        var recordKind = StringValue(record, "record_kind") ?? "formal";
+        if (recordKind == "preview")
+            return new ReportExportOutcome(null, recordId, "export_failed", "report_record_preview", "Preview analysis records cannot be exported.");
         if (recordId.Length == 0)
             return new ReportExportOutcome(null, "", "export_failed", "report_record_identity_missing", "The analysis record has no record identity.");
         if (flowStatus is not ("computed" or "success"))
@@ -100,7 +103,9 @@ public static class ReportExporter
                 outcomes.Add(new ReportExportOutcome(null, recordId, "skipped", "report_record_missing", "No formal analysis record is available."));
                 continue;
             }
-            if (!item.IsFormal)
+            if (!item.IsFormal || (item.TerminalResult is { } formalResult
+                && formalResult.TryGetProperty("record", out var formalRecord)
+                && StringValue(formalRecord, "record_kind") == "preview"))
             {
                 outcomes.Add(new ReportExportOutcome(null, recordId, "skipped", "report_item_not_formal", "Only formal analysis records can be exported."));
                 continue;
