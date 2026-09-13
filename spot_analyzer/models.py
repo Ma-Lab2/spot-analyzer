@@ -92,7 +92,9 @@ class AnalysisRegion:
 class SpatialCalibration:
     x_unit_per_pixel: float | None = None
     y_unit_per_pixel: float | None = None
-    physical_unit: str = "um"
+    # Kept as a legacy display-unit default for v1 object construction; the
+    # missing confirmation state still makes every physical value unavailable.
+    physical_unit: str | None = "um"
     source: str | None = None
     confirmation: str = "missing"
 
@@ -106,6 +108,8 @@ class SpatialCalibration:
             return
         if any(value is None or value <= 0 for value in values):
             raise ValueError("confirmed or provisional calibration requires positive x/y scales")
+        if not isinstance(self.physical_unit, str) or not self.physical_unit.strip():
+            raise ValueError("confirmed or provisional calibration requires a physical unit")
         if not self.source:
             raise ValueError("confirmed or provisional calibration requires a source")
 
@@ -120,38 +124,46 @@ class SpatialCalibration:
         )
 
 
+def _profile_default(section: str, name: str) -> Any:
+    # Import lazily so the profile loader can remain independent of domain
+    # dataclasses.  The JSON profile is the sole source of these defaults.
+    from .profiles import get_analysis_profile
+
+    return get_analysis_profile()[section][name]
+
+
 @dataclass(frozen=True)
 class PreprocessingConfiguration:
-    background_source: str = "confirmed_region_affine"
-    bad_pixel_policy: str = "mask_only"
-    negative_value_policy: str = "preserve_signed"
-    filtering: str = "none"
-    dpc: str = "none"
-    advanced_processing_enabled: bool = False
-    background_signal_sigma_threshold: float = 3.0
-    background_signal_peak_fraction: float = 0.10
-    background_mask_dilation_pixels: int = 1
-    background_huber_delta: float = 1.345
-    background_max_iterations: int = 50
-    convergence_tolerance: float = 1e-8
-    localization_sigma_pixels: float = 1.0
-    localization_truncate_sigma: float = 3.0
-    core_threshold_fraction: float = 0.5
-    core_invalid_fraction: float = 0.8
-    core_caution_fraction: float = 0.95
-    snr_invalid_threshold: float = 5.0
-    snr_caution_threshold: float = 10.0
-    multiple_peak_relative_threshold: float = 0.20
-    multiple_peak_noise_threshold: float = 5.0
-    multiple_peak_min_support_pixels: int = 9
-    multiple_peak_min_separation_pixels: float = 3.0
-    advanced_interpolation_sigma_pixels: float = 1.0
-    advanced_interpolation_radius_pixels: int = 2
-    advanced_filter_sigma_pixels: float = 1.0
-    advanced_filter_radius_pixels: int = 3
-    advanced_dpc_sigma_pixels: float = 2.0
-    advanced_dpc_radius_pixels: int = 6
-    version: str = "preprocessing-v1"
+    background_source: str = field(default_factory=lambda: _profile_default("preprocessing", "background_source"))
+    bad_pixel_policy: str = field(default_factory=lambda: _profile_default("preprocessing", "bad_pixel_policy"))
+    negative_value_policy: str = field(default_factory=lambda: _profile_default("preprocessing", "negative_value_policy"))
+    filtering: str = field(default_factory=lambda: _profile_default("preprocessing", "filtering"))
+    dpc: str = field(default_factory=lambda: _profile_default("preprocessing", "dpc"))
+    advanced_processing_enabled: bool = field(default_factory=lambda: _profile_default("preprocessing", "advanced_processing_enabled"))
+    background_signal_sigma_threshold: float = field(default_factory=lambda: _profile_default("preprocessing", "background_signal_sigma_threshold"))
+    background_signal_peak_fraction: float = field(default_factory=lambda: _profile_default("preprocessing", "background_signal_peak_fraction"))
+    background_mask_dilation_pixels: int = field(default_factory=lambda: _profile_default("preprocessing", "background_mask_dilation_pixels"))
+    background_huber_delta: float = field(default_factory=lambda: _profile_default("preprocessing", "background_huber_delta"))
+    background_max_iterations: int = field(default_factory=lambda: _profile_default("preprocessing", "background_max_iterations"))
+    convergence_tolerance: float = field(default_factory=lambda: _profile_default("preprocessing", "convergence_tolerance"))
+    localization_sigma_pixels: float = field(default_factory=lambda: _profile_default("preprocessing", "localization_sigma_pixels"))
+    localization_truncate_sigma: float = field(default_factory=lambda: _profile_default("preprocessing", "localization_truncate_sigma"))
+    core_threshold_fraction: float = field(default_factory=lambda: _profile_default("preprocessing", "core_threshold_fraction"))
+    core_invalid_fraction: float = field(default_factory=lambda: _profile_default("preprocessing", "core_invalid_fraction"))
+    core_caution_fraction: float = field(default_factory=lambda: _profile_default("preprocessing", "core_caution_fraction"))
+    snr_invalid_threshold: float = field(default_factory=lambda: _profile_default("preprocessing", "snr_invalid_threshold"))
+    snr_caution_threshold: float = field(default_factory=lambda: _profile_default("preprocessing", "snr_caution_threshold"))
+    multiple_peak_relative_threshold: float = field(default_factory=lambda: _profile_default("preprocessing", "multiple_peak_relative_threshold"))
+    multiple_peak_noise_threshold: float = field(default_factory=lambda: _profile_default("preprocessing", "multiple_peak_noise_threshold"))
+    multiple_peak_min_support_pixels: int = field(default_factory=lambda: _profile_default("preprocessing", "multiple_peak_min_support_pixels"))
+    multiple_peak_min_separation_pixels: float = field(default_factory=lambda: _profile_default("preprocessing", "multiple_peak_min_separation_pixels"))
+    advanced_interpolation_sigma_pixels: float = field(default_factory=lambda: _profile_default("preprocessing", "advanced_interpolation_sigma_pixels"))
+    advanced_interpolation_radius_pixels: int = field(default_factory=lambda: _profile_default("preprocessing", "advanced_interpolation_radius_pixels"))
+    advanced_filter_sigma_pixels: float = field(default_factory=lambda: _profile_default("preprocessing", "advanced_filter_sigma_pixels"))
+    advanced_filter_radius_pixels: int = field(default_factory=lambda: _profile_default("preprocessing", "advanced_filter_radius_pixels"))
+    advanced_dpc_sigma_pixels: float = field(default_factory=lambda: _profile_default("preprocessing", "advanced_dpc_sigma_pixels"))
+    advanced_dpc_radius_pixels: int = field(default_factory=lambda: _profile_default("preprocessing", "advanced_dpc_radius_pixels"))
+    version: str = field(default_factory=lambda: _profile_default("preprocessing", "version"))
 
     def __post_init__(self) -> None:
         if self.background_source not in {"confirmed_region_affine", "matched_frame"}:
@@ -264,14 +276,14 @@ class PreprocessingConfiguration:
 
 @dataclass(frozen=True)
 class AnalysisModel:
-    name: str = "rotated_elliptical_gaussian"
-    sigma_min_pixels: float = 0.5
-    sigma_max_roi_fraction: float = 0.5
-    fallback_sigma_roi_fraction: float = 1.0 / 6.0
-    optimizer: str = "bounded-least-squares-trf"
-    optimizer_tolerance: float = 1e-12
-    optimizer_max_evaluations: int = 1000
-    version: str = "gaussian-model-v1"
+    name: str = field(default_factory=lambda: _profile_default("model", "name"))
+    sigma_min_pixels: float = field(default_factory=lambda: _profile_default("model", "sigma_min_pixels"))
+    sigma_max_roi_fraction: float = field(default_factory=lambda: _profile_default("model", "sigma_max_roi_fraction"))
+    fallback_sigma_roi_fraction: float = field(default_factory=lambda: _profile_default("model", "fallback_sigma_roi_fraction"))
+    optimizer: str = field(default_factory=lambda: _profile_default("model", "optimizer"))
+    optimizer_tolerance: float = field(default_factory=lambda: _profile_default("model", "optimizer_tolerance"))
+    optimizer_max_evaluations: int = field(default_factory=lambda: _profile_default("model", "optimizer_max_evaluations"))
+    version: str = field(default_factory=lambda: _profile_default("model", "version"))
 
     def __post_init__(self) -> None:
         expected = (
@@ -337,6 +349,7 @@ class AnalysisConfiguration:
     bad_pixel_mask_version: str = "bad-pixel-mask-v1"
     detection_profile_version: str = "focal-spot-detection-v1"
     detection_profile_parameters: Mapping[str, Any] = field(default_factory=_default_detection_profile_parameters)
+    automatic_background: bool = False
 
     def __post_init__(self) -> None:
         if self.profile_validation != "provisional":
@@ -473,7 +486,7 @@ class AnalysisRecord:
                             if key in {"gaussian_angle", "moment_angle"}
                             else "fraction"
                             if key == "gaussian_ellipticity"
-                            else calibration.physical_unit
+                            else calibration.physical_unit if calibration.is_usable else "unavailable"
                         ),
                         "status": physical_status.value,
                         "reason_codes": sorted(physical_reasons),

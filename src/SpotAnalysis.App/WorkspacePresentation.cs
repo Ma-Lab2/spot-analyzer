@@ -55,7 +55,8 @@ public sealed record AnalysisDraft(
     double? CalibrationX,
     double? CalibrationY,
     string CalibrationUnits,
-    string CalibrationSource);
+    string CalibrationSource,
+    AdvancedAnalysisSettings? AdvancedSettings = null);
 
 public enum DisplayLayer { Input, CorrectedIntensity, PositiveSignal, Fit, Residual, MeasurementMask, CoreMask }
 public enum DisplayColorMode { Grayscale, Pseudocolor }
@@ -261,8 +262,24 @@ public sealed class WorkspacePresentationModel
                 || !string.Equals(calibration.GetProperty("physical_unit").GetString(), draft.CalibrationUnits, StringComparison.Ordinal)
                 || !string.Equals(calibration.GetProperty("source").GetString(), draft.CalibrationSource, StringComparison.Ordinal))
                 return false;
-            return NullableDoubleEquals(calibration.GetProperty("x_unit_per_pixel"), draft.CalibrationX)
-                && NullableDoubleEquals(calibration.GetProperty("y_unit_per_pixel"), draft.CalibrationY);
+            if (!NullableDoubleEquals(calibration.GetProperty("x_unit_per_pixel"), draft.CalibrationX)
+                || !NullableDoubleEquals(calibration.GetProperty("y_unit_per_pixel"), draft.CalibrationY))
+                return false;
+
+            var requestedAdvanced = configuration.TryGetProperty("preprocessing", out var preprocessing)
+                && preprocessing.ValueKind == JsonValueKind.Object
+                ? preprocessing
+                : default;
+            var expectedAdvanced = draft.AdvancedSettings?.ToPayload();
+            if (expectedAdvanced is null)
+                return preprocessing.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined;
+            foreach (var pair in expectedAdvanced)
+            {
+                if (!requestedAdvanced.TryGetProperty(pair.Key, out var actual)
+                    || actual.ToString() != pair.Value?.ToString())
+                    return false;
+            }
+            return true;
         }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
         {

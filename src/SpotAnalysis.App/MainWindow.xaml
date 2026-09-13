@@ -49,10 +49,10 @@
           <Separator Margin="{DynamicResource SpacingSeparator}" />
           <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,0,0,4" Text="Spatial calibration (units per pixel)" />
           <WrapPanel Margin="0,2,0,0">
-            <TextBox x:Name="CalibrationXText" Width="58" Text="1" Margin="0,0,5,5" ToolTip="X length per pixel" AutomationProperties.Name="X calibration" TextChanged="ConfigurationChanged" TabIndex="1" />
-            <TextBox x:Name="CalibrationYText" Width="58" Text="1" Margin="0,0,5,5" ToolTip="Y length per pixel" AutomationProperties.Name="Y calibration" TextChanged="ConfigurationChanged" TabIndex="2" />
-            <TextBox x:Name="CalibrationUnitsText" Width="62" Text="mm" Margin="0,0,5,5" ToolTip="Physical unit" AutomationProperties.Name="Calibration physical unit" TextChanged="ConfigurationChanged" TabIndex="3" />
-            <TextBox x:Name="CalibrationSourceText" Width="84" Text="user" Margin="0,0,5,5" ToolTip="Calibration provenance" AutomationProperties.Name="Calibration source" TextChanged="ConfigurationChanged" TabIndex="4" />
+            <TextBox x:Name="CalibrationXText" Width="58" Margin="0,0,5,5" ToolTip="X length per pixel (optional until calibration is known)" AutomationProperties.Name="X calibration" TextChanged="ConfigurationChanged" TabIndex="1" />
+            <TextBox x:Name="CalibrationYText" Width="58" Margin="0,0,5,5" ToolTip="Y length per pixel (optional until calibration is known)" AutomationProperties.Name="Y calibration" TextChanged="ConfigurationChanged" TabIndex="2" />
+            <TextBox x:Name="CalibrationUnitsText" Width="62" Margin="0,0,5,5" ToolTip="Physical unit" AutomationProperties.Name="Calibration physical unit" TextChanged="ConfigurationChanged" TabIndex="3" />
+            <TextBox x:Name="CalibrationSourceText" Width="84" Margin="0,0,5,5" ToolTip="Calibration provenance" AutomationProperties.Name="Calibration source" TextChanged="ConfigurationChanged" TabIndex="4" />
           </WrapPanel>
           <ComboBox x:Name="CalibrationStatus" Width="140" HorizontalAlignment="Left" Margin="0,2,0,0" AutomationProperties.Name="Calibration confirmation status" ToolTip="Calibration must be confirmed before analysis" SelectionChanged="ConfigurationSelectionChanged" TabIndex="5">
             <ComboBoxItem Content="missing" IsSelected="True" />
@@ -64,18 +64,38 @@
           <WrapPanel>
             <TextBox x:Name="RoiXText" Width="50" Text="0" Margin="0,0,4,5" AutomationProperties.Name="Analysis region X" TextChanged="ConfigurationChanged" TabIndex="6" />
             <TextBox x:Name="RoiYText" Width="50" Text="0" Margin="0,0,4,5" AutomationProperties.Name="Analysis region Y" TextChanged="ConfigurationChanged" TabIndex="7" />
-            <TextBox x:Name="RoiWidthText" Width="62" Text="1" Margin="0,0,4,5" AutomationProperties.Name="Analysis region width" TextChanged="ConfigurationChanged" TabIndex="8" />
-            <TextBox x:Name="RoiHeightText" Width="62" Text="1" Margin="0,0,0,5" AutomationProperties.Name="Analysis region height" TextChanged="ConfigurationChanged" TabIndex="9" />
+            <TextBox x:Name="RoiWidthText" Width="62" Margin="0,0,4,5" AutomationProperties.Name="Analysis region width" ToolTip="Set a confirmed ROI after opening the input" TextChanged="ConfigurationChanged" TabIndex="8" />
+            <TextBox x:Name="RoiHeightText" Width="62" Margin="0,0,0,5" AutomationProperties.Name="Analysis region height" ToolTip="Set a confirmed ROI after opening the input" TextChanged="ConfigurationChanged" TabIndex="9" />
           </WrapPanel>
 
-          <TextBlock Style="{DynamicResource FieldLabel}" Margin="{DynamicResource SpacingSectionLabel}" Text="Background / preprocessing (optional)" />
+          <TextBlock Style="{DynamicResource FieldLabel}" Margin="{DynamicResource SpacingSectionLabel}" Text="Background / preprocessing (profile-controlled)" />
           <WrapPanel>
             <TextBox x:Name="BackgroundXText" Width="50" Margin="0,0,4,5" AutomationProperties.Name="Background region X" TextChanged="ConfigurationChanged" TabIndex="10" />
             <TextBox x:Name="BackgroundYText" Width="50" Margin="0,0,4,5" AutomationProperties.Name="Background region Y" TextChanged="ConfigurationChanged" TabIndex="11" />
             <TextBox x:Name="BackgroundWidthText" Width="62" Margin="0,0,4,5" AutomationProperties.Name="Background region width" TextChanged="ConfigurationChanged" TabIndex="12" />
             <TextBox x:Name="BackgroundHeightText" Width="62" Margin="0,0,0,5" AutomationProperties.Name="Background region height" TextChanged="ConfigurationChanged" TabIndex="13" />
           </WrapPanel>
-          <TextBlock Style="{DynamicResource SupportingText}" FontSize="12" Text="Background correction is recorded only when all four values are provided." />
+          <TextBlock Style="{DynamicResource SupportingText}" FontSize="12" Text="A confirmed background region is required; it is never silently replaced by a whole-image default." />
+
+          <Expander x:Name="AdvancedSettingsExpander" Header="Advanced settings (optional; profile-supported only)" IsExpanded="False" Margin="0,12,0,0" AutomationProperties.Name="Advanced analysis settings">
+            <StackPanel Margin="4,8,0,0">
+              <TextBlock Style="{DynamicResource SupportingText}" Text="The standard branch is retained. Changes are recorded and results are downgraded for review." TextWrapping="Wrap" />
+              <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <TextBlock Style="{DynamicResource FieldLabel}" Text="Filtering" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox x:Name="AdvancedFiltering" Width="110" SelectedValue="none" AutomationProperties.Name="Advanced filtering" SelectionChanged="ConfigurationSelectionChanged">
+                  <ComboBoxItem Content="none" />
+                  <ComboBoxItem Content="gaussian" />
+                </ComboBox>
+                <TextBlock Style="{DynamicResource FieldLabel}" Text="DPC" VerticalAlignment="Center" Margin="12,0,8,0" />
+                <ComboBox x:Name="AdvancedDpc" Width="110" SelectedValue="none" AutomationProperties.Name="Advanced DPC" SelectionChanged="ConfigurationSelectionChanged">
+                  <ComboBoxItem Content="none" />
+                  <ComboBoxItem Content="gradient" />
+                </ComboBox>
+              </StackPanel>
+              <TextBlock x:Name="AdvancedSettingsStatus" Style="{DynamicResource SupportingText}" Margin="0,6,0,0" Text="Using recommended defaults" />
+              <Button x:Name="ResetAdvancedSettingsButton" Style="{DynamicResource SecondaryButton}" Content="Reset to recommended defaults" Width="230" HorizontalAlignment="Left" Margin="0,6,0,0" Click="ResetAdvancedSettings_Click" />
+            </StackPanel>
+          </Expander>
 
           <Button x:Name="ConfirmConfigurationButton" AutomationProperties.AutomationId="ConfirmConfigurationButton" AutomationProperties.Name="Confirm analysis configuration"
                   Margin="0,16,0,0" Width="230" HorizontalAlignment="Left" Click="ConfirmConfiguration_Click" Content="_Confirm configuration" TabIndex="14" />
