@@ -13,27 +13,35 @@ namespace SpotAnalysis.App;
 public partial class MainWindow : Window
 {
     private readonly WorkerClient _workerClient = new();
-    private readonly WorkspacePresentationModel _workspace = new();
-    private PngInputInfo? _selectedInput;
-    private bool _configurationConfirmed;
-    private bool _hasResult;
-    private bool _resultStale;
-    private WorkerOutcome? _lastOutcome;
-    private WorkerOutcome? _lastSuccessfulOutcome;
-    private CancellationTokenSource? _analysisCancellation;
-    private AnalysisRequest? _pendingRequest;
-    private AnalysisRequest? _inFlightRequest;
-    private ConfigurationValues? _lastConfiguration;
-    private string _flowStatus = "ready";
+    private readonly MultiImageWorkspaceModel _workspaceItems = new();
+    private readonly WorkspacePresentationModel _emptyWorkspace = new();
+    private readonly Dictionary<string, UiWorkspaceItem> _uiItems = new(StringComparer.Ordinal);
+    private readonly WorkspaceAnalysisScheduler _scheduler;
+    private UiWorkspaceItem? _currentItem;
     private bool _configurationReady;
-    private string? _failureCode;
-    private string? _failureDetails;
+
+    private WorkspacePresentationModel _workspace => _currentItem?.Item.Presentation ?? _emptyWorkspace;
+    private PngInputInfo? _selectedInput => _currentItem?.Input;
+    private bool _configurationConfirmed { get => _currentItem?.ConfigurationConfirmed == true; set { if (_currentItem is not null) _currentItem.ConfigurationConfirmed = value; } }
+    private bool _hasResult { get => _currentItem?.HasResult == true; set { if (_currentItem is not null) _currentItem.HasResult = value; } }
+    private bool _resultStale { get => _currentItem?.ResultStale == true; set { if (_currentItem is not null) _currentItem.ResultStale = value; } }
+    private WorkerOutcome? _lastOutcome { get => _currentItem?.LastOutcome; set { if (_currentItem is not null) _currentItem.LastOutcome = value; } }
+    private WorkerOutcome? _lastSuccessfulOutcome { get => _currentItem?.LastSuccessfulOutcome; set { if (_currentItem is not null) _currentItem.LastSuccessfulOutcome = value; } }
+    private AnalysisRequest? _pendingRequest { get => _currentItem?.PendingRequest; set { if (_currentItem is not null) _currentItem.PendingRequest = value; } }
+    private AnalysisRequest? _inFlightRequest { get => _currentItem?.InFlightRequest; set { if (_currentItem is not null) _currentItem.InFlightRequest = value; } }
+    private ConfigurationValues? _lastConfiguration { get => _currentItem?.LastConfiguration; set { if (_currentItem is not null) _currentItem.LastConfiguration = value; } }
+    private string _flowStatus { get => _currentItem?.FlowStatus ?? "ready"; set { if (_currentItem is not null) _currentItem.FlowStatus = value; } }
+    private string? _failureCode { get => _currentItem?.FailureCode; set { if (_currentItem is not null) _currentItem.FailureCode = value; } }
+    private string? _failureDetails { get => _currentItem?.FailureDetails; set { if (_currentItem is not null) _currentItem.FailureDetails = value; } }
 
     public MainWindow()
     {
         InitializeComponent();
+        _scheduler = new WorkspaceAnalysisScheduler(
+            (job, token) => _workerClient.RunAsync(job.Request, token, TimeSpan.FromSeconds(30)),
+            maxConcurrency: 1);
         _configurationReady = true;
-        _workspace.Changed += (_, _) => WorkspaceChanged();
+        _workspaceItems.Changed += (_, _) => RefreshImageItemsList();
         RefreshDraftSummary();
         UpdateConfigurationAvailability();
         UpdateProgressVisual();
@@ -42,6 +50,23 @@ public partial class MainWindow : Window
         CurvesEmptyStateText.Text = "No analysis result yet — curves will appear here after a successful run.";
         DiagnosticsText.Text = DiagnosticPackage.BuildAboutText();
         DiagnosticLog.Write("client_started", new { output_capability = DiagnosticPackage.OutputCapability });
+    }
+
+    private sealed class UiWorkspaceItem(MultiImageWorkspaceItem item, PngInputInfo? input)
+    {
+        public MultiImageWorkspaceItem Item { get; } = item;
+        public PngInputInfo? Input { get; } = input;
+        public bool ConfigurationConfirmed { get; set; }
+        public bool HasResult { get; set; }
+        public bool ResultStale { get; set; }
+        public WorkerOutcome? LastOutcome { get; set; }
+        public WorkerOutcome? LastSuccessfulOutcome { get; set; }
+        public AnalysisRequest? PendingRequest { get; set; }
+        public AnalysisRequest? InFlightRequest { get; set; }
+        public ConfigurationValues? LastConfiguration { get; set; }
+        public string FlowStatus { get; set; } = "ready";
+        public string? FailureCode { get; set; }
+        public string? FailureDetails { get; set; }
     }
 
     private sealed record ConfigurationValues(
@@ -194,309 +219,238 @@ public partial class MainWindow : Window
 
     private async void RunAnalysis_Click(object sender, RoutedEventArgs e)
     {
-        if (!_configurationConfirmed || _pendingRequest is null)
+        var item = _currentItem;
+        if (item is null || !item.ConfigurationConfirmed || item.PendingRequest is null)
         {
             StatusText.Text = "Confirm a valid pending configuration before running analysis.";
             return;
         }
 
         var request = _pendingRequest;
-        var workspaceRequestId = _workspace.Start();
+        if (request is null) return;
+        var workspaceRequestId = item.Item.Presentation.Start();
         if (workspaceRequestId is null)
         {
             StatusText.Text = "Confirm a valid pending configuration before running analysis.";
             return;
         }
-        _inFlightRequest = request;
+        item.InFlightRequest = request;
         UpdateRunAvailability();
-        await RunAnalysisAsync(async () =>
-        {
-            var outcome = await _workerClient.RunAsync(
-                request,
-                _analysisCancellation!.Token,
-                TimeSpan.FromSeconds(30));
-            WorkspaceWorkerEvent workerEvent = outcome.Status switch
-            {
-                "success" => new WorkspaceWorkerEvent.Completed(workspaceRequestId, outcome),
-                "cancelled" => new WorkspaceWorkerEvent.Cancelled(workspaceRequestId, outcome),
-                _ => new WorkspaceWorkerEvent.Failed(workspaceRequestId, outcome),
-            };
-            if (!_workspace.Apply(workerEvent))
-                return new WorkerOutcome("failure", "The worker event was rejected because it no longer belongs to the active run.", FailureCode: "worker_event_ignored");
-            return outcome;
-        });
-        _inFlightRequest = null;
-        RefreshDraftSummary();
-        UpdateRunAvailability();
+        await RunScheduledAsync(item, request, workspaceRequestId, WorkspaceAnalysisPriority.Current, isPreview: false);
     }
 
     private async void CancelAnalysis_Click(object sender, RoutedEventArgs e)
     {
-        _analysisCancellation?.Cancel();
-        _workspace.RequestCancel();
-        _flowStatus = "cancelling";
-        DiagnosticLog.Write("analysis_cancellation_requested", new { flow_status = _flowStatus });
+        var item = _currentItem;
+        if (item is null) return;
+        _scheduler.Cancel(item.Item.Id);
+        item.Item.Presentation.RequestCancel();
+        item.FlowStatus = "cancelling";
+        DiagnosticLog.Write("analysis_cancellation_requested", new { item_id = item.Item.Id, flow_status = item.FlowStatus });
         StatusText.Text = "Cancelling";
         await Task.CompletedTask;
     }
 
-    private async Task RunAnalysisAsync(Func<Task<WorkerOutcome>> operation)
+    private void ApplyPreviewConfiguration(UiWorkspaceItem item, WorkerOutcome outcome)
     {
-        _analysisCancellation?.Dispose();
-        _analysisCancellation = new CancellationTokenSource();
-        // A new run never invalidates the last successful record. It is retained
-        // as a stale/previous record until a new run completes successfully.
-        _resultStale = _lastSuccessfulOutcome is not null;
-        _flowStatus = "processing";
-        _failureCode = null;
-        _failureDetails = null;
-        DiagnosticLog.Write("analysis_started", new { flow_status = _flowStatus, input = _selectedInput?.Summary });
-        StatusText.Text = "Processing";
-        ShowRetainedResult("Processing current run; previous result is retained as stale.");
-        try
+        if (outcome.Result is not JsonElement terminal || !terminal.TryGetProperty("record", out var record)
+            || !record.TryGetProperty("configuration", out var configuration)
+            || !configuration.TryGetProperty("region", out var region)
+            || region.ValueKind != JsonValueKind.Object) return;
+        var background = configuration.TryGetProperty("background_region", out var backgroundNode)
+            && backgroundNode.ValueKind == JsonValueKind.Object ? backgroundNode : default;
+        var calibration = configuration.TryGetProperty("calibration", out var calibrationNode)
+            && calibrationNode.ValueKind == JsonValueKind.Object ? calibrationNode : default;
+        var draft = new AnalysisDraft(
+            IntValue(region, "x"), IntValue(region, "y"), IntValue(region, "width"), IntValue(region, "height"),
+            OptionalInt(background, "x"), OptionalInt(background, "y"), OptionalInt(background, "width"), OptionalInt(background, "height"),
+            GetString(calibration, "confirmation") ?? "missing",
+            OptionalDouble(calibration, "x_unit_per_pixel"), OptionalDouble(calibration, "y_unit_per_pixel"),
+            GetString(calibration, "physical_unit") ?? "", GetString(calibration, "source") ?? "");
+        _workspaceItems.SetAutomaticDraft(item.Item.Id, draft);
+        item.LastConfiguration = ToConfiguration(item.Item.Presentation.Draft ?? draft);
+        if (ReferenceEquals(item, _currentItem))
+            PopulateConfiguration(item.Item.Presentation.Draft ?? draft);
+    }
+
+    private static int IntValue(JsonElement node, string property) =>
+        node.TryGetProperty(property, out var value) && value.TryGetInt32(out var parsed) ? parsed : 0;
+
+    private static int? OptionalInt(JsonElement node, string property) =>
+        node.ValueKind == JsonValueKind.Object && node.TryGetProperty(property, out var value) && value.TryGetInt32(out var parsed) ? parsed : null;
+
+    private static double? OptionalDouble(JsonElement node, string property) =>
+        node.ValueKind == JsonValueKind.Object && node.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number ? value.GetDouble() : null;
+
+    private static ConfigurationValues ToConfiguration(AnalysisDraft draft) => new(
+        draft.RegionX, draft.RegionY, draft.RegionWidth, draft.RegionHeight,
+        draft.BackgroundX, draft.BackgroundY, draft.BackgroundWidth, draft.BackgroundHeight,
+        draft.CalibrationStatus, draft.CalibrationX, draft.CalibrationY,
+        draft.CalibrationUnits, draft.CalibrationSource, draft.AdvancedSettings);
+
+    private async Task RunScheduledAsync(
+        UiWorkspaceItem item,
+        AnalysisRequest request,
+        string workspaceRequestId,
+        WorkspaceAnalysisPriority priority,
+        bool isPreview)
+    {
+        item.ResultStale = item.LastSuccessfulOutcome is not null;
+        item.FlowStatus = isPreview ? "preview_processing" : "processing";
+        item.FailureCode = null;
+        item.FailureDetails = null;
+        if (ReferenceEquals(item, _currentItem))
         {
-            var outcome = await operation();
-            _lastOutcome = outcome;
-            RefreshDiagnosticsSummary();
-            _failureCode = outcome.FailureCode;
-            _failureDetails = outcome.ErrorMessage;
-            _flowStatus = outcome.Status switch
+            StatusText.Text = isPreview ? "Preview processing" : "Processing";
+            ShowRetainedResult("Processing current run; previous result is retained as stale.");
+            UpdateRunAvailability();
+        }
+
+        var scheduled = await _scheduler.Schedule(new WorkspaceAnalysisJob(item.Item.Id, workspaceRequestId, request, priority));
+        var outcome = scheduled.Outcome;
+        WorkspaceWorkerEvent workerEvent = outcome.Status switch
+        {
+            "success" => new WorkspaceWorkerEvent.Completed(scheduled.RequestId, outcome),
+            "cancelled" => new WorkspaceWorkerEvent.Cancelled(scheduled.RequestId, outcome),
+            _ => new WorkspaceWorkerEvent.Failed(scheduled.RequestId, outcome),
+        };
+        var accepted = _workspaceItems.Apply(scheduled.ItemId, workerEvent);
+        if (!accepted)
+        {
+            DiagnosticLog.Write("workspace_item_event_ignored", new
             {
-                "success" => "completed",
+                item_id = scheduled.ItemId,
+                request_id = scheduled.RequestId,
+                outcome.Status,
+            });
+            return;
+        }
+
+        item.LastOutcome = outcome;
+        item.FailureCode = outcome.FailureCode;
+        item.FailureDetails = outcome.ErrorMessage;
+        if (outcome.Status == "success")
+        {
+            if (isPreview) ApplyPreviewConfiguration(item, outcome);
+            item.LastSuccessfulOutcome = outcome;
+            item.HasResult = item.Item.Presentation.CurrentRecord is not null;
+            item.ResultStale = item.Item.Presentation.CurrentRecord?.IsStale != false;
+            item.FlowStatus = isPreview ? "preview" : item.ResultStale ? "needs_recalculation" : "completed";
+        }
+        else
+        {
+            item.FlowStatus = outcome.Status switch
+            {
                 "cancelled" => "cancelled",
                 "timeout" => "timeout",
                 _ => "failed",
             };
-            DiagnosticLog.Write("analysis_finished", new
+            item.ResultStale = item.Item.Presentation.CurrentRecord?.IsStale == true;
+            item.HasResult = item.Item.Presentation.CurrentRecord is not null;
+        }
+        item.InFlightRequest = null;
+        if (isPreview && accepted && outcome.Status == "success"
+            && item.Item.Presentation.CurrentRecord?.IsStale == true
+            && item.Item.Presentation.Draft is { } updatedDraft && item.Input is not null)
+        {
+            var updatedRequest = BuildRequestForItem(item, ToConfiguration(updatedDraft)).AsPreview();
+            var updatedRequestId = item.Item.Presentation.StartPreview(updatedRequest);
+            if (updatedRequestId is not null)
             {
-                flow_status = _flowStatus,
-                outcome.FailureCode,
-                outcome.ErrorMessage,
-                outcome.RecordId,
-                outcome.AnalysisFingerprint,
-            });
-            switch (outcome.Status)
-            {
-                case "success":
-                    _lastSuccessfulOutcome = outcome;
-                    _hasResult = _workspace.CurrentRecord is not null;
-                    _resultStale = false;
-                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
-                    if (_resultStale)
-                    {
-                        StatusText.Text = "Completed, but configuration changed during the run; recompute required";
-                        ShowRetainedResult("The completed record belongs to the superseded configuration.");
-                    }
-                    else
-                    {
-                        StatusText.Text = "Completed";
-                        RecordText.Text = FormatRecordSummary(outcome);
-                        MetricsText.Text = FormatMetrics(outcome);
-                        RenderCurves(outcome, stale: false);
-                        ExportResultButton.IsEnabled = _workspace.CanExportReport;
-                    }
-                    break;
-                case "cancelled":
-                    StatusText.Text = "Cancelled";
-                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
-                    _hasResult = _workspace.CurrentRecord is not null;
-                    if (_lastSuccessfulOutcome is not null) _resultStale = true;
-                    ShowRetainedResult($"Cancelled ({outcome.FailureCode}): {outcome.ErrorMessage}");
-                    break;
-                case "timeout":
-                    StatusText.Text = "Timed out";
-                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
-                    _hasResult = _workspace.CurrentRecord is not null;
-                    if (_lastSuccessfulOutcome is not null) _resultStale = true;
-                    ShowRetainedResult($"Timed out ({outcome.FailureCode}): {outcome.ErrorMessage}");
-                    break;
-                default:
-                    StatusText.Text = $"Failed ({outcome.FailureCode ?? "worker_failure"}): {outcome.ErrorMessage}";
-                    _resultStale = _workspace.CurrentRecord?.IsStale != false;
-                    _hasResult = _workspace.CurrentRecord is not null;
-                    if (_lastSuccessfulOutcome is not null) _resultStale = true;
-                    ShowRetainedResult(StatusText.Text);
-                    break;
+                item.InFlightRequest = updatedRequest;
+                _ = RunScheduledAsync(item, updatedRequest, updatedRequestId, priority, isPreview: true);
             }
         }
-        catch (ConfigurationValidationException exception)
+        DiagnosticLog.Write("workspace_item_finished", new
         {
-            _flowStatus = "configuration_invalid";
-            _failureCode = exception.Code;
-            _failureDetails = exception.Message;
-            DiagnosticLog.Write("analysis_rejected", new { flow_status = _flowStatus, code = exception.Code, message = exception.Message });
-            StatusText.Text = $"Invalid configuration ({exception.Code}): {exception.Message}";
-            ShowRetainedResult(StatusText.Text);
-        }
-        catch (InputValidationException exception)
+            item_id = item.Item.Id,
+            request_id = scheduled.RequestId,
+            priority = priority.ToString().ToLowerInvariant(),
+            accepted,
+            outcome.Status,
+            outcome.FailureCode,
+        });
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+        await Dispatcher.InvokeAsync(() =>
         {
-            _flowStatus = "input_invalid";
-            _failureCode = exception.Code;
-            _failureDetails = exception.Message;
-            DiagnosticLog.Write("analysis_rejected", new { flow_status = _flowStatus, code = exception.Code, message = exception.Message });
-            StatusText.Text = $"Invalid input ({exception.Code}): {exception.Message}";
-            ShowRetainedResult(StatusText.Text);
-        }
-        catch (OperationCanceledException)
-        {
-            _flowStatus = "cancelled";
-            _failureCode = "analysis_cancelled";
-            _failureDetails = "analysis cancelled";
-            DiagnosticLog.Write("analysis_cancelled", new { flow_status = _flowStatus });
-            StatusText.Text = "Cancelled";
-            _resultStale = _workspace.CurrentRecord?.IsStale != false;
-            _hasResult = _workspace.CurrentRecord is not null;
-            ShowRetainedResult("Cancelled: analysis did not produce a new record.");
-        }
-        finally
-        {
-            _analysisCancellation?.Dispose();
-            _analysisCancellation = null;
-        }
-    }
-
-    private void ApplyPreviewConfiguration(WorkerOutcome outcome)
-    {
-        if (outcome.Result is not JsonElement terminal || !terminal.TryGetProperty("record", out var record)
-            || !record.TryGetProperty("configuration", out var configuration)
-            || !configuration.TryGetProperty("region", out var region)) return;
-        var background = configuration.TryGetProperty("background_region", out var backgroundNode)
-            && backgroundNode.ValueKind == JsonValueKind.Object ? backgroundNode : default;
-        var calibration = configuration.TryGetProperty("calibration", out var calibrationNode) ? calibrationNode : default;
-        _configurationReady = false;
-        try
-        {
-            RoiXText.Text = GetString(region, "x") ?? "0";
-            RoiYText.Text = GetString(region, "y") ?? "0";
-            RoiWidthText.Text = GetString(region, "width") ?? "1";
-            RoiHeightText.Text = GetString(region, "height") ?? "1";
-            BackgroundXText.Text = background.ValueKind == JsonValueKind.Object ? GetString(background, "x") ?? "" : "";
-            BackgroundYText.Text = background.ValueKind == JsonValueKind.Object ? GetString(background, "y") ?? "" : "";
-            BackgroundWidthText.Text = background.ValueKind == JsonValueKind.Object ? GetString(background, "width") ?? "" : "";
-            BackgroundHeightText.Text = background.ValueKind == JsonValueKind.Object ? GetString(background, "height") ?? "" : "";
-            if (calibration.ValueKind == JsonValueKind.Object)
-            {
-                CalibrationXText.Text = GetString(calibration, "x_unit_per_pixel") ?? "";
-                CalibrationYText.Text = GetString(calibration, "y_unit_per_pixel") ?? "";
-                CalibrationUnitsText.Text = GetString(calibration, "physical_unit") ?? "";
-                CalibrationSourceText.Text = GetString(calibration, "source") ?? "";
-            }
-        }
-        finally { _configurationReady = true; }
-        try
-        {
-            var draft = ReadConfiguration();
-            _workspace.SetPreviewDraft(new AnalysisDraft(
-                draft.RegionX, draft.RegionY, draft.RegionWidth, draft.RegionHeight,
-                draft.BackgroundX, draft.BackgroundY, draft.BackgroundWidth, draft.BackgroundHeight,
-                draft.CalibrationStatus, draft.CalibrationX, draft.CalibrationY,
-                draft.CalibrationUnits, draft.CalibrationSource, draft.AdvancedSettings));
-        }
-        catch (ConfigurationValidationException) { _workspace.StageInvalidDraft(); }
-    }
-
-    private async Task RunPreviewAsync(AnalysisRequest request, string workspaceRequestId)
-    {
-        _analysisCancellation?.Dispose();
-        _analysisCancellation = new CancellationTokenSource();
-        _flowStatus = "preview_processing";
-        StatusText.Text = "Preview processing";
-        UpdateRunAvailability();
-        try
-        {
-            var outcome = await _workerClient.RunAsync(request, _analysisCancellation.Token, TimeSpan.FromSeconds(30));
-            _lastOutcome = outcome;
-            WorkspaceWorkerEvent workerEvent = outcome.Status switch
-            {
-                "success" => new WorkspaceWorkerEvent.Completed(workspaceRequestId, outcome),
-                "cancelled" => new WorkspaceWorkerEvent.Cancelled(workspaceRequestId, outcome),
-                _ => new WorkspaceWorkerEvent.Failed(workspaceRequestId, outcome),
-            };
-            if (!_workspace.Apply(workerEvent)) return;
-            _flowStatus = outcome.Status == "success" ? "preview" : outcome.Status;
-            if (outcome.Status == "success")
-            {
-                ApplyPreviewConfiguration(outcome);
-                _lastSuccessfulOutcome = outcome;
-                _hasResult = true;
-                _resultStale = false;
-                StatusText.Text = "Preview available — review ROI, then confirm formal result";
-                RecordText.Text = FormatRecordSummary(outcome);
-                MetricsText.Text = FormatMetrics(outcome);
-                RenderCurves(outcome, stale: false);
-                ExportResultButton.IsEnabled = false;
-            }
-            else
-            {
-                StatusText.Text = outcome.Status == "cancelled" ? "Preview cancelled" : $"Preview failed ({outcome.FailureCode})";
-            }
-            RefreshDiagnosticsSummary();
-        }
-        finally
-        {
-            _analysisCancellation?.Dispose();
-            _analysisCancellation = null;
-            UpdateRunAvailability();
-        }
+            RefreshImageItemsList();
+            if (ReferenceEquals(item, _currentItem))
+                ProjectCurrentItem();
+        });
     }
 
     private async void OpenPng_Click(object sender, RoutedEventArgs e)
     {
-        if (_workspace.IsProcessing)
-        {
-            StatusText.Text = "Cancel the active analysis before changing the input.";
-            return;
-        }
-
         var dialog = new OpenFileDialog
         {
             Filter = "PNG files (*.png)|*.png",
             CheckFileExists = true,
-            Multiselect = false,
+            Multiselect = true,
         };
         if (dialog.ShowDialog() != true) return;
+
+        UiWorkspaceItem? firstAdded = null;
+        foreach (var path in dialog.FileNames)
+        {
+            var item = await AddWorkspaceItemAsync(path);
+            firstAdded ??= item;
+            if (ReferenceEquals(item, firstAdded))
+            {
+                SelectItem(item);
+                RefreshImageItemsList();
+                ImageItemsList.SelectedItem = item.Item;
+                QueuePreview(item, WorkspaceAnalysisPriority.Current);
+            }
+            else
+            {
+                QueuePreview(item, WorkspaceAnalysisPriority.Background);
+            }
+        }
+    }
+
+    private async Task<UiWorkspaceItem> AddWorkspaceItemAsync(string path)
+    {
         try
         {
-            var input = await PngInput.ReadAsync(dialog.FileName);
-            _selectedInput = input;
+            var input = await PngInput.ReadAsync(path);
             var workspaceInput = new WorkspaceInput(input.Path, input.Sha256, input.Width, input.Height, input.BitDepth, input.Summary);
-            var previewRequest = AnalysisRequest.CreatePreview(
-                input.Path, input.Sha256,
-                Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived"));
-            if (!_workspace.LoadInput(workspaceInput, previewRequest)) return;
-            var previewRequestId = _workspace.State.ActiveRequestId;
-            if (previewRequestId is null) return;
-            InputSummaryText.Text = input.Summary;
-            InputPreview.Source = input.Preview;
-            ImageEmptyState.Visibility = Visibility.Collapsed;
-            _configurationConfirmed = false;
-            _flowStatus = "input_loaded";
-            _failureCode = null;
-            _failureDetails = null;
-            DiagnosticLog.Write("input_loaded", new { input.Summary, input.Sha256 });
-            StatusText.Text = "Input loaded; generating preview";
-            MarkResultStale();
-            RefreshDraftSummary();
-            UpdateRunAvailability();
-            await RunPreviewAsync(previewRequest, previewRequestId);
+            var modelItem = _workspaceItems.Add(workspaceInput);
+            var uiItem = new UiWorkspaceItem(modelItem, input) { FlowStatus = "input_loaded" };
+            _uiItems.Add(modelItem.Id, uiItem);
+            modelItem.Presentation.Changed += (_, _) =>
+            {
+                if (ReferenceEquals(uiItem, _currentItem)) WorkspaceChanged();
+            };
+            DiagnosticLog.Write("input_loaded", new { item_id = modelItem.Id, input.Summary, input.Sha256 });
+            return uiItem;
         }
         catch (InputValidationException exception)
         {
-            _selectedInput = null;
-            _workspace.RejectInput(exception.Code, exception.Message);
-            _pendingRequest = null;
-            _configurationConfirmed = false;
-            InputPreview.Source = null;
-            ImageEmptyState.Visibility = Visibility.Visible;
-            InputSummaryText.Text = "No input selected";
-            SummaryText.Text = "No input selected; pending request is not valid.";
-            UpdateRunAvailability();
-            _flowStatus = "input_invalid";
-            _failureCode = exception.Code;
-            _failureDetails = exception.Message;
-            DiagnosticLog.Write("input_rejected", new { flow_status = _flowStatus, code = exception.Code, message = exception.Message });
-            StatusText.Text = $"Invalid input ({exception.Code}): {exception.Message}";
+            var rejectedInput = new WorkspaceInput(path, "", 0, 0, 0, Path.GetFileName(path));
+            var modelItem = _workspaceItems.Add(rejectedInput);
+            modelItem.Presentation.RejectInput(exception.Code, exception.Message);
+            var uiItem = new UiWorkspaceItem(modelItem, null)
+            {
+                FlowStatus = "input_invalid",
+                FailureCode = exception.Code,
+                FailureDetails = exception.Message,
+            };
+            _uiItems.Add(modelItem.Id, uiItem);
+            DiagnosticLog.Write("input_rejected", new { item_id = modelItem.Id, code = exception.Code, message = exception.Message });
+            return uiItem;
         }
+    }
+
+    private void QueuePreview(UiWorkspaceItem item, WorkspaceAnalysisPriority priority)
+    {
+        if (item.Input is null) return;
+        var request = AnalysisRequest.CreatePreview(
+            item.Input.Path, item.Input.Sha256,
+            Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived", item.Item.Id));
+        var requestId = item.Item.Presentation.StartPreview(request);
+        if (requestId is null) return;
+        item.InFlightRequest = request;
+        _ = RunScheduledAsync(item, request, requestId, priority, isPreview: true);
     }
 
     private void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
@@ -713,6 +667,166 @@ public partial class MainWindow : Window
         UpdateProgressVisual();
         UpdateStatusVisual();
         RefreshDiagnosticsSummary();
+        RefreshImageItemsList();
+    }
+
+    private void RefreshImageItemsList()
+    {
+        if (ImageItemsList is null) return;
+        var selectedId = _currentItem?.Item.Id;
+        ImageItemsList.ItemsSource = null;
+        ImageItemsList.ItemsSource = _workspaceItems.Items;
+        if (selectedId is not null)
+            ImageItemsList.SelectedItem = _workspaceItems.Items.FirstOrDefault(item => item.Id == selectedId);
+    }
+
+    private void ImageItemsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ImageItemsList.SelectedItem is not MultiImageWorkspaceItem selected
+            || !_uiItems.TryGetValue(selected.Id, out var item)) return;
+        SelectItem(item);
+        _scheduler.Promote(item.Item.Id);
+    }
+
+    private void SelectItem(UiWorkspaceItem item)
+    {
+        if (ReferenceEquals(item, _currentItem)) return;
+        _currentItem = item;
+        _workspaceItems.Select(item.Item.Id);
+        ProjectCurrentItem();
+    }
+
+    private void ProjectCurrentItem()
+    {
+        var item = _currentItem;
+        if (item is null)
+        {
+            InputPreview.Source = null;
+            ImageEmptyState.Visibility = Visibility.Visible;
+            InputSummaryText.Text = "No input selected";
+            return;
+        }
+
+        InputSummaryText.Text = item.Input?.Summary ?? item.Item.Input.Summary;
+        InputPreview.Source = item.Input?.Preview;
+        ImageEmptyState.Visibility = item.Input is null ? Visibility.Visible : Visibility.Collapsed;
+        if (item.Item.Presentation.Draft is { } draft)
+            PopulateConfiguration(draft);
+        item.PendingRequest = item.Item.Presentation.Draft is null || item.Input is null
+            ? null
+            : BuildRequestForItem(item, ToConfiguration(item.Item.Presentation.Draft));
+        SummaryText.Text = item.PendingRequest?.Summary ?? "No valid pending request for this image.";
+        LockRoiCheck.IsChecked = _workspaceItems.IsRoiLocked;
+
+        var outcome = item.LastSuccessfulOutcome;
+        if (outcome is not null)
+        {
+            item.HasResult = item.Item.Presentation.CurrentRecord is not null;
+            item.ResultStale = item.Item.Presentation.CurrentRecord?.IsStale == true;
+            RecordText.Text = FormatRecordSummary(outcome);
+            MetricsText.Text = FormatMetrics(outcome);
+            RenderCurves(outcome, item.ResultStale);
+        }
+        else
+        {
+            RecordText.Text = item.FailureDetails ?? "No analysis record";
+            MetricsText.Text = item.LastOutcome is null ? "No result available" : FormatDiagnostics(item.LastOutcome);
+            RenderCurves(null, stale: false);
+        }
+        StatusText.Text = item.Item.Presentation.State.WorkflowStatus switch
+        {
+            WorkspaceWorkflowStatus.PreviewProcessing => "Preview processing",
+            WorkspaceWorkflowStatus.PreviewAvailable => "Preview available — review ROI, then confirm formal result",
+            WorkspaceWorkflowStatus.Processing or WorkspaceWorkflowStatus.Formalizing => "Processing formal result",
+            WorkspaceWorkflowStatus.NeedsRecalculation => "Needs recalculation",
+            WorkspaceWorkflowStatus.Exported => "Report exported",
+            WorkspaceWorkflowStatus.Completed => "Formal result available",
+            WorkspaceWorkflowStatus.Cancelled => "Cancelled",
+            WorkspaceWorkflowStatus.TimedOut => "Timed out",
+            WorkspaceWorkflowStatus.InputInvalid => $"Invalid input ({item.FailureCode}): {item.FailureDetails}",
+            WorkspaceWorkflowStatus.Failed or WorkspaceWorkflowStatus.AnalysisFailed
+                or WorkspaceWorkflowStatus.WorkerError or WorkspaceWorkflowStatus.ProtocolError
+                => $"Failed ({item.FailureCode}): {item.FailureDetails}",
+            _ => item.Input is null ? "Input failed" : "Input loaded",
+        };
+        ExportResultButton.IsEnabled = item.Item.Presentation.CanExportReport;
+        UpdateConfigurationAvailability();
+        UpdateProgressVisual();
+        RefreshDiagnosticsSummary();
+        UpdateRunAvailability();
+    }
+
+    private void PopulateConfiguration(AnalysisDraft draft)
+    {
+        _configurationReady = false;
+        try
+        {
+            RoiXText.Text = draft.RegionX.ToString(CultureInfo.InvariantCulture);
+            RoiYText.Text = draft.RegionY.ToString(CultureInfo.InvariantCulture);
+            RoiWidthText.Text = draft.RegionWidth.ToString(CultureInfo.InvariantCulture);
+            RoiHeightText.Text = draft.RegionHeight.ToString(CultureInfo.InvariantCulture);
+            BackgroundXText.Text = draft.BackgroundX?.ToString(CultureInfo.InvariantCulture) ?? "";
+            BackgroundYText.Text = draft.BackgroundY?.ToString(CultureInfo.InvariantCulture) ?? "";
+            BackgroundWidthText.Text = draft.BackgroundWidth?.ToString(CultureInfo.InvariantCulture) ?? "";
+            BackgroundHeightText.Text = draft.BackgroundHeight?.ToString(CultureInfo.InvariantCulture) ?? "";
+            CalibrationXText.Text = draft.CalibrationX?.ToString(CultureInfo.InvariantCulture) ?? "";
+            CalibrationYText.Text = draft.CalibrationY?.ToString(CultureInfo.InvariantCulture) ?? "";
+            CalibrationUnitsText.Text = draft.CalibrationUnits;
+            CalibrationSourceText.Text = draft.CalibrationSource;
+            CalibrationStatus.SelectedItem = CalibrationStatus.Items.Cast<ComboBoxItem>()
+                .FirstOrDefault(option => string.Equals(option.Content?.ToString(), draft.CalibrationStatus, StringComparison.Ordinal));
+            SelectComboBoxValue(AdvancedFiltering, draft.AdvancedSettings?.Filtering ?? "none");
+            SelectComboBoxValue(AdvancedDpc, draft.AdvancedSettings?.Dpc ?? "none");
+            AdvancedSettingsStatus.Text = draft.AdvancedSettings is null || draft.AdvancedSettings.IsDefault
+                ? "使用推荐默认值" : "已偏离推荐默认值";
+        }
+        finally { _configurationReady = true; }
+    }
+
+    private static void SelectComboBoxValue(ComboBox comboBox, string value) =>
+        comboBox.SelectedItem = comboBox.Items.Cast<ComboBoxItem>()
+            .FirstOrDefault(option => string.Equals(option.Content?.ToString(), value, StringComparison.Ordinal));
+
+    private AnalysisRequest BuildRequestForItem(UiWorkspaceItem item, ConfigurationValues configuration)
+    {
+        if (item.Input is null)
+            throw new ConfigurationValidationException("input_required", "The selected work item has no valid decoded input.");
+        return AnalysisRequest.Create(
+            item.Input.Path, item.Input.Sha256,
+            configuration.RegionX, configuration.RegionY, configuration.RegionWidth, configuration.RegionHeight,
+            configuration.BackgroundX, configuration.BackgroundY, configuration.BackgroundWidth, configuration.BackgroundHeight,
+            configuration.CalibrationStatus, configuration.CalibrationX, configuration.CalibrationY,
+            configuration.CalibrationUnits, configuration.CalibrationSource,
+            Path.Combine(Path.GetTempPath(), "SpotAnalysis", "derived", item.Item.Id),
+            configuration.AdvancedSettings);
+    }
+
+    private void LockRoiCheck_Click(object sender, RoutedEventArgs e)
+    {
+        if (LockRoiCheck.IsChecked == true && _currentItem is not null)
+        {
+            if (!_workspaceItems.LockRoiForSubsequent(_currentItem.Item.Id))
+            {
+                LockRoiCheck.IsChecked = false;
+                StatusText.Text = "A valid ROI is required before locking it for later images.";
+            }
+        }
+        else
+        {
+            _workspaceItems.UnlockRoi();
+        }
+    }
+
+    private void ApplyCalibrationBatch_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentItem is null || !_workspaceItems.ApplyCalibrationToBatch(_currentItem.Item.Id))
+        {
+            StatusText.Text = "Only an explicitly confirmed calibration with values, units, and source can be applied to the batch.";
+            return;
+        }
+        RefreshImageItemsList();
+        ProjectCurrentItem();
+        StatusText.Text = "Confirmed calibration applied to this temporary workspace; affected formal records need recalculation.";
     }
 
     private void StatusText_Changed(object sender, TextChangedEventArgs e) => UpdateStatusVisual();
@@ -850,19 +964,19 @@ public partial class MainWindow : Window
 
     private async void StartPreviewForCurrentDraft()
     {
-        if (_selectedInput is null || _workspace.IsProcessing) return;
+        var item = _currentItem;
+        if (item?.Input is null || item.Item.Presentation.IsProcessing) return;
         try
         {
             var draft = ReadConfiguration();
-            var formal = BuildRequestForDisplay(draft);
+            var formal = BuildRequestForItem(item, draft);
             var preview = formal.AsPreview();
-            var requestId = _workspace.StartPreview(preview);
+            var requestId = item.Item.Presentation.StartPreview(preview);
             if (requestId is null) return;
-            _inFlightRequest = preview;
-            await RunPreviewAsync(preview, requestId);
+            item.InFlightRequest = preview;
+            await RunScheduledAsync(item, preview, requestId, WorkspaceAnalysisPriority.Current, isPreview: true);
         }
         catch (ConfigurationValidationException) { }
-        finally { _inFlightRequest = null; }
     }
 
     private void CurveCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -1097,6 +1211,12 @@ public partial class MainWindow : Window
         AdvancedDpc.SelectedValue = "none";
         AdvancedSettingsStatus.Text = "Using recommended defaults";
         ConfigurationChanged(sender, e);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _scheduler.Dispose();
+        base.OnClosed(e);
     }
 
     private void MarkResultStale()

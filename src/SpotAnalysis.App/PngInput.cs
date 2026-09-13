@@ -47,26 +47,31 @@ public static class PngInput
             throw new InputValidationException("input_unreadable", $"无法读取输入 PNG：{exception.Message}");
         }
 
-        var digest = Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
-        var decoded = DecodePixels(data);
-        var preview = DecodePreview(data);
-        var uriHint = new Uri(System.IO.Path.GetFullPath(path)).AbsoluteUri;
-        decoded.Metadata["uri_hint"] = uriHint;
-        return new PngInputInfo(
-            path,
-            digest,
-            uriHint,
-            decoded.Width,
-            decoded.Height,
-            decoded.BitDepth,
-            decoded.ColorType,
-            decoded.Channels,
-            decoded.ChannelsIdentical,
-            decoded.Samples,
-            "relative_intensity_code",
-            decoded.BitDepth == 16 ? "big" : null,
-            decoded.Metadata,
-            preview);
+        return await Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var digest = Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
+            var decoded = DecodePixels(data);
+            cancellationToken.ThrowIfCancellationRequested();
+            var preview = DecodePreview(data);
+            var uriHint = new Uri(System.IO.Path.GetFullPath(path)).AbsoluteUri;
+            decoded.Metadata["uri_hint"] = uriHint;
+            return new PngInputInfo(
+                path,
+                digest,
+                uriHint,
+                decoded.Width,
+                decoded.Height,
+                decoded.BitDepth,
+                decoded.ColorType,
+                decoded.Channels,
+                decoded.ChannelsIdentical,
+                decoded.Samples,
+                "relative_intensity_code",
+                decoded.BitDepth == 16 ? "big" : null,
+                decoded.Metadata,
+                preview);
+        }, cancellationToken);
     }
 
     private static string ToExtendedPath(string path)

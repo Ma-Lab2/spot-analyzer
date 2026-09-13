@@ -42,9 +42,16 @@
           <TextBlock Style="{DynamicResource SectionHeading}" Text="01 · 输入与配置" />
           <TextBlock Style="{DynamicResource SupportingText}" Margin="{DynamicResource SpacingSectionIntro}" Text="打开图片后自动生成预览；复核 ROI 后一次确认正式结果。" />
           <Button x:Name="OpenInputButton" AutomationProperties.AutomationId="OpenInputButton" AutomationProperties.Name="打开受支持的 PNG 图片"
-                  AutomationProperties.HelpText="打开受支持的灰度或等通道 RGB PNG 图片" Width="230" HorizontalAlignment="Left" Click="OpenPng_Click" Content="_打开 PNG 图片" TabIndex="0" />
+                  AutomationProperties.HelpText="打开一张或多张受支持的灰度或等通道 RGB PNG 图片" Width="230" HorizontalAlignment="Left" Click="OpenPng_Click" Content="_打开 PNG 图片" TabIndex="0" />
+          <TextBlock Style="{DynamicResource FieldLabel}" Text="图片工作项" />
+          <ListBox x:Name="ImageItemsList" MinHeight="76" MaxHeight="150" Margin="0,4,0,4"
+                   AutomationProperties.Name="图片工作项列表" SelectionChanged="ImageItemsList_SelectionChanged" TabIndex="1" />
+          <TextBlock Style="{DynamicResource SupportingText}" FontSize="12" Text="状态：未处理、预览、待复核、正式、警告、失败、已导出" TextWrapping="Wrap" />
           <TextBlock Style="{DynamicResource FieldLabel}" Text="Selected input" />
           <TextBlock x:Name="InputSummaryText" Text="No input selected" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+          <CheckBox x:Name="LockRoiCheck" Margin="0,8,0,0" Content="锁定当前 ROI 并应用到后续图片" AutomationProperties.Name="锁定当前 ROI 并应用到后续图片" Click="LockRoiCheck_Click" />
+          <Button x:Name="ApplyCalibrationBatchButton" Style="{DynamicResource SecondaryButton}" Margin="0,6,0,0" Width="230" HorizontalAlignment="Left"
+                  Content="将可信标定应用到当前批次" AutomationProperties.Name="将可信标定应用到当前批次" Click="ApplyCalibrationBatch_Click" />
 
           <Separator Margin="{DynamicResource SpacingSeparator}" />
           <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,0,0,4" Text="Spatial calibration (units per pixel)" />
