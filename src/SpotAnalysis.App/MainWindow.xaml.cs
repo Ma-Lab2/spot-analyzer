@@ -710,6 +710,7 @@ public partial class MainWindow : Window
         InputSummaryText.Text = item.Input?.Summary ?? item.Item.Input.Summary;
         InputPreview.Source = item.Input?.Preview;
         ImageEmptyState.Visibility = item.Input is null ? Visibility.Visible : Visibility.Collapsed;
+        RenderSelectedDisplay();
         if (item.Item.Presentation.Draft is { } draft)
             PopulateConfiguration(draft);
         item.PendingRequest = item.Item.Presentation.Draft is null || item.Input is null
@@ -979,8 +980,120 @@ public partial class MainWindow : Window
         catch (ConfigurationValidationException) { }
     }
 
+    private void DisplaySettingsChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_configurationReady || DisplayLayerCombo is null || DisplayColorCombo is null || DisplayRangeCombo is null) return;
+        var layer = Enum.TryParse<DisplayLayer>((DisplayLayerCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var parsedLayer)
+            ? parsedLayer : DisplayLayer.Input;
+        var colorMode = Enum.TryParse<DisplayColorMode>((DisplayColorCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var parsedColor)
+            ? parsedColor : DisplayColorMode.Grayscale;
+        var rangeMode = Enum.TryParse<DisplayRangeMode>((DisplayRangeCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var parsedRange)
+            ? parsedRange : DisplayRangeMode.Percentile;
+        _workspace.SetDisplaySettings(_workspace.Display with { Layer = layer, ColorMode = colorMode, RangeMode = rangeMode });
+        RenderSelectedDisplay();
+    }
+
+    private void HideOverlays_Click(object sender, RoutedEventArgs e)
+    {
+        _workspace.SetDisplaySettings(_workspace.Display.HideOverlays());
+        RenderSelectedDisplay();
+    }
+
+    private void RenderSelectedDisplay()
+    {
+        DisplayOverlayCanvas?.Children.Clear();
+        var item = _currentItem;
+        var outcome = item?.LastSuccessfulOutcome;
+        var selectedLayer = _workspace.Display.Layer;
+        if (item?.Input is null)
+        {
+            if (DisplayLayerStatusText is not null) DisplayLayerStatusText.Text = "显示图像 · N/A（未加载输入）";
+            return;
+        }
+        if (selectedLayer == DisplayLayer.Input)
+        {
+            var inputValues = item.Input.IntensitySamples.Select(value => (double)value).ToArray();
+            var renderedInput = inputValues.Length == item.Input.Width * item.Input.Height
+                ? DisplayRenderer.Render((inputValues, item.Input.Width, item.Input.Height), _workspace.Display)
+                : new DisplayRenderResult(item.Input.Preview, "input preview", true);
+            InputPreview.Source = renderedInput.Image ?? item.Input.Preview;
+            if (DisplayLayerStatusText is not null) DisplayLayerStatusText.Text = $"显示图像 · 输入图像 · {renderedInput.Message}";
+            DrawDisplayOverlays(null, item.Input.Width, item.Input.Height);
+            return;
+        }
+        if (outcome?.Result is not JsonElement result
+            || DisplayProjectionReader.FromResult(result, item.Item.Presentation.CurrentRecord?.RecordId) is not { } projection)
+        {
+            InputPreview.Source = null;
+            if (DisplayLayerStatusText is not null) DisplayLayerStatusText.Text = "显示图像 · N/A（当前记录尚未提供显示投影）";
+            return;
+        }
+
+        var kind = selectedLayer switch
+        {
+            DisplayLayer.CorrectedIntensity => "corrected_intensity",
+            DisplayLayer.PositiveSignal => "positive_intensity",
+            DisplayLayer.Fit => "gaussian_fit",
+            DisplayLayer.Residual => "fit_residual",
+            DisplayLayer.MeasurementMask => "measurement_mask",
+            DisplayLayer.CoreMask => "core_mask",
+            _ => "input_image",
+        };
+        if (!projection.Assets.TryGetValue(kind, out var asset))
+        {
+            InputPreview.Source = null;
+            if (DisplayLayerStatusText is not null) DisplayLayerStatusText.Text = $"显示图像 · N/A（{kind} 不可用）";
+            DrawDisplayOverlays(projection.Record, item.Input.Width, item.Input.Height);
+            return;
+        }
+        try
+        {
+            var path = new Uri(asset.Uri).LocalPath;
+            var data = NpyDisplayReader.Read(path);
+            if (data is null) throw new InvalidDataException("display_asset_invalid");
+            var rendered = DisplayRenderer.Render(data.Value, _workspace.Display);
+            InputPreview.Source = rendered.Image;
+            if (DisplayLayerStatusText is not null)
+                DisplayLayerStatusText.Text = rendered.IsAvailable ? $"显示图像 · {kind} · {rendered.Message}" : $"显示图像 · N/A（{rendered.Message}）";
+            DrawDisplayOverlays(projection.Record, data.Value.Width, data.Value.Height);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UriFormatException)
+        {
+            InputPreview.Source = null;
+            if (DisplayLayerStatusText is not null) DisplayLayerStatusText.Text = $"显示图像 · N/A（{exception.Message}）";
+        }
+    }
+
+    private void DrawDisplayOverlays(JsonElement? record, int width, int height)
+    {
+        if (DisplayOverlayCanvas is null || !_workspace.Display.ShowOverlays || record is not { } node) return;
+        var scaleX = DisplayOverlayCanvas.ActualWidth / Math.Max(1, width);
+        var scaleY = DisplayOverlayCanvas.ActualHeight / Math.Max(1, height);
+        if (_workspace.Display.ShowRoi && node.TryGetProperty("configuration", out var configuration)
+            && configuration.TryGetProperty("region", out var roi) && roi.ValueKind == JsonValueKind.Object)
+        {
+            var rectangle = new Shapes.Rectangle { Stroke = Brushes.Gold, StrokeThickness = 2, StrokeDashArray = new DoubleCollection { 5, 3 } };
+            Canvas.SetLeft(rectangle, Number(roi, "x") * scaleX); Canvas.SetTop(rectangle, Number(roi, "y") * scaleY);
+            rectangle.Width = Number(roi, "width") * scaleX; rectangle.Height = Number(roi, "height") * scaleY;
+            DisplayOverlayCanvas.Children.Add(rectangle);
+        }
+        if (_workspace.Display.ShowCenter && node.TryGetProperty("display_projection", out var projection)
+            && projection.TryGetProperty("curves", out var curves) && curves.TryGetProperty("center_pixel", out var center)
+            && center.ValueKind == JsonValueKind.Object)
+        {
+            var x = Number(center, "x") * scaleX; var y = Number(center, "y") * scaleY;
+            var vertical = new Shapes.Line { X1 = x, X2 = x, Y1 = 0, Y2 = DisplayOverlayCanvas.ActualHeight, Stroke = Brushes.Cyan, StrokeThickness = 1 };
+            var horizontal = new Shapes.Line { X1 = 0, X2 = DisplayOverlayCanvas.ActualWidth, Y1 = y, Y2 = y, Stroke = Brushes.Cyan, StrokeThickness = 1 };
+            DisplayOverlayCanvas.Children.Add(vertical); DisplayOverlayCanvas.Children.Add(horizontal);
+        }
+    }
+
+    private static double Number(JsonElement node, string property) =>
+        node.TryGetProperty(property, out var value) && value.TryGetDouble(out var number) ? number : 0;
+
     private void CurveCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        RenderSelectedDisplay();
         if (_lastSuccessfulOutcome is not null && !_resultStale)
             RenderCurves(_lastSuccessfulOutcome, stale: false);
     }
