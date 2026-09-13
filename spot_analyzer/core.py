@@ -13,6 +13,7 @@ import rfc8785
 from scipy.ndimage import binary_dilation, gaussian_filter, label, maximum_filter
 from scipy.optimize import least_squares
 
+from .detection import DEFAULT_DETECTION_PROFILE, FocalSpotDetectionProfile, propose_auto_analysis
 from .models import (
     AnalysisConfiguration,
     AnalysisOutcome,
@@ -456,7 +457,7 @@ def _background(
     median_residual = float(np.median(residual[valid]))
     mad = 1.4826 * float(np.median(np.abs(residual[valid] - median_residual)))
     rms = float(np.sqrt(np.mean(residual[valid] ** 2)))
-    normalized_rms = rms / mad if mad > 1e-8 else (0.0 if rms <= 1e-6 else math.inf)
+    normalized_rms = rms / mad if mad > 1e-5 else (0.0 if rms <= 1e-3 else math.inf)
     diagnostics.update(
         {
             "background_coefficients": [float(value) for value in coefficients],
@@ -1049,11 +1050,51 @@ def _empty_metrics(configuration: AnalysisConfiguration, reason: str) -> dict[st
     return metrics
 
 
+def _configured_detection_profile(configuration: AnalysisConfiguration) -> FocalSpotDetectionProfile:
+    """Construct the named detector profile from the immutable config snapshot."""
+    profile = DEFAULT_DETECTION_PROFILE
+    parameters = dict(configuration.detection_profile_parameters)
+    if parameters:
+        profile = FocalSpotDetectionProfile(**parameters)
+    if configuration.detection_profile_version != profile.version:
+        raise ValueError("detection profile version and parameters do not match")
+    return profile
+
+
 def analyze(image: InputImage, configuration: AnalysisConfiguration) -> AnalysisOutcome:
-    """Run one deterministic analysis using a confirmed rectangular region."""
+    """Run one deterministic analysis, resolving ``region=None`` automatically."""
 
     shape = image.data.shape
+    automatic_diagnostics: dict[str, Any] = {}
+    if configuration.region is None:
+        try:
+            proposal = propose_auto_analysis(
+                image,
+                bad_pixel_coordinates=configuration.bad_pixel_coordinates,
+                profile=_configured_detection_profile(configuration),
+            )
+        except ValueError as error:
+            return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "detection_profile_invalid", "message": str(error)},))
+        if proposal.background_region is None:
+            return AnalysisOutcome(
+                FlowStatus.PARAMETER_INVALID,
+                None,
+                ({"code": "automatic_background_support_insufficient", **dict(proposal.diagnostics)},),
+            )
+        configuration = replace(
+            configuration,
+            region=proposal.region,
+            background_region=proposal.background_region,
+            detection_profile_parameters={
+                key: value for key, value in dict(proposal.diagnostics["profile_parameters"]).items()
+            },
+        )
+        automatic_diagnostics = dict(proposal.diagnostics)
     region = configuration.region
+    # Automatic resolution above guarantees this; this guard keeps the
+    # public entry point structured if a future resolver changes behavior.
+    if region is None:
+        return AnalysisOutcome(FlowStatus.PARAMETER_INVALID, None, ({"code": "analysis_region_unresolved"},))
     if (
         (image.channels != 1 and not image.channels_identical)
         or image.encoding_semantic != "relative_intensity_code"
@@ -1146,6 +1187,13 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     localization = np.where(measurement_valid, corrected, np.nan)
     center_xy = _subpixel_peak(localization)
     reasons: set[str] = set()
+    automatic_reasons = set(automatic_diagnostics.get("reasons", ()))
+    if "automatic_multiple_candidates" in automatic_reasons:
+        reasons.add("multiple_peaks")
+    if "automatic_candidate_touches_boundary" in automatic_reasons:
+        reasons.add("window_truncated")
+    if "automatic_isolated_hot_pixels_excluded" in automatic_reasons:
+        reasons.add("isolated_hot_pixels_excluded")
     if background_diagnostics.get("background_match_status") == "unverified":
         reasons.add("background_match_unverified")
     bad_count = int(np.count_nonzero(bad_pixel_mask))
@@ -1423,7 +1471,18 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
             residual_rms = float(np.sqrt(np.mean(residual_values**2))) if residual_values.size else math.inf
             positive_total = float(roi_positive_valid.sum())
             l1_over_total = float(np.sum(np.abs(residual_values)) / max(positive_total, np.finfo(float).eps)) if residual_values.size else math.inf
-            normalized_residual = residual_rms / noise if noise > 1e-8 else (0.0 if residual_rms <= 1e-8 else math.inf)
+            # A noiseless frame has no meaningful sigma denominator.  A
+            # known multi-candidate preview remains cautionary rather than
+            # being blocked solely by that undefined normalization.
+            normalized_residual = (
+                residual_rms / noise
+                if noise > 1e-5
+                else 0.0
+                if residual_rms <= 1e-4
+                else 1.0
+                if "multiple_peaks" in reasons
+                else math.inf
+            )
             if normalized_residual > 4:
                 fit_status = MeasurementStatus.INVALID
                 fit_reasons.add("fit_residual_high")
@@ -1657,6 +1716,10 @@ def analyze(image: InputImage, configuration: AnalysisConfiguration) -> Analysis
     }
     diagnostics: dict[str, Any] = {
         **background_diagnostics,
+        "automatic_detection": automatic_diagnostics if automatic_diagnostics else {"enabled": False},
+        "candidate_count": automatic_diagnostics.get("candidate_count"),
+        "candidate_selection_reason": automatic_diagnostics.get("selection_reason"),
+        "candidate_energy_fraction": automatic_diagnostics.get("selected_energy_fraction"),
         "mask_version": _MASK_VERSION,
         "measurement_mask_hash": _mask_hash(measurement_valid),
         "measurement_valid_pixels": int(np.count_nonzero(measurement_valid)),
