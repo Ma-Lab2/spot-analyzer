@@ -115,6 +115,12 @@ public static class ReportExporter
                 outcomes.Add(new ReportExportOutcome(null, recordId, "skipped", "report_item_stale", "Stale records must be recalculated before export."));
                 continue;
             }
+            if (item.TerminalResult.Value.TryGetProperty("record", out var computedRecord)
+                && !string.Equals(StringValue(computedRecord, "flow_status"), "computed", StringComparison.Ordinal))
+            {
+                outcomes.Add(new ReportExportOutcome(null, recordId, "skipped", "report_record_not_computed", "Only computed formal records can be exported."));
+                continue;
+            }
             try
             {
                 outcomes.Add(Write(item.TerminalResult.Value, specification));
